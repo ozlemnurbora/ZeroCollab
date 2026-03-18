@@ -1,54 +1,52 @@
-import { CHAT_STORAGE_KEYS } from './chatConstants.js'
+import { DATABASE_META, getMessages, getSetting, putMessages, setSetting } from '../../utils/database.js'
 
-export function loadChatUser() {
+export async function loadChatUser() {
   try {
-    const raw = localStorage.getItem(CHAT_STORAGE_KEYS.user)
-    return raw || null
+    const v = await getSetting(DATABASE_META.settingsKeys.chatUser)
+    return typeof v === 'string' && v ? v : null
   } catch {
     return null
   }
 }
 
-export function saveChatUser(name) {
+export async function saveChatUser(name) {
   try {
-    if (!name) localStorage.removeItem(CHAT_STORAGE_KEYS.user)
-    else localStorage.setItem(CHAT_STORAGE_KEYS.user, name)
+    if (!name) await setSetting(DATABASE_META.settingsKeys.chatUser, null)
+    else await setSetting(DATABASE_META.settingsKeys.chatUser, name)
   } catch {
     // ignore
   }
 }
 
-export function loadActiveChannelId() {
+export async function loadActiveChannelId() {
   try {
-    const raw = localStorage.getItem(CHAT_STORAGE_KEYS.channel)
-    return raw || 'general'
+    const v = await getSetting(DATABASE_META.settingsKeys.chatChannel)
+    return typeof v === 'string' && v ? v : 'general'
   } catch {
     return 'general'
   }
 }
 
-export function saveActiveChannelId(id) {
+export async function saveActiveChannelId(id) {
   try {
-    localStorage.setItem(CHAT_STORAGE_KEYS.channel, id)
+    await setSetting(DATABASE_META.settingsKeys.chatChannel, id)
   } catch {
     // ignore
   }
 }
 
-export function loadMessages() {
+export async function loadMessages() {
   try {
-    const raw = localStorage.getItem(CHAT_STORAGE_KEYS.messages)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
+    const items = await getMessages()
+    return Array.isArray(items) ? items : []
   } catch {
     return []
   }
 }
 
-export function saveMessages(messages) {
+export async function saveMessages(messages) {
   try {
-    localStorage.setItem(CHAT_STORAGE_KEYS.messages, JSON.stringify(messages))
+    await putMessages(messages)
   } catch {
     // ignore
   }

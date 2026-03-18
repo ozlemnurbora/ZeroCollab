@@ -1,23 +1,4 @@
-import { PEER_ID_STORAGE_KEY, SETTINGS_STORAGE_KEY } from './settingsConstants.js'
-
-export function loadSettings() {
-  try {
-    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : null
-  } catch {
-    return null
-  }
-}
-
-export function saveSettings(settings) {
-  try {
-    localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings))
-  } catch {
-    // ignore
-  }
-}
+import { DATABASE_META, getSetting, setSetting } from '../../utils/database.js'
 
 function createPeerId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -25,12 +6,29 @@ function createPeerId() {
   return `peer_${Date.now()}_${Math.random().toString(16).slice(2)}`
 }
 
-export function getOrCreatePeerId() {
+export async function loadSettings() {
   try {
-    const existing = localStorage.getItem(PEER_ID_STORAGE_KEY)
-    if (existing) return existing
+    const s = await getSetting(DATABASE_META.settingsKeys.appSettings)
+    return s && typeof s === 'object' ? s : null
+  } catch {
+    return null
+  }
+}
+
+export async function saveSettings(settings) {
+  try {
+    await setSetting(DATABASE_META.settingsKeys.appSettings, settings)
+  } catch {
+    // ignore
+  }
+}
+
+export async function getOrCreatePeerId() {
+  try {
+    const existing = await getSetting(DATABASE_META.settingsKeys.peerId)
+    if (typeof existing === 'string' && existing) return existing
     const next = createPeerId()
-    localStorage.setItem(PEER_ID_STORAGE_KEY, next)
+    await setSetting(DATABASE_META.settingsKeys.peerId, next)
     return next
   } catch {
     return createPeerId()

@@ -12,7 +12,9 @@ function createId() {
 }
 
 export function CalendarPage() {
-  const [tasks, setTasks] = useState(() => loadTasks())
+  const [tasks, setTasks] = useState([])
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true)
+  const [hasLoadedTasks, setHasLoadedTasks] = useState(false)
   const [viewDate, setViewDate] = useState(() => {
     const now = new Date()
     return new Date(now.getFullYear(), now.getMonth(), 1)
@@ -22,22 +24,28 @@ export function CalendarPage() {
   const [isAddOpen, setIsAddOpen] = useState(false)
 
   useEffect(() => {
-    saveTasks(tasks)
+    if (!hasLoadedTasks) return
+    void saveTasks(tasks)
   }, [tasks])
 
   useEffect(() => {
-    const onStorage = (e) => {
-      if (e.key && e.key.includes('zerocollab.tasks')) {
-        setTasks(loadTasks())
-      }
+    let cancelled = false
+    ;(async () => {
+      setIsLoadingTasks(true)
+      const existing = await loadTasks()
+      if (cancelled) return
+      setTasks(Array.isArray(existing) ? existing : [])
+      setHasLoadedTasks(true)
+      setIsLoadingTasks(false)
+    })()
+    return () => {
+      cancelled = true
     }
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
   }, [])
 
   const tasksByISODate = useMemo(() => {
     const map = new Map()
-    for (const t of tasks) {
+    for (const t of Array.isArray(tasks) ? tasks : []) {
       if (!t.dueDate) continue
       const list = map.get(t.dueDate) ?? []
       list.push(t)
@@ -60,7 +68,7 @@ export function CalendarPage() {
         createdAt: now,
         ...payload,
       },
-      ...prev,
+      ...(Array.isArray(prev) ? prev : []),
     ])
   }
 
@@ -74,16 +82,22 @@ export function CalendarPage() {
       </p>
 
       <div className="mt-6">
-        <MonthlyCalendar
-          viewDate={viewDate}
-          onChangeViewDate={setViewDate}
-          selectedISODate={selectedISODate}
-          onSelectISODate={(iso) => {
-            setSelectedISODate(iso)
-            setIsDayOpen(true)
-          }}
-          tasksByISODate={tasksByISODate}
-        />
+        {isLoadingTasks ? (
+          <div className="rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
+            Loading tasks…
+          </div>
+        ) : (
+          <MonthlyCalendar
+            viewDate={viewDate}
+            onChangeViewDate={setViewDate}
+            selectedISODate={selectedISODate}
+            onSelectISODate={(iso) => {
+              setSelectedISODate(iso)
+              setIsDayOpen(true)
+            }}
+            tasksByISODate={tasksByISODate}
+          />
+        )}
       </div>
 
       <DayTasksModal

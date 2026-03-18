@@ -1,19 +1,17 @@
-import { EVALUATION_STORAGE_KEY } from './evaluationConstants.js'
+import { getEvaluations, putEvaluations } from '../../utils/database.js'
 
-export function loadEvaluations() {
+export async function loadEvaluations() {
   try {
-    const raw = localStorage.getItem(EVALUATION_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
+    const items = await getEvaluations()
+    return Array.isArray(items) ? items : []
   } catch {
     return []
   }
 }
 
-export function saveEvaluations(items) {
+export async function saveEvaluations(items) {
   try {
-    localStorage.setItem(EVALUATION_STORAGE_KEY, JSON.stringify(items))
+    await putEvaluations(items)
   } catch {
     // ignore storage errors
   }

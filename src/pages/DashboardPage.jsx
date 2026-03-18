@@ -4,9 +4,20 @@ import { loadTasks } from '../components/kanban/taskStorage.js'
 
 export function DashboardPage() {
   const [tasks, setTasks] = useState([])
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true)
 
   useEffect(() => {
-    setTasks(loadTasks())
+    let cancelled = false
+    ;(async () => {
+      setIsLoadingTasks(true)
+      const next = await loadTasks()
+      if (cancelled) return
+      setTasks(Array.isArray(next) ? next : [])
+      setIsLoadingTasks(false)
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   const stats = useMemo(() => {
@@ -35,6 +46,12 @@ export function DashboardPage() {
       <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
         Project overview and team activity, powered by your Tasks board.
       </p>
+
+      {isLoadingTasks ? (
+        <div className="mt-6 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
+          Loading tasks…
+        </div>
+      ) : null}
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard

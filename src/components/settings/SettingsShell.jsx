@@ -52,16 +52,40 @@ function applyTheme(theme) {
 }
 
 export function SettingsShell() {
-  const [settings, setSettings] = useState(() =>
-    mergeDefaults(loadSettings()),
-  )
-  const [peerId, setPeerId] = useState(() => getOrCreatePeerId())
+  const [settings, setSettings] = useState(() => mergeDefaults(null))
+  const [peerId, setPeerId] = useState('')
   const [connectPeer, setConnectPeer] = useState('')
 
   useEffect(() => {
-    saveSettings(settings)
+    void saveSettings(settings)
     applyTheme(settings.app.theme)
   }, [settings])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const saved = await loadSettings()
+      if (!cancelled) {
+        const merged = mergeDefaults(saved)
+        setSettings(merged)
+        applyTheme(merged.app.theme)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      const id = await getOrCreatePeerId()
+      if (!cancelled) setPeerId(id)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const displayNamePreview = useMemo(() => {
     return settings.profile.displayName?.trim() || settings.profile.currentUser

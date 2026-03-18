@@ -26,12 +26,30 @@ function defaultCriteriaState() {
 
 export function EvaluationPage() {
   const [criteria, setCriteria] = useState(() => defaultCriteriaState())
-  const [history, setHistory] = useState(() => loadEvaluations())
+  const [history, setHistory] = useState([])
+  const [isLoadingHistory, setIsLoadingHistory] = useState(true)
+  const [hasLoadedHistory, setHasLoadedHistory] = useState(false)
   const [selectedHistory, setSelectedHistory] = useState(null)
 
   useEffect(() => {
-    saveEvaluations(history)
+    if (!hasLoadedHistory) return
+    void saveEvaluations(history)
   }, [history])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setIsLoadingHistory(true)
+      const existing = await loadEvaluations()
+      if (cancelled) return
+      setHistory(Array.isArray(existing) ? existing : [])
+      setHasLoadedHistory(true)
+      setIsLoadingHistory(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const totals = useMemo(() => computeTotals(criteria), [criteria])
 
@@ -61,6 +79,12 @@ export function EvaluationPage() {
       <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
         Rubric-based project assessment with saved history.
       </p>
+
+      {isLoadingHistory ? (
+        <div className="mt-6 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
+          Loading evaluation history…
+        </div>
+      ) : null}
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="space-y-6">

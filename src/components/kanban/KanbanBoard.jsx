@@ -12,17 +12,33 @@ function createId() {
 }
 
 export function KanbanBoard() {
-  const [tasks, setTasks] = useState(() => {
-    const existing = loadTasks()
-    return existing.length ? existing : []
-  })
+  const [tasks, setTasks] = useState([])
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true)
+  const [hasLoadedTasks, setHasLoadedTasks] = useState(false)
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [draggingTaskId, setDraggingTaskId] = useState(null)
   const [dropTargetColumnId, setDropTargetColumnId] = useState(null)
 
   useEffect(() => {
-    saveTasks(tasks)
+    if (!hasLoadedTasks) return
+    void saveTasks(tasks)
   }, [tasks])
+
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      setIsLoadingTasks(true)
+      const existing = await loadTasks()
+      if (cancelled) return
+      const list = Array.isArray(existing) ? existing : []
+      setTasks(list.length ? list : [])
+      setHasLoadedTasks(true)
+      setIsLoadingTasks(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     const onDragEnd = () => {
@@ -72,7 +88,7 @@ export function KanbanBoard() {
         <div>
           <p className="text-sm text-[rgb(var(--zc-muted))]">
             Drag tasks across columns. Stored in{' '}
-            <span className="text-[rgb(var(--zc-text))]">localStorage</span>.
+            <span className="text-[rgb(var(--zc-text))]">IndexedDB</span>.
           </p>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
             {total} total tasks
@@ -84,18 +100,24 @@ export function KanbanBoard() {
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-3">
-        {KANBAN_COLUMNS.map((column) => (
-          <KanbanColumn
-            key={column.id}
-            column={column}
-            tasks={tasksByColumn.get(column.id) ?? []}
-            onDropTask={moveTask}
-            draggingTaskId={draggingTaskId}
-            setDraggingTaskId={setDraggingTaskId}
-            isDropTarget={dropTargetColumnId === column.id}
-            setDropTargetColumnId={setDropTargetColumnId}
-          />
-        ))}
+        {isLoadingTasks ? (
+          <div className="lg:col-span-3 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
+            Loading tasks…
+          </div>
+        ) : (
+          KANBAN_COLUMNS.map((column) => (
+            <KanbanColumn
+              key={column.id}
+              column={column}
+              tasks={tasksByColumn.get(column.id) ?? []}
+              onDropTask={moveTask}
+              draggingTaskId={draggingTaskId}
+              setDraggingTaskId={setDraggingTaskId}
+              isDropTarget={dropTargetColumnId === column.id}
+              setDropTargetColumnId={setDropTargetColumnId}
+            />
+          ))
+        )}
       </div>
 
       <AddTaskModal

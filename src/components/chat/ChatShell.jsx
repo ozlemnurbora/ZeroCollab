@@ -11,6 +11,7 @@ import {
   saveChatUser,
   saveMessages,
 } from './chatStorage.js'
+import { loadSettings } from '../settings/settingsStorage.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -24,31 +25,64 @@ function channelLabel(id) {
 }
 
 export function ChatShell() {
-  const [me, setMe] = useState(() => loadChatUser() ?? CHAT_USERS[0])
-  const [activeId, setActiveId] = useState(() => loadActiveChannelId())
-  const [messages, setMessages] = useState(() => loadMessages())
+  const [me, setMe] = useState(CHAT_USERS[0])
+  const [activeId, setActiveId] = useState('general')
+  const [messages, setMessages] = useState([])
+  const [myAvatarColor, setMyAvatarColor] = useState(null)
+  const [isLoadingChat, setIsLoadingChat] = useState(true)
+  const [hasLoadedChat, setHasLoadedChat] = useState(false)
 
   useEffect(() => {
-    saveChatUser(me)
+    if (!hasLoadedChat) return
+    void saveChatUser(me)
   }, [me])
 
   useEffect(() => {
-    saveActiveChannelId(activeId)
+    if (!hasLoadedChat) return
+    void saveActiveChannelId(activeId)
   }, [activeId])
 
   useEffect(() => {
-    saveMessages(messages)
+    if (!hasLoadedChat) return
+    void saveMessages(messages)
   }, [messages])
 
   useEffect(() => {
-    const onStorage = (e) => {
-      if (!e.key) return
-      if (e.key === 'zerocollab.chat.messages.v1') setMessages(loadMessages())
-      if (e.key === 'zerocollab.chat.user.v1') setMe(loadChatUser() ?? CHAT_USERS[0])
-      if (e.key === 'zerocollab.chat.channel.v1') setActiveId(loadActiveChannelId())
+    let cancelled = false
+    ;(async () => {
+      setIsLoadingChat(true)
+      const [u, ch, msgs, s] = await Promise.all([
+        loadChatUser(),
+        loadActiveChannelId(),
+        loadMessages(),
+        loadSettings(),
+      ])
+      if (cancelled) return
+      setMe(u ?? CHAT_USERS[0])
+      setActiveId(ch)
+      setMessages(Array.isArray(msgs) ? msgs : [])
+      setMyAvatarColor(s?.profile?.avatarColor || null)
+      setHasLoadedChat(true)
+      setIsLoadingChat(false)
+    })()
+    return () => {
+      cancelled = true
     }
-    window.addEventListener('storage', onStorage)
-    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  useEffect(() => {
+    const onDbChange = (e) => {
+      const detail = e?.detail
+      if (!detail?.store) return
+      if (detail.store === 'messages') void loadMessages().then(setMessages)
+      if (detail.store === 'settings') {
+        void loadChatUser().then((u) => setMe(u ?? CHAT_USERS[0]))
+        void loadActiveChannelId().then(setActiveId)
+        void loadSettings().then((s) => setMyAvatarColor(s?.profile?.avatarColor || null))
+      }
+    }
+    window.addEventListener('zerocollab:idb', onDbChange)
+    return () => window.removeEventListener('zerocollab:idb', onDbChange)
   }, [])
 
   const activeMessages = useMemo(
@@ -84,7 +118,7 @@ export function ChatShell() {
               {channelLabel(activeId)}
             </p>
             <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-              Messages are stored locally for now.
+              Messages are stored in IndexedDB for now.
             </p>
           </div>
 
@@ -106,7 +140,19 @@ export function ChatShell() {
           </div>
         </header>
 
-        <MessageList messages={activeMessages} currentUser={me} />
+        {isLoadingChat ? (
+          <div className="flex flex-1 items-center justify-center p-6">
+            <div className="rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
+              Loading chat…
+            </div>
+          </div>
+        ) : (
+          <MessageList
+            messages={activeMessages}
+            currentUser={me}
+            currentUserAvatarColor={myAvatarColor}
+          />
+        )}
 
         <MessageComposer
           onSend={sendMessage}

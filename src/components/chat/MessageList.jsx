@@ -18,7 +18,7 @@ function avatarColor(name) {
   return colors[idx] ?? colors[0]
 }
 
-export function MessageList({ messages, currentUser }) {
+export function MessageList({ messages, currentUser, currentUserAvatarColor }) {
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -45,8 +45,13 @@ export function MessageList({ messages, currentUser }) {
               <div
                 className={[
                   'mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg ring-1 ring-inset',
-                  avatarColor(m.sender),
+                  mine ? 'text-white ring-white/25' : avatarColor(m.sender),
                 ].join(' ')}
+                style={
+                  mine && currentUserAvatarColor
+                    ? { backgroundColor: currentUserAvatarColor }
+                    : undefined
+                }
                 aria-hidden="true"
               >
                 <span className="text-xs font-bold">{initials(m.sender)}</span>
