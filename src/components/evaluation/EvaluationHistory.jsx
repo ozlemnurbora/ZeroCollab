@@ -1,0 +1,58 @@
+import { formatEvalDate, letterGrade } from './evaluationUtils.js'
+
+export function EvaluationHistory({ items, onSelect }) {
+  return (
+    <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
+      <header className="border-b border-[rgb(var(--zc-border))] px-4 py-3">
+        <h2 className="text-sm font-semibold text-[rgb(var(--zc-text))]">
+          History
+        </h2>
+        <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+          Past evaluations saved locally
+        </p>
+      </header>
+
+      <div className="px-4 py-3">
+        {items.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
+            No evaluations yet.
+          </div>
+        ) : (
+          <ul className="divide-y divide-[rgb(var(--zc-border))]">
+            {items.map((e) => {
+              const pct = Math.round(e.percentage ?? 0)
+              const grade = letterGrade(e.percentage ?? 0)
+              return (
+                <li
+                  key={e.id}
+                  className="flex items-center justify-between gap-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
+                      {formatEvalDate(e.createdAt)}
+                    </p>
+                    <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                      {e.total} / {e.max} • {pct}%
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => onSelect?.(e)}
+                    className="inline-flex items-center gap-2 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-1.5 text-xs font-medium text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-panel)/0.7)]"
+                  >
+                    <span className="rounded-md bg-[rgb(var(--zc-bg)/0.4)] px-2 py-1 text-[11px] font-semibold text-[rgb(var(--zc-text))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
+                      {grade}
+                    </span>
+                    View
+                  </button>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </div>
+    </section>
+  )
+}
+

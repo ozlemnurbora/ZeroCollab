@@ -1,13 +1,20 @@
+import { KanbanBoard } from '../components/kanban/KanbanBoard.jsx'
+
 export function TasksPage() {
   return (
     <section>
-      <h1 className="text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-        Tasks
-      </h1>
-      <p className="mt-2 text-sm text-slate-300 sm:text-base">
-        Kanban-style task management board for planning and tracking project
-        work. This is a placeholder view where the interactive board will live.
-      </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
+            Tasks
+          </h1>
+          <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
+            Plan, track, and move work across your team’s workflow.
+          </p>
+        </div>
+      </div>
+
+      <KanbanBoard />
     </section>
   )
 }

@@ -17,17 +17,18 @@ export function SidebarLayout() {
     'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors'
 
   const getLinkClasses = ({ isActive }) => {
-    const activeClasses = 'bg-slate-800 text-white'
+    const activeClasses =
+      'bg-[rgb(var(--zc-border))] text-[rgb(var(--zc-text))]'
     const inactiveClasses =
-      'text-slate-300 hover:bg-slate-800/70 hover:text-white'
+      'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.7)] hover:text-[rgb(var(--zc-text))]'
     return `${linkBaseClasses} ${isActive ? activeClasses : inactiveClasses}`
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex">
+    <div className="min-h-screen bg-[rgb(var(--zc-bg))] text-[rgb(var(--zc-text))] flex">
       {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-slate-900 border-r border-slate-800 p-4 flex flex-col transform transition-transform duration-200 md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-[rgb(var(--zc-panel))] border-r border-[rgb(var(--zc-border))] p-4 flex flex-col transform transition-transform duration-200 md:static md:translate-x-0 ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         } md:w-64`}
       >
@@ -42,7 +43,7 @@ export function SidebarLayout() {
           </div>
           <button
             type="button"
-            className="md:hidden rounded-md p-1 text-slate-400 hover:bg-slate-800 hover:text-white"
+            className="md:hidden rounded-md p-1 text-[rgb(var(--zc-muted2))] hover:bg-[rgb(var(--zc-border))] hover:text-[rgb(var(--zc-text))]"
             onClick={() => setIsSidebarOpen(false)}
           >
             <span className="sr-only">Close sidebar</span>
@@ -64,14 +65,14 @@ export function SidebarLayout() {
           ))}
         </nav>
 
-        <div className="mt-6 pt-4 border-t border-slate-800 text-xs text-slate-500">
+        <div className="mt-6 pt-4 border-t border-[rgb(var(--zc-border))] text-xs text-[rgb(var(--zc-subtle))]">
           <p>P2P Project Management &amp; Assessment</p>
         </div>
       </aside>
 
       {/* Main content */}
       <div className="flex-1 flex flex-col md:ml-64">
-        <header className="flex items-center justify-between border-b border-slate-800 bg-slate-950/80 px-4 py-3 md:hidden">
+        <header className="flex items-center justify-between border-b border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.8)] px-4 py-3 md:hidden">
           <div className="flex items-center gap-2">
             <div className="h-7 w-7 rounded-lg bg-indigo-500 flex items-center justify-center text-[10px] font-bold">
               ZC
@@ -82,7 +83,7 @@ export function SidebarLayout() {
           </div>
           <button
             type="button"
-            className="rounded-md p-1.5 text-slate-300 hover:bg-slate-800 hover:text-white"
+            className="rounded-md p-1.5 text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border))] hover:text-[rgb(var(--zc-text))]"
             onClick={() => setIsSidebarOpen((open) => !open)}
           >
             <span className="sr-only">Toggle sidebar</span>

@@ -1,6 +1,17 @@
 @import "tailwindcss";
 
 @layer base {
+  :root {
+    /* Theme tokens stored as RGB triplets: "r g b" */
+    --zc-bg: 2 6 23; /* slate-950 */
+    --zc-panel: 15 23 42; /* slate-900 */
+    --zc-border: 30 41 59; /* slate-800 */
+    --zc-text: 241 245 249; /* slate-100 */
+    --zc-muted: 203 213 225; /* slate-300 */
+    --zc-muted2: 148 163 184; /* slate-400 */
+    --zc-subtle: 100 116 139; /* slate-500 */
+  }
+
   html,
   body,
   #root {
@@ -8,6 +19,18 @@
   }
 
   body {
-    @apply bg-slate-950 text-slate-100 antialiased;
+    background-color: rgb(var(--zc-bg));
+    color: rgb(var(--zc-text));
+    @apply antialiased;
+  }
+
+  body[data-theme='light'] {
+    --zc-bg: 248 250 252; /* slate-50 */
+    --zc-panel: 255 255 255; /* white */
+    --zc-border: 226 232 240; /* slate-200 */
+    --zc-text: 15 23 42; /* slate-900 */
+    --zc-muted: 51 65 85; /* slate-700 */
+    --zc-muted2: 71 85 105; /* slate-600 */
+    --zc-subtle: 100 116 139; /* slate-500 */
   }
 }
