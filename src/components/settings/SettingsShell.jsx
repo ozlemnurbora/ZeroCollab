@@ -4,12 +4,18 @@ import { SectionCard } from './SectionCard.jsx'
 import { Toggle } from './Toggle.jsx'
 import { ColorPicker } from './ColorPicker.jsx'
 import { DataManagement } from './DataManagement.jsx'
-import {
-  APP_VERSION,
-  AVATAR_COLORS,
-  USERS,
-} from './settingsConstants.js'
+import { APP_VERSION, AVATAR_COLORS, USERS } from './settingsConstants.js'
 import { getOrCreatePeerId, loadSettings, saveSettings } from './settingsStorage.js'
+import {
+  P2P_EVENTS,
+  P2P_STATUS,
+  connectToPeer,
+  getConnectedPeers,
+  getPeerId,
+  getStatus,
+  initP2P,
+  on as onP2PEvent,
+} from '../../utils/p2pManager.js'
 
 const defaultSettings = {
   profile: {
@@ -55,6 +61,8 @@ export function SettingsShell() {
   const [settings, setSettings] = useState(() => mergeDefaults(null))
   const [peerId, setPeerId] = useState('')
   const [connectPeer, setConnectPeer] = useState('')
+  const [p2pStatus, setP2pStatus] = useState(P2P_STATUS.OFFLINE)
+  const [connectedPeers, setConnectedPeers] = useState([])
 
   useEffect(() => {
     void saveSettings(settings)
@@ -86,6 +94,44 @@ export function SettingsShell() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const { peerId: id } = await initP2P()
+      if (!cancelled) {
+        setPeerId(id ?? '')
+        setP2pStatus(getStatus())
+        setConnectedPeers(getConnectedPeers())
+      }
+    })()
+
+    const offStatus = onP2PEvent(P2P_EVENTS.STATUS_CHANGE, (s) => {
+      setP2pStatus(s)
+    })
+    const offConnected = onP2PEvent(P2P_EVENTS.PEER_CONNECTED, () => {
+      setConnectedPeers(getConnectedPeers())
+    })
+    const offDisconnected = onP2PEvent(P2P_EVENTS.PEER_DISCONNECTED, () => {
+      setConnectedPeers(getConnectedPeers())
+    })
+
+    return () => {
+      cancelled = true
+      offStatus()
+      offConnected()
+      offDisconnected()
+    }
+  }, [])
+
+  const handleConnect = async () => {
+    const value = connectPeer.trim()
+    if (!value || value === getPeerId()) return
+    // eslint-disable-next-line no-console
+    console.log('[SettingsShell] connectToPeer', value)
+    await connectToPeer(value)
+    setConnectedPeers(getConnectedPeers())
+  }
 
   const displayNamePreview = useMemo(() => {
     return settings.profile.displayName?.trim() || settings.profile.currentUser
@@ -287,7 +333,7 @@ export function SettingsShell() {
       <div className="grid gap-6 lg:grid-cols-2">
         <SectionCard
           title="P2P Connection"
-          subtitle="Placeholder UI for upcoming WebRTC-based connectivity."
+          subtitle="Browser-to-browser messaging via PeerJS (WebRTC)."
         >
           <div className="grid gap-4">
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
@@ -297,11 +343,36 @@ export function SettingsShell() {
                     Status
                   </p>
                   <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                    Connection status is offline for now.
+                    Connection status for the P2P chat transport.
                   </p>
                 </div>
-                <span className="rounded-md bg-[rgb(var(--zc-panel))] px-2 py-1 text-xs text-[rgb(var(--zc-muted))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
-                  Offline
+                <span
+                  className={[
+                    'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs ring-1 ring-inset',
+                    p2pStatus === P2P_STATUS.ONLINE
+                      ? 'bg-emerald-500/10 text-emerald-300 ring-emerald-500/40'
+                      : p2pStatus === P2P_STATUS.CONNECTING
+                        ? 'bg-amber-500/10 text-amber-300 ring-amber-500/40'
+                        : 'bg-rose-500/10 text-rose-300 ring-rose-500/40',
+                  ].join(' ')}
+                >
+                  <span
+                    className={[
+                      'h-2 w-2 rounded-full',
+                      p2pStatus === P2P_STATUS.ONLINE
+                        ? 'bg-emerald-400'
+                        : p2pStatus === P2P_STATUS.CONNECTING
+                          ? 'bg-amber-400'
+                          : 'bg-rose-400',
+                    ].join(' ')}
+                  />
+                  <span className="capitalize">
+                    {p2pStatus === P2P_STATUS.ONLINE
+                      ? 'Connected'
+                      : p2pStatus === P2P_STATUS.CONNECTING
+                        ? 'Connecting'
+                        : 'Disconnected'}
+                  </span>
                 </span>
               </div>
             </div>
@@ -311,7 +382,7 @@ export function SettingsShell() {
                 Peer ID
               </p>
               <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                Generated once and stored locally.
+                This tab&apos;s PeerJS ID (derived from your stored base ID).
               </p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <code className="flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.5)] px-3 py-2 text-xs text-[rgb(var(--zc-muted))]">
@@ -337,7 +408,7 @@ export function SettingsShell() {
                 Connect to Peer
               </p>
               <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                Placeholder — will be implemented with WebRTC later.
+                Paste another person&apos;s Peer ID to establish a P2P link.
               </p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input
@@ -348,13 +419,34 @@ export function SettingsShell() {
                 />
                 <Button
                   variant="secondary"
-                  onClick={() =>
-                    alert('P2P connect coming soon - will integrate with WebRTC')
-                  }
+                  onClick={handleConnect}
+                  disabled={!connectPeer.trim()}
                 >
                   Connect
                 </Button>
               </div>
+            </div>
+
+            <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
+              <p className="text-sm font-medium text-[rgb(var(--zc-text))]">
+                Connected peers
+              </p>
+              <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                Active P2P data connections in this tab.
+              </p>
+              {connectedPeers.length === 0 ? (
+                <p className="mt-2 text-xs text-[rgb(var(--zc-muted2))]">
+                  No peers connected yet.
+                </p>
+              ) : (
+                <ul className="mt-2 space-y-1 text-xs font-mono text-[rgb(var(--zc-muted))]">
+                  {connectedPeers.map((id) => (
+                    <li key={id} className="truncate">
+                      {id}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         </SectionCard>
