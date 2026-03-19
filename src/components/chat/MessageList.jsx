@@ -18,7 +18,13 @@ function avatarColor(name) {
   return colors[idx] ?? colors[0]
 }
 
-export function MessageList({ messages, currentUser, currentUserAvatarColor }) {
+export function MessageList({
+  messages,
+  currentUser,
+  currentUserAvatarColor,
+  fileUrls = {},
+  fileTransfers = {},
+}) {
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -40,6 +46,8 @@ export function MessageList({ messages, currentUser, currentUserAvatarColor }) {
       <div className="space-y-4">
         {messages.map((m) => {
           const mine = m.sender === currentUser
+          const isFile = m.kind === 'file' && m.file
+          const transfer = fileTransfers[m.id]
           return (
             <div key={m.id} className="flex gap-3">
               <div
@@ -76,9 +84,66 @@ export function MessageList({ messages, currentUser, currentUserAvatarColor }) {
                   ) : null}
                 </div>
 
-                <div className="mt-1 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-2 text-sm text-[rgb(var(--zc-text))]">
-                  <p className="whitespace-pre-wrap break-words">{m.text}</p>
-                </div>
+                {isFile ? (
+                  <div className="mt-1 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-3 text-sm text-[rgb(var(--zc-text))]">
+                    <div className="flex items-center gap-3">
+                      {m.file.type?.startsWith('image/') && fileUrls[m.id] ? (
+                        <img
+                          src={fileUrls[m.id]}
+                          alt={m.file.name}
+                          className="max-h-40 w-auto rounded-md object-contain ring-1 ring-inset ring-[rgb(var(--zc-border))]"
+                        />
+                      ) : (
+                        <div className="flex h-10 w-10 items-center justify-center rounded-md bg-indigo-500/20 text-xs font-semibold text-indigo-200 ring-1 ring-inset ring-indigo-500/40">
+                          {m.file.name?.split('.').pop()?.toUpperCase() || 'FILE'}
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-[rgb(var(--zc-text))]">
+                          {m.file.name}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-[rgb(var(--zc-subtle))]">
+                          {(m.file.size / (1024 * 1024)).toFixed(2)} MB •{' '}
+                          {m.file.type || 'Unknown type'}
+                        </p>
+                        {fileUrls[m.id] ? (
+                          <a
+                            href={fileUrls[m.id]}
+                            download={m.file.name}
+                            className="mt-1 inline-flex items-center gap-1 rounded-md bg-[rgb(var(--zc-bg)/0.9)] px-2 py-1 text-[11px] font-medium text-[rgb(var(--zc-muted))] ring-1 ring-inset ring-[rgb(var(--zc-border))] hover:bg-[rgb(var(--zc-panel)/0.9)]"
+                          >
+                            Download
+                          </a>
+                        ) : (
+                          <p className="mt-1 text-[11px] text-[rgb(var(--zc-subtle))]">
+                            Waiting for transfer…
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    {transfer ? (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between text-[11px] text-[rgb(var(--zc-subtle))]">
+                          <span>
+                            {transfer.direction === 'upload' ? 'Uploading' : 'Downloading'}{' '}
+                            {transfer.percent}%
+                          </span>
+                          <span>{transfer.speedLabel}</span>
+                        </div>
+                        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[rgb(var(--zc-panel))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
+                          <div
+                            className="h-full rounded-full bg-indigo-500/80"
+                            style={{ width: `${transfer.percent}%` }}
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="mt-1 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-2 text-sm text-[rgb(var(--zc-text))]">
+                    <p className="whitespace-pre-wrap break-words">{m.text}</p>
+                  </div>
+                )}
               </div>
             </div>
           )
