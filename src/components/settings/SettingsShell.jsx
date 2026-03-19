@@ -6,6 +6,7 @@ import { ColorPicker } from './ColorPicker.jsx'
 import { DataManagement } from './DataManagement.jsx'
 import { APP_VERSION, AVATAR_COLORS, USERS } from './settingsConstants.js'
 import { getOrCreatePeerId, loadSettings, saveSettings } from './settingsStorage.js'
+import { usePwaInstallPrompt } from '../../utils/pwaInstall.js'
 import {
   P2P_EVENTS,
   P2P_STATUS,
@@ -63,6 +64,7 @@ export function SettingsShell() {
   const [connectPeer, setConnectPeer] = useState('')
   const [p2pStatus, setP2pStatus] = useState(P2P_STATUS.OFFLINE)
   const [connectedPeers, setConnectedPeers] = useState([])
+  const { canInstall, isInstalled, promptInstall } = usePwaInstallPrompt()
 
   useEffect(() => {
     void saveSettings(settings)
@@ -448,6 +450,43 @@ export function SettingsShell() {
                 </ul>
               )}
             </div>
+          </div>
+        </SectionCard>
+
+        <SectionCard
+          title="Install ZeroCollab"
+          subtitle="Install the app for a standalone, offline-capable experience."
+        >
+          <div className="grid gap-3">
+            {isInstalled ? (
+              <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-200">
+                ZeroCollab is installed on this device.
+              </div>
+            ) : canInstall ? (
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-[rgb(var(--zc-text))]">
+                    Ready to install
+                  </p>
+                  <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                    Works offline and launches like a native app.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => {
+                    void promptInstall()
+                  }}
+                >
+                  Install ZeroCollab
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3 text-sm text-[rgb(var(--zc-muted))]">
+                Install prompt not available right now. In Chrome, it typically
+                appears after you&apos;ve visited the app a bit and it meets PWA
+                criteria.
+              </div>
+            )}
           </div>
         </SectionCard>
 

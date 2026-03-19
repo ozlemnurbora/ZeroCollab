@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
+import { OfflineBanner } from '../components/pwa/OfflineBanner.jsx'
 
 const navItems = [
   { to: '/', label: 'Dashboard', end: true },
@@ -72,6 +73,7 @@ export function SidebarLayout() {
 
       {/* Main content */}
       <div className="flex-1 flex flex-col md:ml-64">
+        <OfflineBanner />
         <header className="flex items-center justify-between border-b border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.8)] px-4 py-3 md:hidden">
           <div className="flex items-center gap-2">
             <div className="h-7 w-7 rounded-lg bg-indigo-500 flex items-center justify-center text-[10px] font-bold">

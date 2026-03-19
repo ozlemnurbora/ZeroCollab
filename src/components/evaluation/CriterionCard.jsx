@@ -1,7 +1,7 @@
 import { clampScore } from './evaluationUtils.js'
 
 export function CriterionCard({ criterion, value, onChange }) {
-  const score = value?.score ?? 7
+  const score = value?.score ?? 14
   const comments = value?.comments ?? ''
   const max = criterion.max ?? 10
 

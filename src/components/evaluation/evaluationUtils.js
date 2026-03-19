@@ -1,6 +1,6 @@
 import { RUBRIC } from './evaluationConstants.js'
 
-export function clampScore(value, min = 1, max = 10) {
+export function clampScore(value, min = 1, max = 20) {
   const n = Number(value)
   if (Number.isNaN(n)) return min
   return Math.min(max, Math.max(min, Math.round(n)))
