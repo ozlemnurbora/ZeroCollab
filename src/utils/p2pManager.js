@@ -12,6 +12,7 @@ const EVENTS = {
   PEER_CONNECTED: 'peer-connected',
   PEER_DISCONNECTED: 'peer-disconnected',
   MESSAGE: 'message',
+  INCOMING_CALL: 'incoming-call',
   ERROR: 'error',
 }
 
@@ -80,6 +81,12 @@ async function createPeerInstance() {
     // eslint-disable-next-line no-console
     console.log('[p2pManager] incoming connection from', conn.peer)
     setupConnection(conn)
+  })
+
+  peer.on('call', (mediaCall) => {
+    // eslint-disable-next-line no-console
+    console.log('[p2pManager] incoming media call from', mediaCall.peer)
+    emit(EVENTS.INCOMING_CALL, mediaCall)
   })
 
   peer.on('disconnected', () => {
@@ -224,6 +231,19 @@ export function sendToAllPeers(payload) {
       // eslint-disable-next-line no-console
       console.error('[p2pManager] send error', id, err)
     }
+  }
+}
+
+export async function placeCall(remotePeerId, stream) {
+  if (!remotePeerId || !stream || !ensureBrowserEnv()) return null
+  await initP2P()
+  if (!peer || peer.destroyed) return null
+  try {
+    const mediaCall = peer.call(remotePeerId, stream)
+    return mediaCall ?? null
+  } catch (err) {
+    emit(EVENTS.ERROR, err)
+    return null
   }
 }
 

@@ -21,8 +21,11 @@ import {
   getStatus,
   initP2P,
   on as onP2PEvent,
+  placeCall,
   sendToAllPeers,
 } from '../../utils/p2pManager.js'
+import { CallButton } from '../call/CallButton.jsx'
+import { VideoCall } from '../call/VideoCall.jsx'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -49,8 +52,103 @@ export function ChatShell() {
   const [pendingFile, setPendingFile] = useState(null)
   const [fileUrls, setFileUrls] = useState({})
   const [fileTransfers, setFileTransfers] = useState({})
+  const [isCallOpen, setIsCallOpen] = useState(false)
+  const [incomingMediaCall, setIncomingMediaCall] = useState(null)
+  const [incomingCallFrom, setIncomingCallFrom] = useState('')
+  const [activeCallPeerId, setActiveCallPeerId] = useState('')
+  const [localStream, setLocalStream] = useState(null)
+  const [remoteStream, setRemoteStream] = useState(null)
+  const [isMuted, setIsMuted] = useState(false)
+  const [isCameraOff, setIsCameraOff] = useState(false)
+  const [isSharingScreen, setIsSharingScreen] = useState(false)
   const incomingFileChunksRef = useRef(new Map())
   const transferMetaRef = useRef(new Map())
+  const activeCallRef = useRef(null)
+  const localStreamRef = useRef(null)
+  const activeCallPeerIdRef = useRef('')
+  const cameraTrackRef = useRef(null)
+  const screenTrackRef = useRef(null)
+
+  const replaceOutgoingVideoTrack = (track) => {
+    const senders = activeCallRef.current?.peerConnection?.getSenders?.() ?? []
+    const videoSender = senders.find((sender) => sender?.track?.kind === 'video')
+    if (videoSender) {
+      void videoSender.replaceTrack(track)
+    }
+  }
+
+  const stopStream = (stream) => {
+    stream?.getTracks?.().forEach((track) => track.stop())
+  }
+
+  useEffect(() => {
+    localStreamRef.current = localStream
+  }, [localStream])
+
+  useEffect(() => {
+    activeCallPeerIdRef.current = activeCallPeerId
+  }, [activeCallPeerId])
+
+  const resetCallState = () => {
+    activeCallRef.current = null
+    screenTrackRef.current = null
+    setIsCallOpen(false)
+    setActiveCallPeerId('')
+    setRemoteStream(null)
+    setIsMuted(false)
+    setIsCameraOff(false)
+    setIsSharingScreen(false)
+  }
+
+  const teardownCall = ({ stopLocal = true, notifyPeer = false } = {}) => {
+    const targetPeerId = activeCallPeerIdRef.current
+    if (notifyPeer && targetPeerId) {
+      sendToAllPeers({
+        type: 'call-ended',
+        payload: { to: targetPeerId },
+      })
+    }
+    try {
+      activeCallRef.current?.close?.()
+    } catch {
+      // ignore
+    }
+    if (stopLocal) {
+      stopStream(localStreamRef.current)
+      setLocalStream(null)
+      localStreamRef.current = null
+      cameraTrackRef.current = null
+    }
+    resetCallState()
+  }
+
+  const startLocalStream = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    })
+    cameraTrackRef.current = stream.getVideoTracks()[0] ?? null
+    setLocalStream(stream)
+    setIsMuted(false)
+    setIsCameraOff(false)
+    return stream
+  }
+
+  const bindMediaCall = (mediaCall) => {
+    if (!mediaCall) return
+    activeCallRef.current = mediaCall
+    setActiveCallPeerId(mediaCall.peer ?? '')
+    setIsCallOpen(true)
+    mediaCall.on('stream', (stream) => {
+      setRemoteStream(stream)
+    })
+    mediaCall.on('close', () => {
+      teardownCall({ stopLocal: true, notifyPeer: false })
+    })
+    mediaCall.on('error', () => {
+      teardownCall({ stopLocal: true, notifyPeer: false })
+    })
+  }
 
   useEffect(() => {
     if (!hasLoadedChat) return
@@ -194,7 +292,18 @@ export function ChatShell() {
           transferMetaRef.current.delete(payload.id)
           incomingFileChunksRef.current.delete(payload.id)
         }
+      } else if (data.type === 'call-ended') {
+        const targetId = data?.payload?.to
+        const myId = getPeerId()
+        if (targetId && myId && targetId !== myId) return
+        if (from === activeCallPeerIdRef.current || activeCallRef.current) {
+          teardownCall({ stopLocal: true, notifyPeer: false })
+        }
       }
+    })
+    const offIncomingCall = onP2PEvent(P2P_EVENTS.INCOMING_CALL, (mediaCall) => {
+      setIncomingMediaCall(mediaCall)
+      setIncomingCallFrom(mediaCall?.peer ?? '')
     })
 
     return () => {
@@ -203,6 +312,19 @@ export function ChatShell() {
       offConnected()
       offDisconnected()
       offMessage()
+      offIncomingCall()
+      teardownCall({ stopLocal: true, notifyPeer: false })
+    }
+  }, [])
+
+  useEffect(() => {
+    const stopOnUnload = () => {
+      teardownCall({ stopLocal: true, notifyPeer: false })
+    }
+    window.addEventListener('beforeunload', stopOnUnload)
+    return () => {
+      window.removeEventListener('beforeunload', stopOnUnload)
+      stopOnUnload()
     }
   }, [])
 
@@ -376,6 +498,94 @@ export function ChatShell() {
     setConnectedPeers(getConnectedPeers())
   }
 
+  const handleCallClick = async () => {
+    if (!connectedPeers.length) {
+      // eslint-disable-next-line no-alert
+      alert('No peer connected. Connect to a peer first.')
+      return
+    }
+    const targetPeerId = connectedPeers[0]
+    const stream = await startLocalStream()
+    const mediaCall = await placeCall(targetPeerId, stream)
+    if (!mediaCall) {
+      // eslint-disable-next-line no-alert
+      alert('Could not start call.')
+      stopStream(stream)
+      setLocalStream(null)
+      localStreamRef.current = null
+      return
+    }
+    bindMediaCall(mediaCall)
+  }
+
+  const handleAcceptIncomingCall = async () => {
+    if (!incomingMediaCall) return
+    const stream = await startLocalStream()
+    incomingMediaCall.answer(stream)
+    bindMediaCall(incomingMediaCall)
+    setIncomingMediaCall(null)
+    setIncomingCallFrom('')
+  }
+
+  const handleDeclineIncomingCall = () => {
+    incomingMediaCall?.close?.()
+    setIncomingMediaCall(null)
+    setIncomingCallFrom('')
+  }
+
+  const handleToggleMute = () => {
+    if (!localStream) return
+    const nextMuted = !isMuted
+    localStream.getAudioTracks().forEach((track) => {
+      track.enabled = !nextMuted
+    })
+    setIsMuted(nextMuted)
+  }
+
+  const handleToggleCamera = () => {
+    if (!localStream) return
+    const nextCameraOff = !isCameraOff
+    localStream.getVideoTracks().forEach((track) => {
+      track.enabled = !nextCameraOff
+    })
+    setIsCameraOff(nextCameraOff)
+  }
+
+  const handleToggleScreenShare = async () => {
+    if (!localStream) return
+    if (!isSharingScreen) {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true })
+      const screenTrack = screenStream.getVideoTracks()[0]
+      if (!screenTrack) return
+      screenTrackRef.current = screenTrack
+      replaceOutgoingVideoTrack(screenTrack)
+      const mixed = new MediaStream([...localStream.getAudioTracks(), screenTrack])
+      setLocalStream(mixed)
+      setIsSharingScreen(true)
+      screenTrack.onended = () => {
+        if (!screenTrackRef.current) return
+        const cameraTrack = cameraTrackRef.current
+        if (cameraTrack) {
+          replaceOutgoingVideoTrack(cameraTrack)
+          const restored = new MediaStream([...localStream.getAudioTracks(), cameraTrack])
+          setLocalStream(restored)
+        }
+        screenTrackRef.current = null
+        setIsSharingScreen(false)
+      }
+      return
+    }
+    const cameraTrack = cameraTrackRef.current
+    if (cameraTrack) {
+      replaceOutgoingVideoTrack(cameraTrack)
+      const restored = new MediaStream([...localStream.getAudioTracks(), cameraTrack])
+      setLocalStream(restored)
+    }
+    screenTrackRef.current?.stop?.()
+    screenTrackRef.current = null
+    setIsSharingScreen(false)
+  }
+
   return (
     <div className="mt-6 grid gap-4 lg:grid-cols-[320px_1fr]">
       <div className="lg:sticky lg:top-6 lg:h-[calc(100vh-11rem)]">
@@ -473,6 +683,7 @@ export function ChatShell() {
               >
                 Connect
               </button>
+              <CallButton onClick={handleCallClick} />
             </div>
           </div>
         </header>
@@ -502,6 +713,22 @@ export function ChatShell() {
           placeholder={`Message ${activeId.startsWith('dm:') ? channelLabel(activeId) : '# ' + channelLabel(activeId)}`}
         />
       </section>
+      <VideoCall
+        isOpen={isCallOpen}
+        localStream={localStream}
+        remoteStream={remoteStream}
+        remotePeerId={activeCallPeerId}
+        isMuted={isMuted}
+        isCameraOff={isCameraOff}
+        isSharingScreen={isSharingScreen}
+        onToggleMute={handleToggleMute}
+        onToggleCamera={handleToggleCamera}
+        onToggleScreenShare={handleToggleScreenShare}
+        onEndCall={() => teardownCall({ stopLocal: true, notifyPeer: true })}
+        incomingCallFrom={incomingCallFrom}
+        onAcceptIncoming={handleAcceptIncomingCall}
+        onDeclineIncoming={handleDeclineIncomingCall}
+      />
     </div>
   )
 }
