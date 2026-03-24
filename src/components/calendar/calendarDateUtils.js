@@ -1,7 +1,21 @@
 export const DAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
+/**
+ * Calendar "date only" as YYYY-MM-DD using the user's local calendar day.
+ * Do not use toISOString() here — it uses UTC and shifts the day in many timezones.
+ */
 export function toISODate(date) {
-  return date.toISOString().slice(0, 10)
+  if (!date || Number.isNaN(date.getTime())) return ''
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
+/** Compare a YYYY-MM-DD string to a Date's local calendar day (no timezone conversion). */
+export function isoDateMatchesLocalDate(iso, date) {
+  if (!iso || !date) return false
+  return toISODate(date) === iso
 }
 
 export function startOfDay(date) {

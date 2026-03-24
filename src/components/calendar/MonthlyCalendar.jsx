@@ -1,5 +1,5 @@
 import { DayCell } from './DayCell.jsx'
-import { getMonthGrid, isSameDay, toISODate } from './calendarDateUtils.js'
+import { getMonthGrid, isoDateMatchesLocalDate, toISODate } from './calendarDateUtils.js'
 import { Button } from '../ui/Button.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 
@@ -37,10 +37,14 @@ export function MonthlyCalendar({
 
   return (
     <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
-      <header className="flex flex-col gap-3 border-b border-[rgb(var(--zc-border))] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <header className="flex flex-col gap-2 border-b border-[rgb(var(--zc-border))] px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-[rgb(var(--zc-text))]">{title}</h2>
-          <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">{t('cal_click_day')}</p>
+          <h2 className="text-sm font-semibold text-[rgb(var(--zc-text))] sm:text-base">
+            {title}
+          </h2>
+          <p className="mt-0.5 text-[11px] text-[rgb(var(--zc-subtle))] sm:mt-1 sm:text-xs">
+            {t('cal_click_day')}
+          </p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="secondary" size="sm" onClick={prevMonth}>
@@ -55,11 +59,11 @@ export function MonthlyCalendar({
         </div>
       </header>
 
-      <div className="grid grid-cols-7 gap-2 px-4 py-3">
+      <div className="grid grid-cols-7 gap-1 px-3 py-2">
         {dayKeys.map((key) => (
           <div
             key={key}
-            className="px-1 pb-1 text-xs font-medium text-[rgb(var(--zc-muted2))]"
+            className="px-0.5 pb-0.5 text-[10px] font-medium leading-none text-[rgb(var(--zc-muted2))]"
           >
             {t(key)}
           </div>
@@ -70,7 +74,7 @@ export function MonthlyCalendar({
           const iso = toISODate(date)
           const tasks = tasksByISODate?.get(iso) ?? []
           const selected = selectedISODate
-            ? isSameDay(new Date(`${selectedISODate}T00:00:00`), date)
+            ? isoDateMatchesLocalDate(selectedISODate, date)
             : false
 
           return (
