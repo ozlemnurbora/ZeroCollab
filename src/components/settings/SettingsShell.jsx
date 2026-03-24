@@ -2,11 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Button } from '../ui/Button.jsx'
 import { SectionCard } from './SectionCard.jsx'
 import { Toggle } from './Toggle.jsx'
-import { ColorPicker } from './ColorPicker.jsx'
 import { DataManagement } from './DataManagement.jsx'
-import { APP_VERSION, AVATAR_COLORS, USERS } from './settingsConstants.js'
+import { APP_VERSION, USERS } from './settingsConstants.js'
 import { getOrCreatePeerId, loadSettings, saveSettings } from './settingsStorage.js'
 import { usePwaInstallPrompt } from '../../utils/pwaInstall.js'
+import { useLanguage } from '../../utils/LanguageContext.jsx'
 import {
   P2P_EVENTS,
   P2P_STATUS,
@@ -22,7 +22,6 @@ const defaultSettings = {
   profile: {
     currentUser: USERS[0],
     displayName: '',
-    avatarColor: AVATAR_COLORS[0].value,
   },
   app: {
     theme: 'dark',
@@ -59,7 +58,9 @@ function applyTheme(theme) {
 }
 
 export function SettingsShell() {
+  const { language, setLanguage, t } = useLanguage()
   const [settings, setSettings] = useState(() => mergeDefaults(null))
+  const [settingsHydrated, setSettingsHydrated] = useState(false)
   const [peerId, setPeerId] = useState('')
   const [connectPeer, setConnectPeer] = useState('')
   const [p2pStatus, setP2pStatus] = useState(P2P_STATUS.OFFLINE)
@@ -67,20 +68,23 @@ export function SettingsShell() {
   const { canInstall, isInstalled, promptInstall } = usePwaInstallPrompt()
 
   useEffect(() => {
-    void saveSettings(settings)
+    if (!settingsHydrated) return
+    void saveSettings({
+      ...settings,
+      app: { ...settings.app, language },
+    })
     applyTheme(settings.app.theme)
-  }, [settings])
+  }, [settings, language, settingsHydrated])
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      const saved = await loadSettings()
-      if (!cancelled) {
-        const merged = mergeDefaults(saved)
-        setSettings(merged)
-        applyTheme(merged.app.theme)
-      }
-    })()
+    void loadSettings().then((saved) => {
+      if (cancelled) return
+      const merged = mergeDefaults(saved)
+      setSettings(merged)
+      applyTheme(merged.app.theme)
+      setSettingsHydrated(true)
+    })
     return () => {
       cancelled = true
     }
@@ -88,10 +92,9 @@ export function SettingsShell() {
 
   useEffect(() => {
     let cancelled = false
-    ;(async () => {
-      const id = await getOrCreatePeerId()
+    void getOrCreatePeerId().then((id) => {
       if (!cancelled) setPeerId(id)
-    })()
+    })
     return () => {
       cancelled = true
     }
@@ -129,8 +132,6 @@ export function SettingsShell() {
   const handleConnect = async () => {
     const value = connectPeer.trim()
     if (!value || value === getPeerId()) return
-    // eslint-disable-next-line no-console
-    console.log('[SettingsShell] connectToPeer', value)
     await connectToPeer(value)
     setConnectedPeers(getConnectedPeers())
   }
@@ -143,14 +144,14 @@ export function SettingsShell() {
     <div className="mt-6 space-y-6">
       <div className="grid gap-6 lg:grid-cols-2">
         <SectionCard
-          title="User Profile"
-          subtitle="Identity settings used across the app."
+          title={t('settings_profile_title')}
+          subtitle={t('settings_profile_sub')}
         >
           <div className="grid gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
-                  Current user
+                  {t('settings_current_user')}
                 </label>
                 <select
                   className="mt-1 h-9 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
@@ -172,11 +173,11 @@ export function SettingsShell() {
 
               <div>
                 <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
-                  Display name
+                  {t('settings_display_name')}
                 </label>
                 <input
                   className="mt-1 h-9 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  placeholder="e.g. Nisanur K."
+                  placeholder={t('settings_display_placeholder')}
                   value={settings.profile.displayName}
                   onChange={(e) =>
                     setSettings((prev) => ({
@@ -186,41 +187,29 @@ export function SettingsShell() {
                   }
                 />
                 <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                  Preview:{' '}
+                  {t('settings_preview')}:{' '}
                   <span className="text-[rgb(var(--zc-muted))]">
                     {displayNamePreview}
                   </span>
                 </p>
               </div>
             </div>
-
-            <ColorPicker
-              label="Avatar color"
-              colors={AVATAR_COLORS}
-              value={settings.profile.avatarColor}
-              onChange={(color) =>
-                setSettings((prev) => ({
-                  ...prev,
-                  profile: { ...prev.profile, avatarColor: color },
-                }))
-              }
-            />
           </div>
         </SectionCard>
 
         <SectionCard
-          title="Application Settings"
-          subtitle="Preferences stored locally (dark theme default)."
+          title={t('settings_app_title')}
+          subtitle={t('settings_app_sub')}
         >
           <div className="grid gap-4">
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
               <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-[rgb(var(--zc-text))]">
-                    Theme
+                    {t('settings_theme')}
                   </p>
                   <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                    Saves preference to localStorage.
+                    {t('settings_theme_hint')}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -236,7 +225,7 @@ export function SettingsShell() {
                       setSettings((p) => ({ ...p, app: { ...p.app, theme: 'dark' } }))
                     }
                   >
-                    Dark
+                    {t('btn_dark')}
                   </button>
                   <button
                     type="button"
@@ -250,7 +239,7 @@ export function SettingsShell() {
                       setSettings((p) => ({ ...p, app: { ...p.app, theme: 'light' } }))
                     }
                   >
-                    Light
+                    {t('btn_light')}
                   </button>
                 </div>
               </div>
@@ -258,33 +247,35 @@ export function SettingsShell() {
 
             <div>
               <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
-                Language
+                {t('settings_language')}
               </label>
               <select
                 className="mt-1 h-9 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                value={settings.app.language}
-                onChange={(e) =>
+                value={language}
+                onChange={(e) => {
+                  const v = e.target.value
+                  void setLanguage(v)
                   setSettings((prev) => ({
                     ...prev,
-                    app: { ...prev.app, language: e.target.value },
+                    app: { ...prev.app, language: v === 'tr' ? 'tr' : 'en' },
                   }))
-                }
+                }}
               >
-                <option value="en">English</option>
-                <option value="tr">Turkish</option>
+                <option value="en">{t('lang_english')}</option>
+                <option value="tr">{t('lang_turkish')}</option>
               </select>
               <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                Preference is saved; translations will be added later.
+                {t('settings_language_hint')}
               </p>
             </div>
 
             <div className="grid gap-3">
               <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-                Notification preferences
+                {t('settings_notifications')}
               </p>
               <Toggle
-                label="Task updates"
-                description="When tasks change status or due date."
+                label={t('settings_notif_tasks')}
+                description={t('settings_notif_tasks_desc')}
                 checked={settings.app.notifications.taskUpdates}
                 onChange={(v) =>
                   setSettings((prev) => ({
@@ -297,8 +288,8 @@ export function SettingsShell() {
                 }
               />
               <Toggle
-                label="Chat messages"
-                description="When new messages arrive in a channel or DM."
+                label={t('settings_notif_chat')}
+                description={t('settings_notif_chat_desc')}
                 checked={settings.app.notifications.chatMessages}
                 onChange={(v) =>
                   setSettings((prev) => ({
@@ -311,8 +302,8 @@ export function SettingsShell() {
                 }
               />
               <Toggle
-                label="Calendar reminders"
-                description="Reminders for upcoming due dates."
+                label={t('settings_notif_cal')}
+                description={t('settings_notif_cal_desc')}
                 checked={settings.app.notifications.calendarReminders}
                 onChange={(v) =>
                   setSettings((prev) => ({
@@ -334,18 +325,18 @@ export function SettingsShell() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <SectionCard
-          title="P2P Connection"
-          subtitle="Browser-to-browser messaging via PeerJS (WebRTC)."
+          title={t('settings_p2p_title')}
+          subtitle={t('settings_p2p_sub')}
         >
           <div className="grid gap-4">
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm font-medium text-[rgb(var(--zc-text))]">
-                    Status
+                    {t('settings_status')}
                   </p>
                   <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                    Connection status for the P2P chat transport.
+                    {t('settings_status_sub')}
                   </p>
                 </div>
                 <span
@@ -370,10 +361,10 @@ export function SettingsShell() {
                   />
                   <span className="capitalize">
                     {p2pStatus === P2P_STATUS.ONLINE
-                      ? 'Connected'
+                      ? t('p2p_connected')
                       : p2pStatus === P2P_STATUS.CONNECTING
-                        ? 'Connecting'
-                        : 'Disconnected'}
+                        ? t('p2p_connecting')
+                        : t('p2p_disconnected')}
                   </span>
                 </span>
               </div>
@@ -381,10 +372,10 @@ export function SettingsShell() {
 
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
               <p className="text-sm font-medium text-[rgb(var(--zc-text))]">
-                Peer ID
+                {t('chat_peer_id')}
               </p>
               <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                This tab&apos;s PeerJS ID (derived from your stored base ID).
+                {t('settings_peer_id_sub')}
               </p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <code className="flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.5)] px-3 py-2 text-xs text-[rgb(var(--zc-muted))]">
@@ -400,22 +391,22 @@ export function SettingsShell() {
                     }
                   }}
                 >
-                  Copy
+                  {t('settings_copy')}
                 </Button>
               </div>
             </div>
 
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
               <p className="text-sm font-medium text-[rgb(var(--zc-text))]">
-                Connect to Peer
+                {t('settings_connect_peer')}
               </p>
               <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                Paste another person&apos;s Peer ID to establish a P2P link.
+                {t('settings_connect_peer_sub')}
               </p>
               <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
                 <input
                   className="h-9 flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  placeholder="Enter peer ID"
+                  placeholder={t('placeholder_peer_id')}
                   value={connectPeer}
                   onChange={(e) => setConnectPeer(e.target.value)}
                 />
@@ -424,21 +415,21 @@ export function SettingsShell() {
                   onClick={handleConnect}
                   disabled={!connectPeer.trim()}
                 >
-                  Connect
+                  {t('btn_connect')}
                 </Button>
               </div>
             </div>
 
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
               <p className="text-sm font-medium text-[rgb(var(--zc-text))]">
-                Connected peers
+                {t('settings_connected_peers')}
               </p>
               <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                Active P2P data connections in this tab.
+                {t('settings_connected_peers_sub')}
               </p>
               {connectedPeers.length === 0 ? (
                 <p className="mt-2 text-xs text-[rgb(var(--zc-muted2))]">
-                  No peers connected yet.
+                  {t('settings_no_peers')}
                 </p>
               ) : (
                 <ul className="mt-2 space-y-1 text-xs font-mono text-[rgb(var(--zc-muted))]">
@@ -454,22 +445,22 @@ export function SettingsShell() {
         </SectionCard>
 
         <SectionCard
-          title="Install ZeroCollab"
-          subtitle="Install the app for a standalone, offline-capable experience."
+          title={t('settings_install_title')}
+          subtitle={t('settings_install_sub')}
         >
           <div className="grid gap-3">
             {isInstalled ? (
               <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-3 text-sm text-emerald-200">
-                ZeroCollab is installed on this device.
+                {t('settings_installed_msg')}
               </div>
             ) : canInstall ? (
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-[rgb(var(--zc-text))]">
-                    Ready to install
+                    {t('settings_install_ready')}
                   </p>
                   <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                    Works offline and launches like a native app.
+                    {t('settings_install_ready_sub')}
                   </p>
                 </div>
                 <Button
@@ -477,65 +468,56 @@ export function SettingsShell() {
                     void promptInstall()
                   }}
                 >
-                  Install ZeroCollab
+                  {t('settings_install_btn')}
                 </Button>
               </div>
             ) : (
               <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3 text-sm text-[rgb(var(--zc-muted))]">
-                Install prompt not available right now. In Chrome, it typically
-                appears after you&apos;ve visited the app a bit and it meets PWA
-                criteria.
+                {t('settings_install_unavailable')}
               </div>
             )}
           </div>
         </SectionCard>
 
         <SectionCard
-          title="Data Management"
-          subtitle="Export, import, or clear local data."
+          title={t('settings_data_title')}
+          subtitle={t('settings_data_sub')}
         >
           <DataManagement
             onAfterImportOrClear={() => {
-              setSettings(mergeDefaults(loadSettings()))
-              setPeerId(getOrCreatePeerId())
+              void loadSettings().then((saved) => setSettings(mergeDefaults(saved)))
+              void getOrCreatePeerId().then((id) => setPeerId(id))
             }}
           />
         </SectionCard>
       </div>
 
-      <SectionCard
-        title="About"
-        subtitle="Academic project information"
-      >
+      <SectionCard title={t('settings_about_title')} subtitle={t('settings_about_sub')}>
         <div className="grid gap-3 text-sm text-[rgb(var(--zc-muted))]">
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
-            <span className="text-[rgb(var(--zc-muted2))]">App</span>
-            <span className="font-medium text-[rgb(var(--zc-text))]">
-              ZeroCollab
-            </span>
+            <span className="text-[rgb(var(--zc-muted2))]">{t('settings_about_app')}</span>
+            <span className="font-medium text-[rgb(var(--zc-text))]">ZeroCollab</span>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
-            <span className="text-[rgb(var(--zc-muted2))]">Version</span>
-            <span className="font-medium text-[rgb(var(--zc-text))]">
-              {APP_VERSION}
-            </span>
+            <span className="text-[rgb(var(--zc-muted2))]">{t('settings_about_version')}</span>
+            <span className="font-medium text-[rgb(var(--zc-text))]">{APP_VERSION}</span>
           </div>
           <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
-            <p className="text-[rgb(var(--zc-muted2))]">Team</p>
+            <p className="text-[rgb(var(--zc-muted2))]">{t('settings_about_team')}</p>
             <p className="mt-1 font-medium text-[rgb(var(--zc-text))]">
-              Özlem Nur Bora, Songül Nur Öztürk, Nisanur Karataş
+              {t('settings_team_value')}
             </p>
           </div>
           <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
-            <p className="text-[rgb(var(--zc-muted2))]">Advisor</p>
+            <p className="text-[rgb(var(--zc-muted2))]">{t('settings_about_advisor')}</p>
             <p className="mt-1 font-medium text-[rgb(var(--zc-text))]">
-              Dr. Yusuf Altunel
+              {t('settings_advisor_value')}
             </p>
           </div>
           <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
-            <p className="text-[rgb(var(--zc-muted2))]">Institution</p>
+            <p className="text-[rgb(var(--zc-muted2))]">{t('settings_about_institution')}</p>
             <p className="mt-1 font-medium text-[rgb(var(--zc-text))]">
-              Istanbul Kültür University — COM 8090 Capstone Project
+              {t('settings_institution_value')}
             </p>
           </div>
         </div>
@@ -543,4 +525,3 @@ export function SettingsShell() {
     </div>
   )
 }
-

@@ -1,21 +1,22 @@
 import { formatEvalDate, letterGrade } from './evaluationUtils.js'
+import { useLanguage } from '../../utils/LanguageContext.jsx'
 
 export function EvaluationHistory({ items, onSelect }) {
+  const { t, locale } = useLanguage()
+
   return (
     <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
       <header className="border-b border-[rgb(var(--zc-border))] px-4 py-3">
         <h2 className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-          History
+          {t('eval_history')}
         </h2>
-        <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-          Past evaluations saved locally
-        </p>
+        <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">{t('eval_history_sub')}</p>
       </header>
 
       <div className="px-4 py-3">
         {items.length === 0 ? (
           <div className="rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
-            No evaluations yet.
+            {t('eval_none')}
           </div>
         ) : (
           <ul className="divide-y divide-[rgb(var(--zc-border))]">
@@ -29,7 +30,7 @@ export function EvaluationHistory({ items, onSelect }) {
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
-                      {formatEvalDate(e.createdAt)}
+                      {formatEvalDate(e.createdAt, locale)}
                     </p>
                     <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
                       {e.total} / {e.max} • {pct}%
@@ -44,7 +45,7 @@ export function EvaluationHistory({ items, onSelect }) {
                     <span className="rounded-md bg-[rgb(var(--zc-bg)/0.4)] px-2 py-1 text-[11px] font-semibold text-[rgb(var(--zc-text))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
                       {grade}
                     </span>
-                    View
+                    {t('eval_view')}
                   </button>
                 </li>
               )
@@ -55,4 +56,3 @@ export function EvaluationHistory({ items, onSelect }) {
     </section>
   )
 }
-

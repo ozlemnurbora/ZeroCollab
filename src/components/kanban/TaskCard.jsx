@@ -1,8 +1,10 @@
 import { formatDueDate, isOverdue } from './dateUtils.js'
+import { useLanguage } from '../../utils/LanguageContext.jsx'
 
 export function TaskCard({ task, onDragStart, isDragging }) {
+  const { t, locale } = useLanguage()
   const overdue = isOverdue(task.dueDate)
-  const dueLabel = formatDueDate(task.dueDate)
+  const dueLabel = formatDueDate(task.dueDate, locale)
 
   return (
     <div
@@ -21,7 +23,7 @@ export function TaskCard({ task, onDragStart, isDragging }) {
             {task.title}
           </p>
           <p className="mt-1 text-xs text-[rgb(var(--zc-muted))]">
-            <span className="text-[rgb(var(--zc-muted2))]">Assignee:</span>{' '}
+            <span className="text-[rgb(var(--zc-muted2))]">{t('task_assignee')}:</span>{' '}
             {task.assignee}
           </p>
         </div>
@@ -36,14 +38,13 @@ export function TaskCard({ task, onDragStart, isDragging }) {
               : 'text-[rgb(var(--zc-muted))] ring-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)]',
           ].join(' ')}
         >
-          Due {dueLabel}
+          {t('task_due')} {dueLabel}
         </span>
 
         <span className="text-[11px] text-[rgb(var(--zc-subtle))] opacity-0 transition-opacity group-hover:opacity-100">
-          Drag
+          {t('task_drag')}
         </span>
       </div>
     </div>
   )
 }
-

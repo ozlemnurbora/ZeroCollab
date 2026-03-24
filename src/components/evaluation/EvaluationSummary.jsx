@@ -1,4 +1,5 @@
-import { gradeLabel, letterGrade } from './evaluationUtils.js'
+import { letterGrade } from './evaluationUtils.js'
+import { useLanguage } from '../../utils/LanguageContext.jsx'
 
 function gradeColor(grade) {
   if (grade === 'A') return 'text-emerald-200 ring-emerald-500/30 bg-emerald-500/10'
@@ -9,25 +10,25 @@ function gradeColor(grade) {
 }
 
 export function EvaluationSummary({ total, max, percentage }) {
+  const { t } = useLanguage()
   const pct = Math.max(0, Math.min(100, Math.round(percentage)))
   const grade = letterGrade(percentage)
+  const gradeText = t(`grade_desc_${grade}`)
 
   return (
     <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
       <header className="border-b border-[rgb(var(--zc-border))] px-4 py-3">
         <h2 className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-          Summary
+          {t('eval_summary')}
         </h2>
-        <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-          Weighted equally across rubric criteria.
-        </p>
+        <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">{t('eval_summary_sub')}</p>
       </header>
 
       <div className="px-4 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-medium text-[rgb(var(--zc-muted2))]">
-              Total score
+              {t('eval_total_score')}
             </p>
             <p className="mt-1 text-3xl font-semibold tracking-tight text-[rgb(var(--zc-text))]">
               {total}
@@ -37,7 +38,7 @@ export function EvaluationSummary({ total, max, percentage }) {
               </span>
             </p>
             <p className="mt-1 text-sm text-[rgb(var(--zc-muted))]">
-              {pct}% overall
+              {t('eval_overall', { pct })}
             </p>
           </div>
 
@@ -50,9 +51,7 @@ export function EvaluationSummary({ total, max, percentage }) {
             >
               {grade}
             </span>
-            <span className="text-sm text-[rgb(var(--zc-muted))]">
-              {gradeLabel(grade)}
-            </span>
+            <span className="text-sm text-[rgb(var(--zc-muted))]">{gradeText}</span>
           </div>
         </div>
 
@@ -72,4 +71,3 @@ export function EvaluationSummary({ total, max, percentage }) {
     </section>
   )
 }
-

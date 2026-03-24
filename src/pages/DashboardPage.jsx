@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { ASSIGNEES } from '../components/kanban/kanbanConstants.js'
 import { loadTasks } from '../components/kanban/taskStorage.js'
+import { useLanguage } from '../utils/LanguageContext.jsx'
 import {
   Line,
   LineChart,
@@ -16,7 +17,14 @@ import {
   Legend,
 } from 'recharts'
 
+function statusPieColor(id) {
+  if (id === 'done') return '#22c55e'
+  if (id === 'in_progress') return '#6366f1'
+  return '#4b5563'
+}
+
 export function DashboardPage() {
+  const { t } = useLanguage()
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
 
@@ -36,8 +44,8 @@ export function DashboardPage() {
 
   const stats = useMemo(() => {
     const total = tasks.length
-    const inProgress = tasks.filter((t) => t.status === 'in_progress').length
-    const done = tasks.filter((t) => t.status === 'done').length
+    const inProgress = tasks.filter((task) => task.status === 'in_progress').length
+    const done = tasks.filter((task) => task.status === 'done').length
 
     const recent = [...tasks]
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
@@ -45,11 +53,12 @@ export function DashboardPage() {
 
     const workload = ASSIGNEES.map((name) => ({
       name,
-      count: tasks.filter((t) => t.assignee === name).length,
+      count: tasks.filter((task) => task.assignee === name).length,
     }))
 
-    const todo = tasks.filter((t) => t.status !== 'in_progress' && t.status !== 'done')
-      .length
+    const todo = tasks.filter(
+      (task) => task.status !== 'in_progress' && task.status !== 'done',
+    ).length
 
     const createdByDay = new Map()
     const completedByDay = new Map()
@@ -65,17 +74,17 @@ export function DashboardPage() {
       completedByDay.set(key, 0)
     }
 
-    for (const t of tasks) {
-      if (t.createdAt) {
-        const d = new Date(t.createdAt)
+    for (const task of tasks) {
+      if (task.createdAt) {
+        const d = new Date(task.createdAt)
         d.setHours(0, 0, 0, 0)
         const key = d.toISOString().slice(0, 10)
         if (createdByDay.has(key)) {
           createdByDay.set(key, createdByDay.get(key) + 1)
         }
       }
-      if (t.status === 'done' && t.completedAt) {
-        const d = new Date(t.completedAt)
+      if (task.status === 'done' && task.completedAt) {
+        const d = new Date(task.completedAt)
         d.setHours(0, 0, 0, 0)
         const key = d.toISOString().slice(0, 10)
         if (completedByDay.has(key)) {
@@ -96,88 +105,96 @@ export function DashboardPage() {
 
     const progressPct = total === 0 ? 0 : Math.round((done / total) * 100)
 
+    const statusPie = [
+      { id: 'todo', name: t('status_todo'), value: todo },
+      { id: 'in_progress', name: t('status_in_progress'), value: inProgress },
+      { id: 'done', name: t('status_done'), value: done },
+    ]
+
+    const projectProgressPie = [
+      { id: 'completed', name: t('chart_completed'), value: progressPct },
+      { id: 'remaining', name: t('chart_remaining'), value: 100 - progressPct },
+    ]
+
     return {
       total,
       inProgress,
       done,
       recent,
       workload,
-      statusPie: [
-        { name: 'To Do', value: todo },
-        { name: 'In Progress', value: inProgress },
-        { name: 'Done', value: done },
-      ],
+      statusPie,
+      projectProgressPie,
       weeklyActivity,
       progressPct,
     }
-  }, [tasks])
+  }, [tasks, t])
 
   return (
     <section>
       <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
-        Dashboard
+        {t('page_dashboard_title')}
       </h1>
 
       <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
-        Project overview and team activity, powered by your Tasks board.
+        {t('page_dashboard_subtitle')}
       </p>
 
       {isLoadingTasks ? (
         <div className="mt-6 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
-          Loading tasks…
+          {t('loading_tasks')}
         </div>
       ) : null}
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
-          title="Total Tasks"
+          title={t('dash_total_tasks')}
           value={stats.total}
-          helper="All tasks in your board"
+          helper={t('dash_total_tasks_help')}
         />
         <SummaryCard
-          title="Tasks In Progress"
+          title={t('dash_in_progress')}
           value={stats.inProgress}
-          helper="Currently being worked on"
+          helper={t('dash_in_progress_help')}
         />
         <SummaryCard
-          title="Tasks Completed"
+          title={t('dash_completed')}
           value={stats.done}
-          helper="Marked as done"
+          helper={t('dash_completed_help')}
         />
         <SummaryCard
-          title="Team Members"
+          title={t('dash_team_members')}
           value={ASSIGNEES.length}
           helper={ASSIGNEES.join(', ')}
         />
       </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <Panel title="Recent Tasks" subtitle="Last 5 tasks added">
+        <Panel title={t('dash_recent_tasks')} subtitle={t('dash_recent_tasks_sub')}>
           {stats.recent.length === 0 ? (
-            <EmptyState>
-              No tasks yet. Add your first task in the Tasks board.
-            </EmptyState>
+            <EmptyState>{t('dash_empty_recent')}</EmptyState>
           ) : (
             <ul className="divide-y divide-[rgb(var(--zc-border))]">
-              {stats.recent.map((t) => (
-                <li key={t.id} className="flex items-center justify-between gap-4 py-3">
+              {stats.recent.map((task) => (
+                <li key={task.id} className="flex items-center justify-between gap-4 py-3">
                   <div className="min-w-0">
                     <p className="truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
-                      {t.title}
+                      {task.title}
                     </p>
                     <p className="mt-1 text-xs text-[rgb(var(--zc-muted2))]">
-                      {t.assignee ? `Assignee: ${t.assignee}` : 'Unassigned'}
-                      {t.dueDate ? ` • Due: ${t.dueDate}` : ''}
+                      {task.assignee
+                        ? `${t('dash_assignee')}: ${task.assignee}`
+                        : t('dash_unassigned')}
+                      {task.dueDate ? ` • ${t('dash_due')}: ${task.dueDate}` : ''}
                     </p>
                   </div>
-                  <StatusPill status={t.status} />
+                  <StatusPill status={task.status} t={t} />
                 </li>
               ))}
             </ul>
           )}
         </Panel>
 
-        <Panel title="Team Workload" subtitle="Tasks per team member">
+        <Panel title={t('dash_team_workload')} subtitle={t('dash_team_workload_sub')}>
           <ul className="space-y-3">
             {stats.workload.map((m) => (
               <li
@@ -187,7 +204,8 @@ export function DashboardPage() {
                 <div className="flex items-center justify-between gap-3">
                   <p className="text-sm font-medium text-[rgb(var(--zc-text))]">{m.name}</p>
                   <span className="rounded-md bg-[rgb(var(--zc-bg)/0.4)] px-2 py-1 text-xs text-[rgb(var(--zc-muted))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
-                    {m.count} task{m.count === 1 ? '' : 's'}
+                    {m.count}{' '}
+                    {m.count === 1 ? t('dash_task_one') : t('dash_task_many')}
                   </span>
                 </div>
                 <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[rgb(var(--zc-panel))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
@@ -208,12 +226,9 @@ export function DashboardPage() {
       </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <Panel
-          title="Task Status"
-          subtitle="Distribution across To Do, In Progress, and Done."
-        >
+        <Panel title={t('dash_task_status')} subtitle={t('dash_task_status_sub')}>
           {stats.total === 0 ? (
-            <EmptyState>No tasks yet to visualize.</EmptyState>
+            <EmptyState>{t('dash_empty_viz')}</EmptyState>
           ) : (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -227,16 +242,7 @@ export function DashboardPage() {
                     paddingAngle={3}
                   >
                     {stats.statusPie.map((entry) => (
-                      <Cell
-                        key={entry.name}
-                        fill={
-                          entry.name === 'Done'
-                            ? '#22c55e'
-                            : entry.name === 'In Progress'
-                              ? '#6366f1'
-                              : '#4b5563'
-                        }
-                      />
+                      <Cell key={entry.id} fill={statusPieColor(entry.id)} />
                     ))}
                   </Pie>
                   <Tooltip
@@ -255,11 +261,11 @@ export function DashboardPage() {
         </Panel>
 
         <Panel
-          title="Team Workload (Chart)"
-          subtitle="Tasks per team member as a horizontal bar chart."
+          title={t('dash_team_workload_chart')}
+          subtitle={t('dash_team_workload_chart_sub')}
         >
           {stats.total === 0 ? (
-            <EmptyState>No tasks yet to visualize.</EmptyState>
+            <EmptyState>{t('dash_empty_viz')}</EmptyState>
           ) : (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -287,16 +293,16 @@ export function DashboardPage() {
       </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <Panel
-          title="Weekly Activity"
-          subtitle="Task creation and completion over the last 7 days."
-        >
+        <Panel title={t('dash_weekly_activity')} subtitle={t('dash_weekly_activity_sub')}>
           {stats.weeklyActivity.length === 0 ? (
-            <EmptyState>No recent activity to visualize.</EmptyState>
+            <EmptyState>{t('dash_empty_activity')}</EmptyState>
           ) : (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={stats.weeklyActivity} margin={{ top: 8, right: 16, bottom: 8, left: 0 }}>
+                <LineChart
+                  data={stats.weeklyActivity}
+                  margin={{ top: 8, right: 16, bottom: 8, left: 0 }}
+                >
                   <XAxis dataKey="date" stroke="#9ca3af" />
                   <YAxis allowDecimals={false} stroke="#9ca3af" />
                   <Tooltip
@@ -311,7 +317,7 @@ export function DashboardPage() {
                   <Line
                     type="monotone"
                     dataKey="created"
-                    name="Created"
+                    name={t('chart_created')}
                     stroke="#6366f1"
                     strokeWidth={2}
                     dot={{ r: 3 }}
@@ -320,7 +326,7 @@ export function DashboardPage() {
                   <Line
                     type="monotone"
                     dataKey="completed"
-                    name="Completed"
+                    name={t('chart_completed')}
                     stroke="#22c55e"
                     strokeWidth={2}
                     dot={{ r: 3 }}
@@ -332,22 +338,16 @@ export function DashboardPage() {
           )}
         </Panel>
 
-        <Panel
-          title="Project Progress"
-          subtitle="Overall completion percentage (Done / Total)."
-        >
+        <Panel title={t('dash_project_progress')} subtitle={t('dash_project_progress_sub')}>
           {stats.total === 0 ? (
-            <EmptyState>No tasks yet to visualize.</EmptyState>
+            <EmptyState>{t('dash_empty_viz')}</EmptyState>
           ) : (
             <div className="flex h-72 items-center justify-center">
               <div className="relative h-40 w-40">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
                     <Pie
-                      data={[
-                        { name: 'Completed', value: stats.progressPct },
-                        { name: 'Remaining', value: 100 - stats.progressPct },
-                      ]}
+                      data={stats.projectProgressPie}
                       dataKey="value"
                       nameKey="name"
                       innerRadius={60}
@@ -372,7 +372,9 @@ export function DashboardPage() {
                   <p className="text-2xl font-semibold text-[rgb(var(--zc-text))]">
                     {stats.progressPct}%
                   </p>
-                  <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">Complete</p>
+                  <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                    {t('dash_complete_label')}
+                  </p>
                 </div>
               </div>
             </div>
@@ -415,9 +417,13 @@ function EmptyState({ children }) {
   )
 }
 
-function StatusPill({ status }) {
+function StatusPill({ status, t }) {
   const label =
-    status === 'done' ? 'Done' : status === 'in_progress' ? 'In Progress' : 'To Do'
+    status === 'done'
+      ? t('status_done')
+      : status === 'in_progress'
+        ? t('status_in_progress')
+        : t('status_todo')
 
   const classes =
     status === 'done'
@@ -434,4 +440,3 @@ function StatusPill({ status }) {
     </span>
   )
 }
-

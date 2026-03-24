@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import { CHAT_USERS } from './chatConstants.js'
 import { formatTimestamp, formatTimestampLong } from './timeUtils.js'
+import { useLanguage } from '../../utils/LanguageContext.jsx'
 
 function initials(name) {
   if (!name) return '?'
@@ -25,6 +26,7 @@ export function MessageList({
   fileUrls = {},
   fileTransfers = {},
 }) {
+  const { t, locale } = useLanguage()
   const bottomRef = useRef(null)
 
   useEffect(() => {
@@ -35,7 +37,7 @@ export function MessageList({
     return (
       <div className="flex flex-1 items-center justify-center p-6">
         <div className="rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
-          No messages yet. Say hi.
+          {t('chat_no_messages')}
         </div>
       </div>
     )
@@ -68,18 +70,18 @@ export function MessageList({
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-2">
                   <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-                    {m.sender || 'Unknown'}
+                    {m.sender || t('chat_unknown')}
                   </p>
                   <time
                     className="text-xs text-[rgb(var(--zc-subtle))]"
-                    title={formatTimestampLong(m.createdAt)}
+                    title={formatTimestampLong(m.createdAt, locale)}
                     dateTime={new Date(m.createdAt).toISOString()}
                   >
-                    {formatTimestamp(m.createdAt)}
+                    {formatTimestamp(m.createdAt, locale)}
                   </time>
                   {mine ? (
                     <span className="rounded-md bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-medium text-indigo-200 ring-1 ring-inset ring-indigo-500/20">
-                      You
+                      {t('chat_you_badge')}
                     </span>
                   ) : null}
                 </div>
@@ -95,7 +97,7 @@ export function MessageList({
                         />
                       ) : (
                         <div className="flex h-10 w-10 items-center justify-center rounded-md bg-indigo-500/20 text-xs font-semibold text-indigo-200 ring-1 ring-inset ring-indigo-500/40">
-                          {m.file.name?.split('.').pop()?.toUpperCase() || 'FILE'}
+                          {m.file.name?.split('.').pop()?.toUpperCase() || t('file_label')}
                         </div>
                       )}
                       <div className="min-w-0">
@@ -104,7 +106,7 @@ export function MessageList({
                         </p>
                         <p className="mt-0.5 text-[11px] text-[rgb(var(--zc-subtle))]">
                           {(m.file.size / (1024 * 1024)).toFixed(2)} MB •{' '}
-                          {m.file.type || 'Unknown type'}
+                          {m.file.type || t('chat_unknown_type')}
                         </p>
                         {fileUrls[m.id] ? (
                           <a
@@ -112,11 +114,11 @@ export function MessageList({
                             download={m.file.name}
                             className="mt-1 inline-flex items-center gap-1 rounded-md bg-[rgb(var(--zc-bg)/0.9)] px-2 py-1 text-[11px] font-medium text-[rgb(var(--zc-muted))] ring-1 ring-inset ring-[rgb(var(--zc-border))] hover:bg-[rgb(var(--zc-panel)/0.9)]"
                           >
-                            Download
+                            {t('chat_download')}
                           </a>
                         ) : (
                           <p className="mt-1 text-[11px] text-[rgb(var(--zc-subtle))]">
-                            Waiting for transfer…
+                            {t('chat_waiting_transfer')}
                           </p>
                         )}
                       </div>
@@ -125,7 +127,9 @@ export function MessageList({
                       <div className="mt-3">
                         <div className="flex items-center justify-between text-[11px] text-[rgb(var(--zc-subtle))]">
                           <span>
-                            {transfer.direction === 'upload' ? 'Uploading' : 'Downloading'}{' '}
+                            {transfer.direction === 'upload'
+                              ? t('chat_uploading')
+                              : t('chat_downloading')}{' '}
                             {transfer.percent}%
                           </span>
                           <span>{transfer.speedLabel}</span>
@@ -153,4 +157,3 @@ export function MessageList({
     </div>
   )
 }
-

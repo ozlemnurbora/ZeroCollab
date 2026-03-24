@@ -1,43 +1,52 @@
 import { CHAT_CHANNELS } from './chatConstants.js'
+import { useLanguage } from '../../utils/LanguageContext.jsx'
 
 function iconFor(item) {
   return item.type === 'dm' ? '•' : '#'
 }
 
 export function ConversationList({ activeId, onSelect }) {
+  const { t } = useLanguage()
   const channels = CHAT_CHANNELS.filter((c) => c.type === 'channel')
   const dms = CHAT_CHANNELS.filter((c) => c.type === 'dm')
+
+  const labelFor = (id) => {
+    const key = `channel_${id.replace(/:/g, '_')}`
+    return t(key)
+  }
 
   return (
     <aside className="h-full w-full overflow-hidden rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
       <div className="border-b border-[rgb(var(--zc-border))] px-4 py-3">
         <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-          Conversations
+          {t('chat_conversations')}
         </p>
         <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-          Channels and direct messages
+          {t('chat_conversations_sub')}
         </p>
       </div>
 
       <div className="h-[calc(100%-56px)] overflow-y-auto px-2 py-2">
-        <Section title="Channels">
+        <Section title={t('chat_section_channels')}>
           {channels.map((c) => (
             <Item
               key={c.id}
-              item={c}
+              label={labelFor(c.id)}
               active={c.id === activeId}
               onClick={() => onSelect?.(c.id)}
+              icon={iconFor(c)}
             />
           ))}
         </Section>
 
-        <Section title="Direct messages">
+        <Section title={t('chat_section_dms')}>
           {dms.map((c) => (
             <Item
               key={c.id}
-              item={c}
+              label={labelFor(c.id)}
               active={c.id === activeId}
               onClick={() => onSelect?.(c.id)}
+              icon={iconFor(c)}
             />
           ))}
         </Section>
@@ -57,7 +66,7 @@ function Section({ title, children }) {
   )
 }
 
-function Item({ item, active, onClick }) {
+function Item({ label, active, onClick, icon }) {
   return (
     <button
       type="button"
@@ -73,10 +82,9 @@ function Item({ item, active, onClick }) {
         className="w-4 text-center text-[rgb(var(--zc-muted2))]"
         aria-hidden="true"
       >
-        {iconFor(item)}
+        {icon}
       </span>
-      <span className="truncate">{item.name}</span>
+      <span className="truncate">{label}</span>
     </button>
   )
 }
-

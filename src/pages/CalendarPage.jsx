@@ -4,6 +4,7 @@ import { DayTasksModal } from '../components/calendar/DayTasksModal.jsx'
 import { AddTaskModal } from '../components/kanban/AddTaskModal.jsx'
 import { loadTasks, saveTasks } from '../components/kanban/taskStorage.js'
 import { toISODate } from '../components/calendar/calendarDateUtils.js'
+import { useLanguage } from '../utils/LanguageContext.jsx'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -12,6 +13,7 @@ function createId() {
 }
 
 export function CalendarPage() {
+  const { t } = useLanguage()
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
   const [hasLoadedTasks, setHasLoadedTasks] = useState(false)
@@ -26,7 +28,7 @@ export function CalendarPage() {
   useEffect(() => {
     if (!hasLoadedTasks) return
     void saveTasks(tasks)
-  }, [tasks])
+  }, [tasks, hasLoadedTasks])
 
   useEffect(() => {
     let cancelled = false
@@ -45,11 +47,11 @@ export function CalendarPage() {
 
   const tasksByISODate = useMemo(() => {
     const map = new Map()
-    for (const t of Array.isArray(tasks) ? tasks : []) {
-      if (!t.dueDate) continue
-      const list = map.get(t.dueDate) ?? []
-      list.push(t)
-      map.set(t.dueDate, list)
+    for (const task of Array.isArray(tasks) ? tasks : []) {
+      if (!task.dueDate) continue
+      const list = map.get(task.dueDate) ?? []
+      list.push(task)
+      map.set(task.dueDate, list)
     }
     for (const [, list] of map.entries()) {
       list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
@@ -75,16 +77,16 @@ export function CalendarPage() {
   return (
     <section>
       <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
-        Calendar
+        {t('page_calendar_title')}
       </h1>
       <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
-        Monthly view of upcoming due dates. Click a day to see tasks and add new ones.
+        {t('page_calendar_subtitle')}
       </p>
 
       <div className="mt-6">
         {isLoadingTasks ? (
           <div className="rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
-            Loading tasks…
+            {t('loading_tasks')}
           </div>
         ) : (
           <MonthlyCalendar
@@ -120,4 +122,3 @@ export function CalendarPage() {
     </section>
   )
 }
-

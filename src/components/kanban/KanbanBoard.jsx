@@ -4,6 +4,7 @@ import { KANBAN_COLUMNS } from './kanbanConstants.js'
 import { loadTasks, saveTasks } from './taskStorage.js'
 import { Button } from '../ui/Button.jsx'
 import { KanbanColumn } from './KanbanColumn.jsx'
+import { useLanguage } from '../../utils/LanguageContext.jsx'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -12,6 +13,7 @@ function createId() {
 }
 
 export function KanbanBoard() {
+  const { t } = useLanguage()
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
   const [hasLoadedTasks, setHasLoadedTasks] = useState(false)
@@ -22,7 +24,7 @@ export function KanbanBoard() {
   useEffect(() => {
     if (!hasLoadedTasks) return
     void saveTasks(tasks)
-  }, [tasks])
+  }, [tasks, hasLoadedTasks])
 
   useEffect(() => {
     let cancelled = false
@@ -63,7 +65,7 @@ export function KanbanBoard() {
 
   const moveTask = (taskId, nextStatus) => {
     setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: nextStatus } : t)),
+      prev.map((task) => (task.id === taskId ? { ...task, status: nextStatus } : task)),
     )
   }
 
@@ -82,30 +84,39 @@ export function KanbanBoard() {
 
   const total = tasks.length
 
+  const columnsWithTitles = useMemo(
+    () =>
+      KANBAN_COLUMNS.map((column) => ({
+        ...column,
+        title: t(`kanban_col_${column.id}`),
+      })),
+    [t],
+  )
+
   return (
     <div className="mt-6">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-[rgb(var(--zc-muted))]">
-            Drag tasks across columns. Stored in{' '}
-            <span className="text-[rgb(var(--zc-text))]">IndexedDB</span>.
+            {t('kanban_hint')}{' '}
+            <span className="text-[rgb(var(--zc-text))]">{t('kanban_indexeddb')}</span>.
           </p>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-            {total} total tasks
+            {t('kanban_total_tasks', { n: total })}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button onClick={() => setIsAddOpen(true)}>Add Task</Button>
+          <Button onClick={() => setIsAddOpen(true)}>{t('kanban_add_task')}</Button>
         </div>
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-3">
         {isLoadingTasks ? (
           <div className="lg:col-span-3 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
-            Loading tasks…
+            {t('loading_tasks')}
           </div>
         ) : (
-          KANBAN_COLUMNS.map((column) => (
+          columnsWithTitles.map((column) => (
             <KanbanColumn
               key={column.id}
               column={column}
@@ -115,6 +126,7 @@ export function KanbanBoard() {
               setDraggingTaskId={setDraggingTaskId}
               isDropTarget={dropTargetColumnId === column.id}
               setDropTargetColumnId={setDropTargetColumnId}
+              emptyLabel={t('kanban_drop_here')}
             />
           ))
         )}
@@ -128,4 +140,3 @@ export function KanbanBoard() {
     </div>
   )
 }
-

@@ -8,6 +8,7 @@ export function KanbanColumn({
   setDraggingTaskId,
   isDropTarget,
   setDropTargetColumnId,
+  emptyLabel,
 }) {
   return (
     <section className="flex min-w-[280px] flex-col rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
@@ -41,7 +42,7 @@ export function KanbanColumn({
       >
         {tasks.length === 0 ? (
           <div className="rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] p-4 text-center text-xs text-[rgb(var(--zc-muted2))]">
-            Drop a task here
+            {emptyLabel}
           </div>
         ) : null}
 
@@ -61,4 +62,3 @@ export function KanbanColumn({
     </section>
   )
 }
-

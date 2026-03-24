@@ -10,6 +10,7 @@ import {
   saveEvaluations,
 } from '../components/evaluation/evaluationStorage.js'
 import { clampScore, computeTotals } from '../components/evaluation/evaluationUtils.js'
+import { useLanguage } from '../utils/LanguageContext.jsx'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -25,16 +26,26 @@ function defaultCriteriaState() {
 }
 
 export function EvaluationPage() {
+  const { t } = useLanguage()
   const [criteria, setCriteria] = useState(() => defaultCriteriaState())
   const [history, setHistory] = useState([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const [hasLoadedHistory, setHasLoadedHistory] = useState(false)
   const [selectedHistory, setSelectedHistory] = useState(null)
 
+  const rubricWithLabels = useMemo(
+    () =>
+      RUBRIC.map((c) => ({
+        ...c,
+        label: t(`rubric_${c.id}`),
+      })),
+    [t],
+  )
+
   useEffect(() => {
     if (!hasLoadedHistory) return
     void saveEvaluations(history)
-  }, [history])
+  }, [history, hasLoadedHistory])
 
   useEffect(() => {
     let cancelled = false
@@ -74,15 +85,15 @@ export function EvaluationPage() {
   return (
     <section>
       <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
-        Evaluation
+        {t('page_evaluation_title')}
       </h1>
       <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
-        Rubric-based project assessment with saved history.
+        {t('page_evaluation_subtitle')}
       </p>
 
       {isLoadingHistory ? (
         <div className="mt-6 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
-          Loading evaluation history…
+          {t('loading_eval_history')}
         </div>
       ) : null}
 
@@ -97,29 +108,25 @@ export function EvaluationPage() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-                Rubric
+                {t('eval_rubric')}
               </h2>
               <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                Provide scores and written feedback for each criterion.
+                {t('eval_rubric_sub')}
               </p>
             </div>
             <div className="flex items-center gap-2">
               <Button
                 variant="secondary"
-                onClick={() =>
-                  alert(
-                    'AI evaluation coming soon - will integrate with LLM API',
-                  )
-                }
+                onClick={() => alert(t('eval_ai_alert'))}
               >
-                Evaluate with AI
+                {t('eval_ai')}
               </Button>
-              <Button onClick={saveCurrent}>Save evaluation</Button>
+              <Button onClick={saveCurrent}>{t('eval_save')}</Button>
             </div>
           </div>
 
           <div className="grid gap-4">
-            {RUBRIC.map((criterion) => (
+            {rubricWithLabels.map((criterion) => (
               <CriterionCard
                 key={criterion.id}
                 criterion={criterion}
@@ -139,11 +146,10 @@ export function EvaluationPage() {
           />
           <div className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-4">
             <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-              Academic notes
+              {t('eval_notes_title')}
             </p>
             <p className="mt-2 text-sm text-[rgb(var(--zc-muted))]">
-              Write feedback that is specific, evidence-based, and actionable.
-              Where possible, reference concrete examples and suggestions for improvement.
+              {t('eval_notes_body')}
             </p>
           </div>
         </div>
@@ -152,11 +158,11 @@ export function EvaluationPage() {
       <Modal
         open={!!selectedHistory}
         onClose={() => setSelectedHistory(null)}
-        title="Evaluation snapshot"
+        title={t('eval_snapshot_title')}
         footer={
           <div className="flex items-center justify-end gap-2">
             <Button variant="secondary" onClick={() => setSelectedHistory(null)}>
-              Close
+              {t('modal_close')}
             </Button>
           </div>
         }
@@ -169,7 +175,7 @@ export function EvaluationPage() {
               percentage={selectedHistory.percentage}
             />
             <div className="space-y-3">
-              {RUBRIC.map((c) => {
+              {rubricWithLabels.map((c) => {
                 const v = selectedHistory.criteria?.[c.id]
                 return (
                   <div
@@ -190,7 +196,7 @@ export function EvaluationPage() {
                       </p>
                     ) : (
                       <p className="mt-2 text-sm text-[rgb(var(--zc-subtle))]">
-                        No written feedback.
+                        {t('eval_no_feedback')}
                       </p>
                     )}
                   </div>
@@ -203,4 +209,3 @@ export function EvaluationPage() {
     </section>
   )
 }
-

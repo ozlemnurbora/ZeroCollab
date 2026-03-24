@@ -36,10 +36,10 @@ export function gradeLabel(grade) {
   return 'Insufficient'
 }
 
-export function formatEvalDate(ms) {
+export function formatEvalDate(ms, locale) {
   const d = new Date(ms)
   if (Number.isNaN(d.getTime())) return ''
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locale || undefined, {
     year: 'numeric',
     month: 'short',
     day: '2-digit',

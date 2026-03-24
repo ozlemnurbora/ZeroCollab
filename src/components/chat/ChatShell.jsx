@@ -26,6 +26,7 @@ import {
 } from '../../utils/p2pManager.js'
 import { CallButton } from '../call/CallButton.jsx'
 import { VideoCall } from '../call/VideoCall.jsx'
+import { useLanguage } from '../../utils/LanguageContext.jsx'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -33,12 +34,13 @@ function createId() {
   return `msg_${Date.now()}_${Math.random().toString(16).slice(2)}`
 }
 
-function channelLabel(id) {
-  const found = CHAT_CHANNELS.find((c) => c.id === id)
-  return found?.name ?? 'Conversation'
-}
-
 export function ChatShell() {
+  const { t } = useLanguage()
+
+  const channelLabel = (id) => {
+    const key = `channel_${id.replace(/:/g, '_')}`
+    return t(key)
+  }
   const [me, setMe] = useState(CHAT_USERS[0])
   const [activeId, setActiveId] = useState('general')
   const [messages, setMessages] = useState([])
@@ -405,7 +407,7 @@ export function ChatShell() {
     const maxSize = 50 * 1024 * 1024
     if (file.size > maxSize) {
       // eslint-disable-next-line no-alert
-      alert('Maximum file size is 50MB.')
+      alert(t('composer_file_too_large'))
       return
     }
 
@@ -501,7 +503,7 @@ export function ChatShell() {
   const handleCallClick = async () => {
     if (!connectedPeers.length) {
       // eslint-disable-next-line no-alert
-      alert('No peer connected. Connect to a peer first.')
+      alert(t('chat_alert_no_peer'))
       return
     }
     const targetPeerId = connectedPeers[0]
@@ -509,7 +511,7 @@ export function ChatShell() {
     const mediaCall = await placeCall(targetPeerId, stream)
     if (!mediaCall) {
       // eslint-disable-next-line no-alert
-      alert('Could not start call.')
+      alert(t('chat_alert_call_fail'))
       stopStream(stream)
       setLocalStream(null)
       localStreamRef.current = null
@@ -602,13 +604,13 @@ export function ChatShell() {
               {channelLabel(activeId)}
             </p>
             <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-              Messages are stored in IndexedDB and mirrored via P2P (PeerJS).
+              {t('chat_messages_p2p')}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.6)] px-2 py-0.5 text-[rgb(var(--zc-muted2))]">
-                Peer ID:{' '}
+                {t('chat_peer_id')}:{' '}
                 <span className="font-mono text-[rgb(var(--zc-text))]">
-                  {peerId || 'initializing…'}
+                  {peerId || t('chat_peer_initializing')}
                 </span>
               </span>
               <span
@@ -633,15 +635,15 @@ export function ChatShell() {
                 />
                 <span className="capitalize">
                   {p2pStatus === P2P_STATUS.ONLINE
-                    ? 'Connected'
+                    ? t('p2p_connected')
                     : p2pStatus === P2P_STATUS.CONNECTING
-                      ? 'Connecting'
-                      : 'Disconnected'}
+                      ? t('p2p_connecting')
+                      : t('p2p_disconnected')}
                 </span>
               </span>
               {connectedPeers.length > 0 && (
                 <span className="text-[rgb(var(--zc-muted2))]">
-                  Peers:{' '}
+                  {t('chat_peers_label')}:{' '}
                   <span className="font-mono">
                     {connectedPeers.join(', ')}
                   </span>
@@ -653,7 +655,7 @@ export function ChatShell() {
           <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
             <div className="flex items-center gap-2">
               <label className="text-xs font-medium text-[rgb(var(--zc-muted2))]">
-                You
+                {t('chat_you')}
               </label>
               <select
                 className="h-9 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
@@ -671,7 +673,7 @@ export function ChatShell() {
             <div className="flex items-center gap-2">
               <input
                 className="h-9 flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-xs text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                placeholder="Connect to peer ID…"
+                placeholder={t('chat_connect_placeholder')}
                 value={connectPeerInput}
                 onChange={(e) => setConnectPeerInput(e.target.value)}
               />
@@ -681,7 +683,7 @@ export function ChatShell() {
                 onClick={handleConnectClick}
                 disabled={!connectPeerInput.trim()}
               >
-                Connect
+                {t('btn_connect')}
               </button>
               <CallButton onClick={handleCallClick} />
             </div>
@@ -691,7 +693,7 @@ export function ChatShell() {
         {isLoadingChat ? (
           <div className="flex flex-1 items-center justify-center p-6">
             <div className="rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
-              Loading chat…
+              {t('chat_loading')}
             </div>
           </div>
         ) : (
@@ -710,7 +712,7 @@ export function ChatShell() {
            pendingFile={pendingFile}
            onSendFile={handleSendFile}
            onCancelFile={handleCancelFile}
-          placeholder={`Message ${activeId.startsWith('dm:') ? channelLabel(activeId) : '# ' + channelLabel(activeId)}`}
+          placeholder={`${t('chat_message_placeholder')} ${activeId.startsWith('dm:') ? channelLabel(activeId) : '# ' + channelLabel(activeId)}`}
         />
       </section>
       <VideoCall

@@ -1,8 +1,8 @@
-export function formatDueDate(isoDate) {
+export function formatDueDate(isoDate, locale) {
   if (!isoDate) return '—'
   const d = new Date(`${isoDate}T00:00:00`)
   if (Number.isNaN(d.getTime())) return '—'
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(locale || undefined, {
     month: 'short',
     day: '2-digit',
     year: 'numeric',

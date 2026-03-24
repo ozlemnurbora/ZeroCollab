@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Button } from '../ui/Button.jsx'
+import { useLanguage } from '../../utils/LanguageContext.jsx'
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024
 
@@ -12,6 +13,7 @@ export function MessageComposer({
   onSendFile,
   onCancelFile,
 }) {
+  const { t } = useLanguage()
   const [text, setText] = useState('')
   const inputRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -35,7 +37,7 @@ export function MessageComposer({
     const file = e.target.files?.[0]
     if (!file) return
     if (file.size > MAX_FILE_BYTES) {
-      setFileError('Maximum file size is 50MB.')
+      setFileError(t('composer_file_too_large'))
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
@@ -49,7 +51,7 @@ export function MessageComposer({
     const file = e.dataTransfer.files?.[0]
     if (!file) return
     if (file.size > MAX_FILE_BYTES) {
-      setFileError('Maximum file size is 50MB.')
+      setFileError(t('composer_file_too_large'))
       return
     }
     setFileError('')
@@ -79,7 +81,7 @@ export function MessageComposer({
                 />
               ) : (
                 <div className="flex h-10 w-10 items-center justify-center rounded-md bg-indigo-500/20 text-xs font-semibold text-indigo-200 ring-1 ring-inset ring-indigo-500/40">
-                  FILE
+                  {t('file_label')}
                 </div>
               )}
               <div className="min-w-0">
@@ -88,7 +90,7 @@ export function MessageComposer({
                 </p>
                 <p className="mt-0.5 text-[11px] text-[rgb(var(--zc-subtle))]">
                   {(pendingFile.file.size / (1024 * 1024)).toFixed(2)} MB •{' '}
-                  {pendingFile.file.type || 'Unknown type'}
+                  {pendingFile.file.type || t('chat_unknown_type')}
                 </p>
               </div>
             </div>
@@ -98,7 +100,7 @@ export function MessageComposer({
                 className="rounded-md bg-[rgb(var(--zc-bg)/0.8)] px-2 py-1 text-[11px] font-medium text-[rgb(var(--zc-muted))] ring-1 ring-inset ring-[rgb(var(--zc-border))] hover:bg-[rgb(var(--zc-panel)/0.8)]"
                 onClick={onCancelFile}
               >
-                Cancel
+                {t('file_cancel')}
               </button>
               <Button
                 size="sm"
@@ -106,7 +108,7 @@ export function MessageComposer({
                   onSendFile?.()
                 }}
               >
-                Send file
+                {t('file_send')}
               </Button>
             </div>
           </div>
@@ -121,7 +123,7 @@ export function MessageComposer({
           disabled={disabled}
         >
           <span aria-hidden="true">📎</span>
-          <span className="sr-only">Attach file</span>
+          <span className="sr-only">{t('composer_attach')}</span>
         </button>
         <input
           ref={fileInputRef}
@@ -145,18 +147,13 @@ export function MessageComposer({
           className="max-h-36 min-h-[42px] w-full resize-none rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:opacity-50"
         />
         <Button onClick={send} disabled={!canSend}>
-          Send
+          {t('composer_send')}
         </Button>
       </div>
-      <p className="mt-2 text-xs text-[rgb(var(--zc-subtle))]">
-        Press Enter to send • Shift+Enter for a new line • Drag &amp; drop to attach
-      </p>
+      <p className="mt-2 text-xs text-[rgb(var(--zc-subtle))]">{t('composer_hint')}</p>
       {fileError ? (
-        <p className="mt-1 text-xs text-rose-300">
-          {fileError}
-        </p>
+        <p className="mt-1 text-xs text-rose-300">{fileError}</p>
       ) : null}
     </div>
   )
 }
-
