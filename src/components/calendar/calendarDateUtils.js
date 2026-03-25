@@ -37,6 +37,35 @@ export function isToday(date) {
   return isSameDay(date, new Date())
 }
 
+/** Parse YYYY-MM-DD as a local calendar date (no UTC shift). */
+export function parseISODateLocal(iso) {
+  if (!iso || typeof iso !== 'string') return new Date(NaN)
+  const parts = iso.split('-')
+  if (parts.length !== 3) return new Date(NaN)
+  const y = Number(parts[0])
+  const m = Number(parts[1])
+  const d = Number(parts[2])
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d))
+    return new Date(NaN)
+  return new Date(y, m - 1, d)
+}
+
+/** Monday-start week containing `date` (local). */
+export function startOfWeekMonday(date) {
+  const d = startOfDay(new Date(date))
+  if (Number.isNaN(d.getTime())) return startOfDay(new Date())
+  const jsDay = d.getDay()
+  const mondayIndex = (jsDay + 6) % 7
+  d.setDate(d.getDate() - mondayIndex)
+  return d
+}
+
+export function addDaysCalendar(date, delta) {
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate() + delta)
+  d.setHours(0, 0, 0, 0)
+  return d
+}
+
 export function startOfMonth(date) {
   const d = new Date(date.getFullYear(), date.getMonth(), 1)
   return startOfDay(d)

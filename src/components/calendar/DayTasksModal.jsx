@@ -1,4 +1,3 @@
-import { Modal } from '../ui/Modal.jsx'
 import { Button } from '../ui/Button.jsx'
 import { statusColorClasses } from './taskIndicators.js'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
@@ -16,53 +15,67 @@ export function DayTasksModal({ open, onClose, isoDate, tasks, onAdd }) {
   }
 
   return (
-    <Modal
-      open={open}
-      onClose={onClose}
-      title={title}
-      footer={
-        <div className="flex items-center justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>
-            {t('btn_close')}
-          </Button>
-          <Button onClick={onAdd}>{t('btn_add_task')}</Button>
-        </div>
-      }
+    <div
+      role="complementary"
+      aria-hidden={!open}
+      className={[
+        'fixed right-0 top-0 z-40 flex h-screen w-80 flex-col border-l border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.97)] shadow-2xl transition-transform duration-200 ease-out',
+        open ? 'translate-x-0' : 'translate-x-full pointer-events-none',
+      ].join(' ')}
     >
-      {tasks?.length ? (
-        <ul className="divide-y divide-[rgb(var(--zc-border))]">
-          {tasks.map((task) => (
-            <li key={task.id} className="flex items-center justify-between gap-4 py-3">
-              <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
-                  {task.title}
-                </p>
-                <p className="mt-1 text-xs text-[rgb(var(--zc-muted2))]">
-                  {task.assignee
-                    ? `${t('task_assignee')}: ${task.assignee}`
-                    : t('dash_unassigned')}
-                </p>
-              </div>
-              <span className="flex items-center gap-2">
-                <span
-                  className={[
-                    'h-2 w-2 rounded-full',
-                    statusColorClasses(task.status),
-                  ].join(' ')}
-                  aria-hidden="true"
-                />
-                <span className="text-xs text-[rgb(var(--zc-muted))]">
-                  {statusLabel(task.status)}
+      <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[rgb(var(--zc-border))] px-4 py-3">
+        <h2 className="text-sm font-semibold leading-snug text-[rgb(var(--zc-text))] sm:text-base">
+          {title}
+        </h2>
+        <button
+          type="button"
+          className="rounded-md p-1 text-[rgb(var(--zc-muted2))] hover:bg-[rgb(var(--zc-border))] hover:text-[rgb(var(--zc-text))]"
+          onClick={onClose}
+          aria-label={t('btn_close')}
+        >
+          <span className="sr-only">{t('btn_close')}</span>✕
+        </button>
+      </header>
+
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+        {tasks?.length ? (
+          <ul className="divide-y divide-[rgb(var(--zc-border))]">
+            {tasks.map((task) => (
+              <li key={task.id} className="flex items-center justify-between gap-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
+                    {task.title}
+                  </p>
+                  <p className="mt-1 text-xs text-[rgb(var(--zc-muted2))]">
+                    {task.assignee
+                      ? `${t('task_assignee')}: ${task.assignee}`
+                      : t('dash_unassigned')}
+                  </p>
+                </div>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span
+                    className={['h-2 w-2 rounded-full', statusColorClasses(task.status)].join(' ')}
+                    aria-hidden="true"
+                  />
+                  <span className="text-xs text-[rgb(var(--zc-muted))]">
+                    {statusLabel(task.status)}
+                  </span>
                 </span>
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <div className="rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
-          {t('day_modal_empty')}
-        </div>
-      )}
-    </Modal>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
+            {t('day_modal_empty')}
+          </div>
+        )}
+      </div>
+
+      <div className="shrink-0 border-t border-[rgb(var(--zc-border))] p-4">
+        <Button type="button" className="w-full" onClick={onAdd}>
+          {t('btn_add_task')}
+        </Button>
+      </div>
+    </div>
   )
 }

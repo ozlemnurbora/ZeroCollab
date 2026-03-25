@@ -9,6 +9,7 @@ const initialForm = {
   description: '',
   assignee: ASSIGNEES[0],
   dueDate: '',
+  calendarType: 'personal',
 }
 
 export function AddTaskModal({ open, onClose, onCreate, initialValues }) {
@@ -18,10 +19,14 @@ export function AddTaskModal({ open, onClose, onCreate, initialValues }) {
 
   useEffect(() => {
     if (!open) return
+    const cal = initialValues?.calendarType
+    const calendarType =
+      cal === 'general' || cal === 'personal' ? cal : initialForm.calendarType
     setForm({
       ...initialForm,
       ...(initialValues ?? {}),
       assignee: (initialValues?.assignee ?? initialForm.assignee) || ASSIGNEES[0],
+      calendarType,
     })
     setTouched(false)
   }, [open, initialValues])
@@ -54,6 +59,7 @@ export function AddTaskModal({ open, onClose, onCreate, initialValues }) {
                 description: form.description.trim(),
                 assignee: form.assignee,
                 dueDate: form.dueDate || '',
+                calendarType: form.calendarType === 'general' ? 'general' : 'personal',
               })
               onClose?.()
             }}
@@ -78,6 +84,38 @@ export function AddTaskModal({ open, onClose, onCreate, initialValues }) {
           {touched && errors.title ? (
             <p className="mt-1 text-xs text-rose-300">{errors.title}</p>
           ) : null}
+        </div>
+
+        <div>
+          <span className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
+            {t('cal_type_label')}
+          </span>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setForm((s) => ({ ...s, calendarType: 'personal' }))}
+              className={[
+                'flex-1 rounded-md border px-3 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/60',
+                form.calendarType === 'personal'
+                  ? 'border-emerald-500 bg-emerald-600 text-white shadow-sm'
+                  : 'border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.5)] text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.4)] hover:text-[rgb(var(--zc-text))]',
+              ].join(' ')}
+            >
+              {t('cal_type_personal')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setForm((s) => ({ ...s, calendarType: 'general' }))}
+              className={[
+                'flex-1 rounded-md border px-3 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60',
+                form.calendarType === 'general'
+                  ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm'
+                  : 'border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.5)] text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.4)] hover:text-[rgb(var(--zc-text))]',
+              ].join(' ')}
+            >
+              {t('cal_type_general')}
+            </button>
+          </div>
         </div>
 
         <div>

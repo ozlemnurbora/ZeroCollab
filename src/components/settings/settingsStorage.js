@@ -23,6 +23,17 @@ export async function saveSettings(settings) {
   }
 }
 
+/** Display name used for calendar "Personal" filter and assignee matching (Kanban). */
+export async function getCurrentUser() {
+  const s = await loadSettings()
+  const p = s?.profile
+  if (!p || typeof p !== 'object') return ''
+  const fromDisplay =
+    typeof p.displayName === 'string' ? p.displayName.trim() : ''
+  const fromUser = typeof p.currentUser === 'string' ? p.currentUser.trim() : ''
+  return fromDisplay || fromUser
+}
+
 export async function getOrCreatePeerId() {
   try {
     const existing = await getSetting(DATABASE_META.settingsKeys.peerId)
