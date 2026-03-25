@@ -47,13 +47,23 @@ function connect() {
     try {
       const msg = JSON.parse(event.data)
       if (msg.type === 'room-peers') {
+        const raw = Array.isArray(msg.peers) ? msg.peers : []
         // eslint-disable-next-line no-console
-        console.log('[signal] room peers:', msg.peers)
-        onPeersCallback?.(msg.peers)
+        console.log('[signal] raw room peers:', raw, {
+          currentPeerId,
+          room: currentRoom,
+        })
+        const otherPeers = raw.filter((id) => id !== currentPeerId)
+        // eslint-disable-next-line no-console
+        console.log('[signal] other peers to connect:', otherPeers)
+        onPeersCallback?.(otherPeers)
       }
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('[signal] parse error', err)
+      console.error('[signal] parse error', err, {
+        dataPreview:
+          typeof event.data === 'string' ? event.data.slice(0, 200) : event.data,
+      })
     }
   }
 

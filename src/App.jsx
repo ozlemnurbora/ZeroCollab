@@ -2,7 +2,14 @@ import { useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { LanguageProvider } from './utils/LanguageContext.jsx'
 import { initSignaling, joinRoom } from './utils/signalingClient.js'
-import { connectToPeer, getPeerId, initP2P, on, P2P_EVENTS } from './utils/p2pManager.js'
+import {
+  connectToPeer,
+  getConnectedPeers,
+  getPeerId,
+  initP2P,
+  on,
+  P2P_EVENTS,
+} from './utils/p2pManager.js'
 import { SidebarLayout } from './layouts/SidebarLayout.jsx'
 import { DashboardPage } from './pages/DashboardPage.jsx'
 import { TasksPage } from './pages/TasksPage.jsx'
@@ -34,10 +41,11 @@ function App() {
         const today = new Date().toISOString().slice(0, 10)
         const roomCode = `zerocollab-${today}`
         joinRoom(roomCode, myPeerId, (peers) => {
+          const alreadyConnected = getConnectedPeers()
           peers.forEach((remotePeerId) => {
-            if (remotePeerId !== myPeerId) {
+            if (remotePeerId !== myPeerId && !alreadyConnected.includes(remotePeerId)) {
               // eslint-disable-next-line no-console
-              console.log('[App] auto-connecting to peer from room:', remotePeerId)
+              console.log('[App] connecting to new peer:', remotePeerId)
               void connectToPeer(remotePeerId)
             }
           })
