@@ -210,6 +210,13 @@ export function ChatShell() {
       // eslint-disable-next-line no-console
       console.log('[ChatShell] P2P: connection established', info)
       setConnectedPeers(getConnectedPeers())
+      const allPeers = getConnectedPeers()
+      if (allPeers.length > 1) {
+        sendToAllPeers({
+          type: 'peer-list',
+          payload: { peers: allPeers },
+        })
+      }
     })
     const offDisconnected = onP2PEvent(P2P_EVENTS.PEER_DISCONNECTED, (info) => {
       // eslint-disable-next-line no-console
@@ -300,6 +307,22 @@ export function ChatShell() {
         if (targetId && myId && targetId !== myId) return
         if (from === activeCallPeerIdRef.current || activeCallRef.current) {
           teardownCall({ stopLocal: true, notifyPeer: false })
+        }
+      } else if (data.type === 'peer-introduce') {
+        const newPeerId = data.payload?.peerId
+        if (newPeerId && newPeerId !== getPeerId()) {
+          // eslint-disable-next-line no-console
+          console.log('[ChatShell] auto-connecting to introduced peer:', newPeerId)
+          void connectToPeer(newPeerId).then(() => {
+            setConnectedPeers(getConnectedPeers())
+          })
+        }
+      } else if (data.type === 'peer-list') {
+        const peers = data.payload?.peers ?? []
+        for (const remoteId of peers) {
+          if (remoteId && remoteId !== getPeerId()) {
+            void connectToPeer(remoteId).then(() => setConnectedPeers(getConnectedPeers()))
+          }
         }
       }
     })
@@ -498,6 +521,11 @@ export function ChatShell() {
     console.log('[ChatShell] connectToPeer clicked', value)
     await connectToPeer(value)
     setConnectedPeers(getConnectedPeers())
+    sendToAllPeers({
+      type: 'peer-introduce',
+      payload: { peerId: value },
+    })
+    setConnectPeerInput('')
   }
 
   const handleCallClick = async () => {

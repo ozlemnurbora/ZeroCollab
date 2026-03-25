@@ -58,12 +58,23 @@ async function createPeerInstance() {
   if (!ensureBrowserEnv()) return null
 
   basePeerId = await getOrCreatePeerId()
-  // Make each tab/session unique while keeping a stable base id.
-  const sessionSuffix =
-    (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID().slice(0, 8)
-      : Math.random().toString(16).slice(2, 10)
-  sessionPeerId = `${basePeerId}-${sessionSuffix}`
+  // Reuse session tab ID across reloads so remote peers can find us again.
+  const stored =
+    typeof sessionStorage !== 'undefined'
+      ? sessionStorage.getItem('zc-session-peer-id')
+      : null
+  if (stored && stored.startsWith(basePeerId)) {
+    sessionPeerId = stored
+  } else {
+    const sessionSuffix =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID().slice(0, 8)
+        : Math.random().toString(16).slice(2, 10)
+    sessionPeerId = `${basePeerId}-${sessionSuffix}`
+    if (typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem('zc-session-peer-id', sessionPeerId)
+    }
+  }
 
   setStatus(STATUS.CONNECTING)
 
@@ -144,6 +155,19 @@ function setupConnection(conn) {
   })
   connections.set(remoteId, conn)
 
+  if (typeof sessionStorage !== 'undefined') {
+    try {
+      const raw = sessionStorage.getItem('zc-connected-peers')
+      const saved = raw ? JSON.parse(raw) : []
+      if (Array.isArray(saved) && !saved.includes(remoteId)) {
+        saved.push(remoteId)
+        sessionStorage.setItem('zc-connected-peers', JSON.stringify(saved))
+      }
+    } catch {
+      // ignore corrupt storage
+    }
+  }
+
   const announceConnected = () => {
     emit(EVENTS.PEER_CONNECTED, { peerId: remoteId })
   }
@@ -163,6 +187,20 @@ function setupConnection(conn) {
     // eslint-disable-next-line no-console
     console.log('[p2pManager] connection closed', remoteId)
     connections.delete(remoteId)
+    if (typeof sessionStorage !== 'undefined') {
+      try {
+        const raw = sessionStorage.getItem('zc-connected-peers')
+        const saved = raw ? JSON.parse(raw) : []
+        if (Array.isArray(saved)) {
+          sessionStorage.setItem(
+            'zc-connected-peers',
+            JSON.stringify(saved.filter((id) => id !== remoteId)),
+          )
+        }
+      } catch {
+        // ignore corrupt storage
+      }
+    }
     emit(EVENTS.PEER_DISCONNECTED, { peerId: remoteId })
   })
 
