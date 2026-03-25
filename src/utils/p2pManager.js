@@ -58,23 +58,11 @@ async function createPeerInstance() {
   if (!ensureBrowserEnv()) return null
 
   basePeerId = await getOrCreatePeerId()
-  // Reuse session tab ID across reloads so remote peers can find us again.
-  const stored =
-    typeof sessionStorage !== 'undefined'
-      ? sessionStorage.getItem('zc-session-peer-id')
-      : null
-  if (stored && stored.startsWith(basePeerId)) {
-    sessionPeerId = stored
-  } else {
-    const sessionSuffix =
-      typeof crypto !== 'undefined' && crypto.randomUUID
-        ? crypto.randomUUID().slice(0, 8)
-        : Math.random().toString(16).slice(2, 10)
-    sessionPeerId = `${basePeerId}-${sessionSuffix}`
-    if (typeof sessionStorage !== 'undefined') {
-      sessionStorage.setItem('zc-session-peer-id', sessionPeerId)
-    }
-  }
+  const sessionSuffix =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID().slice(0, 8)
+      : Math.random().toString(16).slice(2, 10)
+  sessionPeerId = `${basePeerId}-${sessionSuffix}`
 
   setStatus(STATUS.CONNECTING)
 
