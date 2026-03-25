@@ -108,8 +108,15 @@ async function createPeerInstance() {
 
   peer.on('disconnected', () => {
     // eslint-disable-next-line no-console
-    console.log('[p2pManager] peer disconnected')
-    setStatus(STATUS.OFFLINE)
+    console.log('[p2pManager] peer disconnected, attempting reconnect...')
+    setStatus(STATUS.CONNECTING)
+    try {
+      peer.reconnect()
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[p2pManager] reconnect failed', err)
+      setStatus(STATUS.OFFLINE)
+    }
   })
 
   peer.on('error', (err) => {
@@ -189,6 +196,10 @@ export async function initP2P() {
 
 export function getPeerId() {
   return sessionPeerId
+}
+
+export function getPeerInstance() {
+  return peer
 }
 
 export function getStatus() {

@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { LanguageProvider } from './utils/LanguageContext.jsx'
-import { initP2P } from './utils/p2pManager.js'
+import { initP2P, on, P2P_EVENTS } from './utils/p2pManager.js'
 import { SidebarLayout } from './layouts/SidebarLayout.jsx'
 import { DashboardPage } from './pages/DashboardPage.jsx'
 import { TasksPage } from './pages/TasksPage.jsx'
@@ -12,7 +12,19 @@ import { SettingsPage } from './pages/SettingsPage.jsx'
 
 function App() {
   useEffect(() => {
-    void initP2P()
+    void initP2P().then(({ peerId }) => {
+      // eslint-disable-next-line no-console
+      console.log('[App] P2P initialized, peerId:', peerId)
+    })
+
+    const unsub = on(P2P_EVENTS.PEER_DISCONNECTED, ({ peerId }) => {
+      // eslint-disable-next-line no-console
+      console.log('[App] peer disconnected:', peerId)
+    })
+
+    return () => {
+      unsub()
+    }
   }, [])
 
   return (
