@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { LanguageProvider } from './utils/LanguageContext.jsx'
-import { connectToPeer, initP2P, on, P2P_EVENTS } from './utils/p2pManager.js'
+import { initSignaling, joinRoom } from './utils/signalingClient.js'
+import { connectToPeer, getPeerId, initP2P, on, P2P_EVENTS } from './utils/p2pManager.js'
 import { SidebarLayout } from './layouts/SidebarLayout.jsx'
 import { DashboardPage } from './pages/DashboardPage.jsx'
 import { TasksPage } from './pages/TasksPage.jsx'
@@ -15,6 +16,24 @@ function App() {
     void initP2P().then(({ peerId }) => {
       // eslint-disable-next-line no-console
       console.log('[App] P2P initialized, peerId:', peerId)
+
+      initSignaling()
+
+      // Join default room after a short delay to ensure peer is ready
+      window.setTimeout(() => {
+        const myPeerId = getPeerId()
+        if (!myPeerId) return
+        joinRoom('zerocollab-default', myPeerId, (peers) => {
+          peers.forEach((remotePeerId) => {
+            if (remotePeerId !== myPeerId) {
+              // eslint-disable-next-line no-console
+              console.log('[App] auto-connecting to peer from room:', remotePeerId)
+              void connectToPeer(remotePeerId)
+            }
+          })
+        })
+      }, 1500)
+
       try {
         const raw = sessionStorage.getItem('zc-connected-peers')
         const saved = raw ? JSON.parse(raw) : []
