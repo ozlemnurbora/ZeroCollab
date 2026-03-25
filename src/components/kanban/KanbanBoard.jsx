@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AddTaskModal } from './AddTaskModal.jsx'
 import { KANBAN_COLUMNS } from './kanbanConstants.js'
 import { loadTasks, saveTasks } from './taskStorage.js'
 import { Button } from '../ui/Button.jsx'
 import { KanbanColumn } from './KanbanColumn.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
+import { on, sendToAllPeers, P2P_EVENTS } from '../../utils/p2pManager.js'
+import { mergeTasksFromSync, tasksForP2PBroadcast } from '../../utils/taskP2PSync.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -20,6 +22,19 @@ export function KanbanBoard() {
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [draggingTaskId, setDraggingTaskId] = useState(null)
   const [dropTargetColumnId, setDropTargetColumnId] = useState(null)
+  const [syncNotice, setSyncNotice] = useState(false)
+  const tasksRef = useRef(tasks)
+
+  useEffect(() => {
+    tasksRef.current = tasks
+  }, [tasks])
+
+  const broadcastTasks = useCallback((updatedTasks) => {
+    sendToAllPeers({
+      type: 'TASK_SYNC',
+      tasks: tasksForP2PBroadcast(updatedTasks),
+    })
+  }, [])
 
   useEffect(() => {
     if (!hasLoadedTasks) return
@@ -43,6 +58,25 @@ export function KanbanBoard() {
   }, [])
 
   useEffect(() => {
+    let hideTimer
+    const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
+      if (data?.type !== 'TASK_SYNC') return
+      setSyncNotice(true)
+      window.clearTimeout(hideTimer)
+      hideTimer = window.setTimeout(() => setSyncNotice(false), 3200)
+      setTasks((prev) => mergeTasksFromSync(prev, data.tasks))
+    })
+    const unsubPeer = on(P2P_EVENTS.PEER_CONNECTED, () => {
+      broadcastTasks(tasksRef.current)
+    })
+    return () => {
+      window.clearTimeout(hideTimer)
+      unsubMsg()
+      unsubPeer()
+    }
+  }, [broadcastTasks])
+
+  useEffect(() => {
     const onDragEnd = () => {
       setDraggingTaskId(null)
       setDropTargetColumnId(null)
@@ -64,22 +98,32 @@ export function KanbanBoard() {
   }, [tasks])
 
   const moveTask = (taskId, nextStatus) => {
-    setTasks((prev) =>
-      prev.map((task) => (task.id === taskId ? { ...task, status: nextStatus } : task)),
-    )
+    setTasks((prev) => {
+      const next = prev.map((task) =>
+        task.id === taskId ? { ...task, status: nextStatus } : task,
+      )
+      broadcastTasks(next)
+      return next
+    })
   }
 
   const createTask = (payload) => {
     const now = Date.now()
-    setTasks((prev) => [
-      {
-        id: createId(),
-        status: 'todo',
-        createdAt: now,
-        ...payload,
-      },
-      ...prev,
-    ])
+    const calendarType = payload?.calendarType === 'general' ? 'general' : 'personal'
+    setTasks((prev) => {
+      const next = [
+        {
+          id: createId(),
+          status: 'todo',
+          createdAt: now,
+          ...payload,
+          calendarType,
+        },
+        ...prev,
+      ]
+      broadcastTasks(next)
+      return next
+    })
   }
 
   const total = tasks.length
@@ -95,6 +139,14 @@ export function KanbanBoard() {
 
   return (
     <div className="mt-6">
+      {syncNotice ? (
+        <p
+          className="mb-3 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200"
+          role="status"
+        >
+          {t('sync_received')}
+        </p>
+      ) : null}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <p className="text-sm text-[rgb(var(--zc-muted))]">

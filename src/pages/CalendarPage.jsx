@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MonthlyCalendar } from '../components/calendar/MonthlyCalendar.jsx'
 import { DayTasksModal } from '../components/calendar/DayTasksModal.jsx'
 import { AddTaskModal } from '../components/kanban/AddTaskModal.jsx'
@@ -11,6 +11,8 @@ import {
 import { getCurrentUser } from '../components/settings/settingsStorage.js'
 import { Button } from '../components/ui/Button.jsx'
 import { useLanguage } from '../utils/LanguageContext.jsx'
+import { on, sendToAllPeers, P2P_EVENTS } from '../utils/p2pManager.js'
+import { mergeTasksFromSync, tasksForP2PBroadcast } from '../utils/taskP2PSync.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -38,6 +40,19 @@ export function CalendarPage() {
   const [selectedISODate, setSelectedISODate] = useState(() => toISODate(new Date()))
   const [isDayOpen, setIsDayOpen] = useState(false)
   const [isAddOpen, setIsAddOpen] = useState(false)
+  const [syncNotice, setSyncNotice] = useState(false)
+  const tasksRef = useRef(tasks)
+
+  useEffect(() => {
+    tasksRef.current = tasks
+  }, [tasks])
+
+  const broadcastTasks = useCallback((updatedTasks) => {
+    sendToAllPeers({
+      type: 'TASK_SYNC',
+      tasks: tasksForP2PBroadcast(updatedTasks),
+    })
+  }, [])
 
   useEffect(() => {
     void getCurrentUser().then(setCurrentUserName)
@@ -62,6 +77,25 @@ export function CalendarPage() {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    let hideTimer
+    const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
+      if (data?.type !== 'TASK_SYNC') return
+      setSyncNotice(true)
+      window.clearTimeout(hideTimer)
+      hideTimer = window.setTimeout(() => setSyncNotice(false), 3200)
+      setTasks((prev) => mergeTasksFromSync(prev, data.tasks))
+    })
+    const unsubPeer = on(P2P_EVENTS.PEER_CONNECTED, () => {
+      broadcastTasks(tasksRef.current)
+    })
+    return () => {
+      window.clearTimeout(hideTimer)
+      unsubMsg()
+      unsubPeer()
+    }
+  }, [broadcastTasks])
 
   const filteredTasks = useMemo(() => {
     const list = Array.isArray(tasks) ? tasks : []
@@ -134,16 +168,20 @@ export function CalendarPage() {
     const now = Date.now()
     const calendarType =
       payload?.calendarType === 'general' ? 'general' : 'personal'
-    setTasks((prev) => [
-      {
-        id: createId(),
-        status: 'todo',
-        createdAt: now,
-        ...payload,
-        calendarType,
-      },
-      ...(Array.isArray(prev) ? prev : []),
-    ])
+    setTasks((prev) => {
+      const next = [
+        {
+          id: createId(),
+          status: 'todo',
+          createdAt: now,
+          ...payload,
+          calendarType,
+        },
+        ...(Array.isArray(prev) ? prev : []),
+      ]
+      broadcastTasks(next)
+      return next
+    })
   }
 
   return (
@@ -154,6 +192,14 @@ export function CalendarPage() {
       <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
         {t('page_calendar_subtitle')}
       </p>
+      {syncNotice ? (
+        <p
+          className="mt-3 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200"
+          role="status"
+        >
+          {t('sync_received')}
+        </p>
+      ) : null}
 
       <div className="mt-6 flex flex-wrap gap-2">
         {['day', 'week', 'month'].map((id) => (

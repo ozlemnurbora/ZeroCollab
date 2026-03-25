@@ -136,7 +136,15 @@ function setupConnection(conn) {
     open: conn.open,
   })
   connections.set(remoteId, conn)
-  emit(EVENTS.PEER_CONNECTED, { peerId: remoteId })
+
+  const announceConnected = () => {
+    emit(EVENTS.PEER_CONNECTED, { peerId: remoteId })
+  }
+  if (conn.open) {
+    announceConnected()
+  } else {
+    conn.on('open', announceConnected)
+  }
 
   conn.on('data', (data) => {
     // eslint-disable-next-line no-console
