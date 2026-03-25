@@ -80,6 +80,7 @@ export function CalendarPage() {
 
   useEffect(() => {
     let hideTimer
+    let peerBroadcastTimer
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
       if (data?.type !== 'TASK_SYNC') return
       setSyncNotice(true)
@@ -88,10 +89,14 @@ export function CalendarPage() {
       setTasks((prev) => mergeTasksFromSync(prev, data.tasks))
     })
     const unsubPeer = on(P2P_EVENTS.PEER_CONNECTED, () => {
-      broadcastTasks(tasksRef.current)
+      window.clearTimeout(peerBroadcastTimer)
+      peerBroadcastTimer = window.setTimeout(() => {
+        broadcastTasks(tasksRef.current)
+      }, 500)
     })
     return () => {
       window.clearTimeout(hideTimer)
+      window.clearTimeout(peerBroadcastTimer)
       unsubMsg()
       unsubPeer()
     }

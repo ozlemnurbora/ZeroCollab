@@ -84,6 +84,7 @@ export const TRANSLATIONS = {
     task_assignee: 'Assignee',
     task_due: 'Due',
     task_drag: 'Drag',
+    task_delete: 'Delete task',
     task_no_date: '—',
 
     // Add task modal
@@ -377,6 +378,7 @@ export const TRANSLATIONS = {
     task_assignee: 'Atanan',
     task_due: 'Bitiş',
     task_drag: 'Sürükle',
+    task_delete: 'Görevi sil',
     task_no_date: '—',
 
     modal_add_task: 'Görev ekle',
