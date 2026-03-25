@@ -31,7 +31,9 @@ function App() {
       window.setTimeout(() => {
         const myPeerId = getPeerId()
         if (!myPeerId) return
-        joinRoom('zerocollab-default', myPeerId, (peers) => {
+        const today = new Date().toISOString().slice(0, 10)
+        const roomCode = `zerocollab-${today}`
+        joinRoom(roomCode, myPeerId, (peers) => {
           peers.forEach((remotePeerId) => {
             if (remotePeerId !== myPeerId) {
               // eslint-disable-next-line no-console

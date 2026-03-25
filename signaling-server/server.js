@@ -33,6 +33,7 @@ wss.on('connection', (ws) => {
         currentPeerId = peerId
 
         if (!rooms.has(roomCode)) rooms.set(roomCode, new Map())
+        // Map keys are unique: same peerId rejoining replaces the socket (no duplicate peers).
         rooms.get(roomCode).set(peerId, ws)
 
         console.log(`[signal] ${peerId} joined room ${roomCode} (${rooms.get(roomCode).size} peers)`)
@@ -47,6 +48,8 @@ wss.on('connection', (ws) => {
     if (currentRoom && currentPeerId) {
       const room = rooms.get(currentRoom)
       if (room) {
+        // Only remove if this socket is still the registered one (reconnect replaces the entry).
+        if (room.get(currentPeerId) !== ws) return
         room.delete(currentPeerId)
         console.log(`[signal] ${currentPeerId} left room ${currentRoom}`)
         if (room.size === 0) {

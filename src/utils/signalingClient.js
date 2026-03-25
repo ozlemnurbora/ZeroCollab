@@ -6,6 +6,29 @@ let currentRoom = null
 let currentPeerId = null
 let onPeersCallback = null
 let reconnectTimer = null
+let heartbeatInterval = null
+
+function clearHeartbeat() {
+  if (heartbeatInterval != null) {
+    clearInterval(heartbeatInterval)
+    heartbeatInterval = null
+  }
+}
+
+function startHeartbeat() {
+  clearHeartbeat()
+  heartbeatInterval = setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN && currentRoom && currentPeerId) {
+      ws.send(
+        JSON.stringify({
+          type: 'join-room',
+          roomCode: currentRoom,
+          peerId: currentPeerId,
+        }),
+      )
+    }
+  }, 30000)
+}
 
 function connect() {
   if (ws && ws.readyState === WebSocket.OPEN) return
@@ -35,6 +58,7 @@ function connect() {
   }
 
   ws.onclose = () => {
+    clearHeartbeat()
     // eslint-disable-next-line no-console
     console.log('[signal] disconnected, reconnecting in 3s...')
     clearTimeout(reconnectTimer)
@@ -58,6 +82,7 @@ export function joinRoom(roomCode, peerId, onPeers) {
   }
 
   ws.send(JSON.stringify({ type: 'join-room', roomCode, peerId }))
+  startHeartbeat()
 }
 
 export function initSignaling() {
