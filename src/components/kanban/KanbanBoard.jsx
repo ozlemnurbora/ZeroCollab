@@ -61,6 +61,8 @@ export function KanbanBoard() {
     let hideTimer
     let peerBroadcastTimer
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
+      // eslint-disable-next-line no-console
+      console.log('[KanbanBoard] message received', data)
       if (data?.type !== 'TASK_SYNC') return
       setSyncNotice(true)
       window.clearTimeout(hideTimer)
@@ -68,6 +70,8 @@ export function KanbanBoard() {
       setTasks((prev) => mergeTasksFromSync(prev, data.tasks))
     })
     const unsubPeer = on(P2P_EVENTS.PEER_CONNECTED, () => {
+      // eslint-disable-next-line no-console
+      console.log('[KanbanBoard] peer connected, broadcasting tasks')
       window.clearTimeout(peerBroadcastTimer)
       peerBroadcastTimer = window.setTimeout(() => {
         broadcastTasks(tasksRef.current)

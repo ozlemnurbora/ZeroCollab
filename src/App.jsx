@@ -1,5 +1,7 @@
+import { useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { LanguageProvider } from './utils/LanguageContext.jsx'
+import { initP2P } from './utils/p2pManager.js'
 import { SidebarLayout } from './layouts/SidebarLayout.jsx'
 import { DashboardPage } from './pages/DashboardPage.jsx'
 import { TasksPage } from './pages/TasksPage.jsx'
@@ -9,6 +11,10 @@ import { EvaluationPage } from './pages/EvaluationPage.jsx'
 import { SettingsPage } from './pages/SettingsPage.jsx'
 
 function App() {
+  useEffect(() => {
+    void initP2P()
+  }, [])
+
   return (
     <LanguageProvider>
       <Routes>
