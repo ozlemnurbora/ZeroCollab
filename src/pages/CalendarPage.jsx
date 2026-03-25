@@ -48,9 +48,11 @@ export function CalendarPage() {
   }, [tasks])
 
   const broadcastTasks = useCallback((updatedTasks) => {
+    const generalTasks = tasksForP2PBroadcast(updatedTasks)
+    if (generalTasks.length === 0) return
     sendToAllPeers({
       type: 'TASK_SYNC',
-      tasks: tasksForP2PBroadcast(updatedTasks),
+      tasks: generalTasks,
     })
   }, [])
 
@@ -83,6 +85,10 @@ export function CalendarPage() {
     let peerBroadcastTimer
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
       if (data?.type !== 'TASK_SYNC') return
+      const incomingGeneralTasks = (data.tasks ?? []).filter(
+        (t) => t && t.calendarType === 'general',
+      )
+      if (incomingGeneralTasks.length === 0) return
       setSyncNotice(true)
       window.clearTimeout(hideTimer)
       hideTimer = window.setTimeout(() => setSyncNotice(false), 3200)
