@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { LanguageProvider } from './utils/LanguageContext.jsx'
-import { initP2P } from './utils/p2pManager.js'
+import { connectToPeer, initP2P } from './utils/p2pManager.js'
 import { SidebarLayout } from './layouts/SidebarLayout.jsx'
 import { DashboardPage } from './pages/DashboardPage.jsx'
 import { TasksPage } from './pages/TasksPage.jsx'
@@ -12,7 +12,50 @@ import { SettingsPage } from './pages/SettingsPage.jsx'
 
 function App() {
   useEffect(() => {
-    initP2P()
+    const run = async () => {
+      await initP2P()
+
+      await new Promise((resolve) => setTimeout(resolve, 2000))
+
+      let saved = []
+      try {
+        saved = JSON.parse(sessionStorage.getItem('zc-connected-peers') || '[]')
+        if (!Array.isArray(saved)) saved = []
+      } catch {
+        saved = []
+      }
+
+      if (saved.length > 0) {
+        // eslint-disable-next-line no-console
+        console.log('[App] auto-reconnecting to saved peers:', saved)
+        for (const peerId of saved) {
+          if (typeof peerId !== 'string' || !peerId) continue
+          try {
+            const conn = await connectToPeer(peerId)
+            if (!conn) throw new Error('connect failed')
+            // eslint-disable-next-line no-console
+            console.log('[App] reconnected to:', peerId)
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.log('[App] failed to reconnect to:', peerId, err)
+            try {
+              const current = JSON.parse(
+                sessionStorage.getItem('zc-connected-peers') || '[]',
+              )
+              if (Array.isArray(current)) {
+                sessionStorage.setItem(
+                  'zc-connected-peers',
+                  JSON.stringify(current.filter((id) => id !== peerId)),
+                )
+              }
+            } catch {
+              // ignore
+            }
+          }
+        }
+      }
+    }
+    void run()
   }, [])
 
   return (
