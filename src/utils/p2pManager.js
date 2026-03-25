@@ -155,19 +155,6 @@ function setupConnection(conn) {
   })
   connections.set(remoteId, conn)
 
-  if (typeof sessionStorage !== 'undefined') {
-    try {
-      const raw = sessionStorage.getItem('zc-connected-peers')
-      const saved = raw ? JSON.parse(raw) : []
-      if (Array.isArray(saved) && !saved.includes(remoteId)) {
-        saved.push(remoteId)
-        sessionStorage.setItem('zc-connected-peers', JSON.stringify(saved))
-      }
-    } catch {
-      // ignore corrupt storage
-    }
-  }
-
   const announceConnected = () => {
     emit(EVENTS.PEER_CONNECTED, { peerId: remoteId })
   }
@@ -187,20 +174,6 @@ function setupConnection(conn) {
     // eslint-disable-next-line no-console
     console.log('[p2pManager] connection closed', remoteId)
     connections.delete(remoteId)
-    if (typeof sessionStorage !== 'undefined') {
-      try {
-        const raw = sessionStorage.getItem('zc-connected-peers')
-        const saved = raw ? JSON.parse(raw) : []
-        if (Array.isArray(saved)) {
-          sessionStorage.setItem(
-            'zc-connected-peers',
-            JSON.stringify(saved.filter((id) => id !== remoteId)),
-          )
-        }
-      } catch {
-        // ignore corrupt storage
-      }
-    }
     emit(EVENTS.PEER_DISCONNECTED, { peerId: remoteId })
   })
 

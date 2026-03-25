@@ -13,6 +13,14 @@ import { SettingsPage } from './pages/SettingsPage.jsx'
 
 function App() {
   useEffect(() => {
+    // Signaling server manages peer connectivity across refreshes.
+    // Remove old peer list so we don't double-connect.
+    try {
+      sessionStorage.removeItem('zc-connected-peers')
+    } catch {
+      // ignore
+    }
+
     void initP2P().then(({ peerId }) => {
       // eslint-disable-next-line no-console
       console.log('[App] P2P initialized, peerId:', peerId)
@@ -34,23 +42,6 @@ function App() {
         })
       }, 1500)
 
-      try {
-        const raw = sessionStorage.getItem('zc-connected-peers')
-        const saved = raw ? JSON.parse(raw) : []
-        if (Array.isArray(saved) && saved.length > 0) {
-          // eslint-disable-next-line no-console
-          console.log('[App] auto-reconnecting to saved peers:', saved)
-          for (const remotePeerId of saved) {
-            if (typeof remotePeerId === 'string' && remotePeerId) {
-              window.setTimeout(() => {
-                void connectToPeer(remotePeerId)
-              }, 1000)
-            }
-          }
-        }
-      } catch {
-        // ignore corrupt storage
-      }
     })
 
     const unsub = on(P2P_EVENTS.PEER_DISCONNECTED, ({ peerId }) => {
