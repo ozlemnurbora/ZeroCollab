@@ -56,6 +56,63 @@ export async function loadEvaluationCriteria() {
   }
 }
 
+export async function loadGradeThresholds() {
+  try {
+    const response = await fetch('/ontology/zerocollab-evaluation.ttl')
+    const text = await response.text()
+    const grades = []
+    const lines = text.split('\n')
+    let currentBlock = []
+    let inGrade = false
+
+    const pushGradeFromBlock = (blockLines) => {
+      if (blockLines.length === 0) return
+      const block = blockLines.join('\n')
+      const label = extractLiteral(block, 'zce:gradeLabel')
+      const name = extractLiteral(block, 'zce:gradeName')
+      const minPct = parseInt(
+        extractLiteral(block, 'zce:minPercentage') || '0',
+        10,
+      )
+      if (label) {
+        grades.push({ label, name: name || label, minPercentage: minPct })
+      }
+    }
+
+    for (const line of lines) {
+      if (
+        line.includes('a zce:GradeThreshold') &&
+        !line.includes('owl:Class')
+      ) {
+        if (inGrade && currentBlock.length > 0) {
+          pushGradeFromBlock(currentBlock)
+        }
+        inGrade = true
+        currentBlock = [line]
+      } else if (inGrade) {
+        currentBlock.push(line)
+        if (
+          line.trim() === '.' ||
+          (line.trim() === '' && currentBlock.length > 3)
+        ) {
+          pushGradeFromBlock(currentBlock)
+          currentBlock = []
+          inGrade = false
+        }
+      }
+    }
+    if (inGrade && currentBlock.length > 0) {
+      pushGradeFromBlock(currentBlock)
+    }
+    grades.sort((a, b) => b.minPercentage - a.minPercentage)
+    console.log('[ontologyLoader] loaded grades:', grades)
+    return grades.length > 0 ? grades : null
+  } catch (err) {
+    console.error('[ontologyLoader] failed to load grades:', err)
+    return null
+  }
+}
+
 function extractLiteral(block, predicate) {
   const patterns = [
     new RegExp(`${predicate}\\s+"([^"]+)"(?:\\s*;|\\s*\\.)?`),

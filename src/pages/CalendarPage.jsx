@@ -25,6 +25,15 @@ function taskCalendarType(task) {
   return task?.calendarType === 'general' ? 'general' : 'personal'
 }
 
+const CALENDAR_COLORS = [
+  'bg-violet-500',
+  'bg-rose-500',
+  'bg-amber-500',
+  'bg-cyan-500',
+  'bg-pink-500',
+  'bg-orange-500',
+]
+
 export function CalendarPage() {
   const { t } = useLanguage()
   const [tasks, setTasks] = useState([])
@@ -41,11 +50,27 @@ export function CalendarPage() {
   const [isDayOpen, setIsDayOpen] = useState(false)
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [syncNotice, setSyncNotice] = useState(false)
+  const [customCalendars, setCustomCalendars] = useState(() => {
+    try {
+      if (typeof localStorage === 'undefined') return []
+      const parsed = JSON.parse(localStorage.getItem('zc-custom-calendars') || '[]')
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  })
+  const [showNewCalendarInput, setShowNewCalendarInput] = useState(false)
+  const [newCalendarName, setNewCalendarName] = useState('')
   const tasksRef = useRef(tasks)
 
   useEffect(() => {
     tasksRef.current = tasks
   }, [tasks])
+
+  useEffect(() => {
+    if (typeof localStorage === 'undefined') return
+    localStorage.setItem('zc-custom-calendars', JSON.stringify(customCalendars))
+  }, [customCalendars])
 
   const broadcastTasks = useCallback((updatedTasks) => {
     const generalTasks = tasksForP2PBroadcast(updatedTasks)
@@ -113,13 +138,35 @@ export function CalendarPage() {
     if (activeCalendar === 'general') {
       return list.filter((task) => taskCalendarType(task) === 'general')
     }
-    const u = currentUserName.trim()
-    if (!u) return []
-    return list.filter(
-      (task) =>
-        taskCalendarType(task) === 'personal' && (task.assignee || '') === u,
-    )
-  }, [tasks, activeCalendar, currentUserName])
+    if (activeCalendar === 'personal') {
+      const u = currentUserName.trim()
+      if (!u) return []
+      return list.filter(
+        (task) =>
+          taskCalendarType(task) === 'personal' && (task.assignee || '') === u,
+      )
+    }
+    return list.filter((task) => task.calendarId === activeCalendar)
+  }, [tasks, activeCalendar, currentUserName, customCalendars])
+
+  const addCalendar = () => {
+    const name = newCalendarName.trim()
+    if (!name) return
+    const newCal = {
+      id: `custom_${Date.now()}`,
+      name,
+      color: CALENDAR_COLORS[customCalendars.length % CALENDAR_COLORS.length],
+    }
+    setCustomCalendars((prev) => [...prev, newCal])
+    setActiveCalendar(newCal.id)
+    setNewCalendarName('')
+    setShowNewCalendarInput(false)
+  }
+
+  const deleteCalendar = (id) => {
+    setCustomCalendars((prev) => prev.filter((c) => c.id !== id))
+    if (activeCalendar === id) setActiveCalendar('general')
+  }
 
   const tasksByISODate = useMemo(() => {
     const map = new Map()
@@ -187,6 +234,7 @@ export function CalendarPage() {
           createdAt: now,
           ...payload,
           calendarType,
+          calendarId: activeCalendar,
         },
         ...(Array.isArray(prev) ? prev : []),
       ]
@@ -241,9 +289,13 @@ export function CalendarPage() {
                   : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.35)]',
               ].join(' ')}
             >
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-indigo-500" aria-hidden="true" />
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full bg-indigo-500"
+                aria-hidden="true"
+              />
               {t('cal_calendar_general')}
             </button>
+
             <button
               type="button"
               onClick={() => setActiveCalendar('personal')}
@@ -254,9 +306,91 @@ export function CalendarPage() {
                   : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.35)]',
               ].join(' ')}
             >
-              <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500"
+                aria-hidden="true"
+              />
               {t('cal_calendar_personal')}
             </button>
+
+            {customCalendars.map((cal) => (
+              <div key={cal.id} className="group flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => setActiveCalendar(cal.id)}
+                  className={[
+                    'flex flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm font-medium transition',
+                    activeCalendar === cal.id
+                      ? 'bg-[rgb(var(--zc-border)/0.5)] text-[rgb(var(--zc-text))]'
+                      : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.35)]',
+                  ].join(' ')}
+                >
+                  <span
+                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${cal.color}`}
+                    aria-hidden="true"
+                  />
+                  <span className="truncate">{cal.name}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => deleteCalendar(cal.id)}
+                  className="hidden h-5 w-5 items-center justify-center rounded text-xs text-[rgb(var(--zc-subtle))] hover:bg-rose-500/10 hover:text-rose-400 group-hover:flex"
+                  aria-label={t('cal_remove_calendar')}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+
+            <div className="mt-2 border-t border-[rgb(var(--zc-border))] pt-2">
+              {showNewCalendarInput ? (
+                <div className="flex flex-col gap-1.5">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={newCalendarName}
+                    onChange={(e) => setNewCalendarName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') addCalendar()
+                      if (e.key === 'Escape') {
+                        setShowNewCalendarInput(false)
+                        setNewCalendarName('')
+                      }
+                    }}
+                    placeholder={t('cal_calendar_name_ph')}
+                    className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 py-1.5 text-xs text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                  />
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={addCalendar}
+                      className="flex-1 rounded-md bg-indigo-500/20 px-2 py-1 text-xs font-medium text-indigo-300 hover:bg-indigo-500/30"
+                    >
+                      {t('cal_add')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNewCalendarInput(false)
+                        setNewCalendarName('')
+                      }}
+                      className="flex-1 rounded-md bg-[rgb(var(--zc-border)/0.5)] px-2 py-1 text-xs text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border))]"
+                    >
+                      {t('btn_cancel')}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowNewCalendarInput(true)}
+                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium text-[rgb(var(--zc-muted2))] transition hover:bg-[rgb(var(--zc-border)/0.35)] hover:text-[rgb(var(--zc-text))]"
+                >
+                  <span className="text-base leading-none">+</span>
+                  {t('cal_new_calendar')}
+                </button>
+              )}
+            </div>
           </div>
         </aside>
 
@@ -300,7 +434,10 @@ export function CalendarPage() {
         onCreate={createTask}
         initialValues={{
           dueDate: selectedISODate,
-          calendarType: activeCalendar,
+          calendarType: activeCalendar.startsWith('custom_')
+            ? 'personal'
+            : activeCalendar,
+          calendarId: activeCalendar,
         }}
       />
     </section>

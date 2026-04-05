@@ -10,6 +10,7 @@ const initialForm = {
   assignee: ASSIGNEES[0],
   dueDate: '',
   calendarType: 'personal',
+  calendarId: '',
 }
 
 export function AddTaskModal({ open, onClose, onCreate, initialValues }) {
@@ -27,6 +28,7 @@ export function AddTaskModal({ open, onClose, onCreate, initialValues }) {
       ...(initialValues ?? {}),
       assignee: (initialValues?.assignee ?? initialForm.assignee) || ASSIGNEES[0],
       calendarType,
+      calendarId: initialValues?.calendarId ?? initialForm.calendarId ?? '',
     })
     setTouched(false)
   }, [open, initialValues])
@@ -60,6 +62,7 @@ export function AddTaskModal({ open, onClose, onCreate, initialValues }) {
                 assignee: form.assignee,
                 dueDate: form.dueDate || '',
                 calendarType: form.calendarType === 'general' ? 'general' : 'personal',
+                ...(form.calendarId ? { calendarId: form.calendarId } : {}),
               })
               onClose?.()
             }}

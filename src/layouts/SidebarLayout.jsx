@@ -33,7 +33,7 @@ export function SidebarLayout() {
   return (
     <div className="min-h-screen bg-[rgb(var(--zc-bg))] text-[rgb(var(--zc-text))] flex">
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 bg-[rgb(var(--zc-panel))] border-r border-[rgb(var(--zc-border))] p-4 flex flex-col transform transition-transform duration-200 md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 w-64 bg-[rgb(var(--zc-panel))] border-r border-[rgb(var(--zc-border))] p-4 flex flex-col transform transition-transform duration-200 md:relative md:translate-x-0 ${
           isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
         } md:w-64`}
       >
@@ -72,7 +72,7 @@ export function SidebarLayout() {
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col md:ml-64">
+      <div className="flex-1 flex flex-col">
         <OfflineBanner />
         <header className="flex items-center justify-between border-b border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.8)] px-4 py-3 md:hidden">
           <div className="flex items-center gap-2">
@@ -90,8 +90,8 @@ export function SidebarLayout() {
           </button>
         </header>
 
-        <main className="flex-1 px-4 py-4 md:px-6 md:py-6 lg:px-8 lg:py-8">
-          <div className="mx-auto max-w-6xl">
+        <main className="flex-1 px-4 py-4 md:px-6 md:py-6">
+          <div className="w-full">
             <Outlet />
           </div>
         </main>

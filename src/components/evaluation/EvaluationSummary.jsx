@@ -1,19 +1,20 @@
-import { letterGrade } from './evaluationUtils.js'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 
-function gradeColor(grade) {
-  if (grade === 'A') return 'text-emerald-200 ring-emerald-500/30 bg-emerald-500/10'
-  if (grade === 'B') return 'text-indigo-200 ring-indigo-500/30 bg-indigo-500/10'
-  if (grade === 'C') return 'text-amber-200 ring-amber-500/30 bg-amber-500/10'
-  if (grade === 'D') return 'text-orange-200 ring-orange-500/30 bg-orange-500/10'
+function gradeColor(label) {
+  const base = String(label ?? 'F').charAt(0)
+  if (base === 'A') return 'text-emerald-200 ring-emerald-500/30 bg-emerald-500/10'
+  if (base === 'B') return 'text-indigo-200 ring-indigo-500/30 bg-indigo-500/10'
+  if (base === 'C') return 'text-amber-200 ring-amber-500/30 bg-amber-500/10'
+  if (base === 'D') return 'text-orange-200 ring-orange-500/30 bg-orange-500/10'
   return 'text-rose-200 ring-rose-500/30 bg-rose-500/10'
 }
 
-export function EvaluationSummary({ total, max, percentage }) {
+const DEFAULT_GRADE = { label: 'F', name: 'Insufficient' }
+
+export function EvaluationSummary({ total, max, percentage, grade }) {
   const { t } = useLanguage()
   const pct = Math.max(0, Math.min(100, Math.round(percentage)))
-  const grade = letterGrade(percentage)
-  const gradeText = t(`grade_desc_${grade}`)
+  const g = grade && grade.label != null ? grade : DEFAULT_GRADE
 
   return (
     <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
@@ -46,12 +47,12 @@ export function EvaluationSummary({ total, max, percentage }) {
             <span
               className={[
                 'inline-flex items-center rounded-md px-3 py-1.5 text-sm font-semibold ring-1 ring-inset',
-                gradeColor(grade),
+                gradeColor(g.label),
               ].join(' ')}
             >
-              {grade}
+              {g.label}
             </span>
-            <span className="text-sm text-[rgb(var(--zc-muted))]">{gradeText}</span>
+            <span className="text-sm text-[rgb(var(--zc-muted))]">{g.name}</span>
           </div>
         </div>
 

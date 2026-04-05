@@ -121,6 +121,10 @@ export const TRANSLATIONS = {
     cal_calendar_general: 'General',
     cal_calendar_personal: 'Personal',
     cal_sidebar_calendars: 'Calendars',
+    cal_new_calendar: 'New Calendar',
+    cal_calendar_name_ph: 'Calendar name…',
+    cal_add: 'Add',
+    cal_remove_calendar: 'Remove calendar',
     cal_type_personal: 'Personal',
     cal_type_general: 'General',
     cal_type_label: 'Add to Calendar',
@@ -195,6 +199,16 @@ export const TRANSLATIONS = {
     eval_scores_ai_hint:
       "Scores are automatically assigned by AI evaluation. Click 'Evaluate with AI' to get scores.",
     eval_set_by_ai: 'Set by AI',
+    eval_not_applicable: 'Not applicable to this project',
+    eval_project_label: 'Project Information',
+    eval_project_placeholder:
+      'Paste your GitHub URL or describe your project...',
+    eval_project_hint: 'Provide project details so AI can evaluate accurately',
+    eval_submit_project: 'Submit Project for Evaluation',
+    eval_project_upload: 'Upload files',
+    eval_upload_label: 'Upload Project Files (optional)',
+    eval_no_project:
+      'Please provide project information or upload files first',
     eval_ai: 'Evaluate with AI',
     eval_ai_loading: 'Evaluating...',
     eval_api_key_title: 'API Key',
@@ -424,6 +438,10 @@ export const TRANSLATIONS = {
     cal_calendar_general: 'Genel',
     cal_calendar_personal: 'Kişisel',
     cal_sidebar_calendars: 'Takvimler',
+    cal_new_calendar: 'Yeni takvim',
+    cal_calendar_name_ph: 'Takvim adı…',
+    cal_add: 'Ekle',
+    cal_remove_calendar: 'Takvimi kaldır',
     cal_type_personal: 'Kişisel',
     cal_type_general: 'Genel',
     cal_type_label: 'Takvime Ekle',
@@ -496,6 +514,17 @@ export const TRANSLATIONS = {
     eval_scores_ai_hint:
       'Puanlar yapay zeka değerlendirmesiyle otomatik atanır. Puan almak için «Yapay zeka ile değerlendir»e tıklayın.',
     eval_set_by_ai: 'Yapay zeka tarafından',
+    eval_not_applicable: 'Bu projeye uygulanmıyor',
+    eval_project_label: 'Proje Bilgileri',
+    eval_project_placeholder:
+      'GitHub URL yapıştırın veya projenizi açıklayın...',
+    eval_project_hint:
+      'AI doğru değerlendirme yapabilmesi için proje detaylarını girin',
+    eval_submit_project: 'Projeyi değerlendirme için gönder',
+    eval_project_upload: 'Dosya yükle',
+    eval_upload_label: 'Proje Dosyalarını Yükle (isteğe bağlı)',
+    eval_no_project:
+      'Lütfen önce proje bilgisi girin veya dosya yükleyin',
     eval_ai: 'Yapay zeka ile değerlendir',
     eval_ai_loading: 'Değerlendiriliyor...',
     eval_api_key_title: 'API Anahtarı',

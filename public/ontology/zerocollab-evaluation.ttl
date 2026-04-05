@@ -157,3 +157,98 @@ zce:P2PImplementation a zce:RubricCriterion ;
     zce:maxScore 20 ;
     zce:weight "0.20"^^xsd:decimal ;
     zce:order 5 .
+
+# ─────────────────────────────────────────────
+# Grade Thresholds
+# ─────────────────────────────────────────────
+
+zce:GradeThreshold a owl:Class ;
+    rdfs:label "Grade Threshold"@en ;
+    skos:definition "Defines the minimum percentage for each letter grade."@en .
+
+zce:gradeLabel a owl:DatatypeProperty ;
+    rdfs:label "grade label"@en ;
+    rdfs:domain zce:GradeThreshold ;
+    rdfs:range xsd:string .
+
+zce:gradeName a owl:DatatypeProperty ;
+    rdfs:label "grade name"@en ;
+    rdfs:domain zce:GradeThreshold ;
+    rdfs:range xsd:string .
+
+zce:minPercentage a owl:DatatypeProperty ;
+    rdfs:label "min percentage"@en ;
+    rdfs:domain zce:GradeThreshold ;
+    rdfs:range xsd:integer .
+
+zce:GradeA a zce:GradeThreshold ;
+    rdfs:label "Grade A"@en ;
+    zce:gradeLabel "A" ;
+    zce:gradeName "Excellent" ;
+    zce:minPercentage "90"^^xsd:integer .
+
+zce:GradeAMinus a zce:GradeThreshold ;
+    rdfs:label "Grade A-"@en ;
+    zce:gradeLabel "A-" ;
+    zce:gradeName "Excellent" ;
+    zce:minPercentage "85"^^xsd:integer .
+
+zce:GradeBPlus a zce:GradeThreshold ;
+    rdfs:label "Grade B+"@en ;
+    zce:gradeLabel "B+" ;
+    zce:gradeName "Strong" ;
+    zce:minPercentage "80"^^xsd:integer .
+
+zce:GradeB a zce:GradeThreshold ;
+    rdfs:label "Grade B"@en ;
+    zce:gradeLabel "B" ;
+    zce:gradeName "Strong" ;
+    zce:minPercentage "75"^^xsd:integer .
+
+zce:GradeBMinus a zce:GradeThreshold ;
+    rdfs:label "Grade B-"@en ;
+    zce:gradeLabel "B-" ;
+    zce:gradeName "Strong" ;
+    zce:minPercentage "70"^^xsd:integer .
+
+zce:GradeCPlus a zce:GradeThreshold ;
+    rdfs:label "Grade C+"@en ;
+    zce:gradeLabel "C+" ;
+    zce:gradeName "Satisfactory" ;
+    zce:minPercentage "65"^^xsd:integer .
+
+zce:GradeC a zce:GradeThreshold ;
+    rdfs:label "Grade C"@en ;
+    zce:gradeLabel "C" ;
+    zce:gradeName "Satisfactory" ;
+    zce:minPercentage "60"^^xsd:integer .
+
+zce:GradeCMinus a zce:GradeThreshold ;
+    rdfs:label "Grade C-"@en ;
+    zce:gradeLabel "C-" ;
+    zce:gradeName "Satisfactory" ;
+    zce:minPercentage "55"^^xsd:integer .
+
+zce:GradeDPlus a zce:GradeThreshold ;
+    rdfs:label "Grade D+"@en ;
+    zce:gradeLabel "D+" ;
+    zce:gradeName "Needs Improvement" ;
+    zce:minPercentage "50"^^xsd:integer .
+
+zce:GradeD a zce:GradeThreshold ;
+    rdfs:label "Grade D"@en ;
+    zce:gradeLabel "D" ;
+    zce:gradeName "Needs Improvement" ;
+    zce:minPercentage "45"^^xsd:integer .
+
+zce:GradeDMinus a zce:GradeThreshold ;
+    rdfs:label "Grade D-"@en ;
+    zce:gradeLabel "D-" ;
+    zce:gradeName "Needs Improvement" ;
+    zce:minPercentage "40"^^xsd:integer .
+
+zce:GradeF a zce:GradeThreshold ;
+    rdfs:label "Grade F"@en ;
+    zce:gradeLabel "F" ;
+    zce:gradeName "Insufficient" ;
+    zce:minPercentage "0"^^xsd:integer .

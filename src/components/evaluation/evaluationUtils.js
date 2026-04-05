@@ -11,13 +11,25 @@ export function maxTotalScore(rubric = RUBRIC) {
 }
 
 export function computeTotals(criteria, rubric = RUBRIC) {
-  const total = rubric.reduce((sum, c) => {
-    const min = c.min ?? 1
-    const max = c.max ?? 10
-    const v = Number(criteria?.[c.id]?.score ?? min)
-    return sum + clampScore(v, min, max)
+  const applicableCriteria = rubric.filter((c) => {
+    const v = criteria?.[c.id]
+    return (
+      v?.applicable !== false &&
+      v?.score !== null &&
+      v?.score !== undefined
+    )
+  })
+
+  if (applicableCriteria.length === 0) {
+    return { total: 0, max: 0, percentage: 0 }
+  }
+
+  const total = applicableCriteria.reduce((sum, c) => {
+    const v = Number(criteria?.[c.id]?.score ?? 0)
+    return sum + clampScore(v, 0, c.max ?? 20)
   }, 0)
-  const max = maxTotalScore(rubric)
+
+  const max = applicableCriteria.reduce((sum, c) => sum + (c.max ?? 20), 0)
   const percentage = max ? (total / max) * 100 : 0
   return { total, max, percentage }
 }

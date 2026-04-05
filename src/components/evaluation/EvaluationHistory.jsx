@@ -1,7 +1,9 @@
-import { formatEvalDate, letterGrade } from './evaluationUtils.js'
+import { formatEvalDate } from './evaluationUtils.js'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 
-export function EvaluationHistory({ items, onSelect }) {
+const DEFAULT_GRADE = { label: 'F', name: 'Insufficient' }
+
+export function EvaluationHistory({ items, onSelect, resolveGrade }) {
   const { t, locale } = useLanguage()
 
   return (
@@ -22,7 +24,9 @@ export function EvaluationHistory({ items, onSelect }) {
           <ul className="divide-y divide-[rgb(var(--zc-border))]">
             {items.map((e) => {
               const pct = Math.round(e.percentage ?? 0)
-              const grade = letterGrade(e.percentage ?? 0)
+              const g = resolveGrade
+                ? resolveGrade(e.percentage ?? 0)
+                : DEFAULT_GRADE
               return (
                 <li
                   key={e.id}
@@ -43,7 +47,7 @@ export function EvaluationHistory({ items, onSelect }) {
                     className="inline-flex items-center gap-2 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-1.5 text-xs font-medium text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-panel)/0.7)]"
                   >
                     <span className="rounded-md bg-[rgb(var(--zc-bg)/0.4)] px-2 py-1 text-[11px] font-semibold text-[rgb(var(--zc-text))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
-                      {grade}
+                      {g.label}
                     </span>
                     {t('eval_view')}
                   </button>
