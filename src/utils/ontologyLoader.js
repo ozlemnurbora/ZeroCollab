@@ -3,34 +3,52 @@ export async function loadEvaluationCriteria() {
     const response = await fetch('/ontology/zerocollab-evaluation.ttl')
     const text = await response.text()
     const criteria = []
-    const individualBlocks = text.split('\n\n').filter((block) =>
-      block.includes('a zce:RubricCriterion'),
-    )
-    for (const block of individualBlocks) {
+
+    // Find all RubricCriterion individuals by looking for the pattern
+    const lines = text.split('\n')
+    let currentBlock = []
+    let inCriterion = false
+
+    for (const line of lines) {
+      if (line.includes('a zce:RubricCriterion')) {
+        inCriterion = true
+        currentBlock = [line]
+      } else if (inCriterion) {
+        currentBlock.push(line)
+        // End of block when we hit a line with just a dot or empty line after content
+        if (line.trim() === '.' || (line.trim() === '' && currentBlock.length > 3)) {
+          const block = currentBlock.join('\n')
+          const key = extractLiteral(block, 'zce:criterionKey')
+          const label = extractLiteral(block, 'zce:criterionLabel')
+          const description = extractLiteral(block, 'zce:criterionDescription')
+          const minScore = parseInt(extractLiteral(block, 'zce:minScore') || '1')
+          const maxScore = parseInt(extractLiteral(block, 'zce:maxScore') || '20')
+          const order = parseInt(extractLiteral(block, 'zce:order') || '99')
+          if (key && label) {
+            criteria.push({ id: key, label, description, min: minScore, max: maxScore, order })
+          }
+          currentBlock = []
+          inCriterion = false
+        }
+      }
+    }
+
+    // Also try the last block if file doesn't end with empty line
+    if (inCriterion && currentBlock.length > 0) {
+      const block = currentBlock.join('\n')
       const key = extractLiteral(block, 'zce:criterionKey')
       const label = extractLiteral(block, 'zce:criterionLabel')
       const description = extractLiteral(block, 'zce:criterionDescription')
-      const minScore = parseInt(
-        extractLiteral(block, 'zce:minScore') || '1',
-        10,
-      )
-      const maxScore = parseInt(
-        extractLiteral(block, 'zce:maxScore') || '20',
-        10,
-      )
-      const order = parseInt(extractLiteral(block, 'zce:order') || '99', 10)
+      const minScore = parseInt(extractLiteral(block, 'zce:minScore') || '1')
+      const maxScore = parseInt(extractLiteral(block, 'zce:maxScore') || '20')
+      const order = parseInt(extractLiteral(block, 'zce:order') || '99')
       if (key && label) {
-        criteria.push({
-          id: key,
-          label,
-          description: description || '',
-          min: Number.isNaN(minScore) ? 1 : minScore,
-          max: Number.isNaN(maxScore) ? 20 : maxScore,
-          order: Number.isNaN(order) ? 99 : order,
-        })
+        criteria.push({ id: key, label, description, min: minScore, max: maxScore, order })
       }
     }
+
     criteria.sort((a, b) => a.order - b.order)
+    console.log('[ontologyLoader] loaded criteria:', criteria.length, criteria.map(c => c.id))
     return criteria.length > 0 ? criteria : null
   } catch (err) {
     console.error('[ontologyLoader] failed to load TTL:', err)
@@ -39,16 +57,14 @@ export async function loadEvaluationCriteria() {
 }
 
 function extractLiteral(block, predicate) {
-  const escaped = predicate.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const patterns = [
-    new RegExp(`${escaped}\\s+"([^"]+)"(?:\\s*;|\\s*\\.)?`),
-    new RegExp(`${escaped}\\s+"([^"]+)"\\s*\\^\\^`),
+    new RegExp(`${predicate}\\s+"([^"]+)"(?:\\s*;|\\s*\\.)?`),
+    new RegExp(`${predicate}\\s+"([^"]+)"\\s*\\^\\^`),
+    new RegExp(`${predicate}\\s+"([^"]*)"\\s*`),
   ]
   for (const pattern of patterns) {
     const match = block.match(pattern)
     if (match) return match[1].trim()
   }
-  const num = block.match(new RegExp(`${escaped}\\s+(\\d+)(?:\\s*;|\\s*\\.)?`))
-  if (num) return num[1].trim()
   return null
 }

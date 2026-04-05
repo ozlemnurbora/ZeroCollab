@@ -33,10 +33,53 @@ function criteriaStateFromRubric(rubric) {
   }, {})
 }
 
+/** Merge AI JSON `criteria` object into previous criterion state (scores + feedback). */
+function applyAiCriteriaDelta(prev, parsedCriteria, rubricRef) {
+  const next = { ...prev }
+  if (!parsedCriteria || typeof parsedCriteria !== 'object') return next
+
+  for (const [aiKey, val] of Object.entries(parsedCriteria)) {
+    if (!val || typeof val !== 'object') continue
+
+    const applyToKey = (targetKey) => {
+      if (!next[targetKey] || !prev[targetKey]) return
+      const crit = rubricRef.find((c) => c.id === targetKey)
+      const min = crit?.min ?? 1
+      const max = crit?.max ?? 20
+      next[targetKey] = {
+        score: clampScore(
+          val.suggestedScore ?? prev[targetKey].score,
+          min,
+          max,
+        ),
+        comments: val.feedback ?? prev[targetKey].comments,
+      }
+    }
+
+    if (next[aiKey]) {
+      applyToKey(aiKey)
+      continue
+    }
+    const matchedKey = Object.keys(next).find(
+      (k) =>
+        k.toLowerCase().includes(aiKey.toLowerCase()) ||
+        aiKey.toLowerCase().includes(k.toLowerCase()) ||
+        k.toLowerCase().replace(/_/g, '') ===
+          aiKey.toLowerCase().replace(/_/g, ''),
+    )
+    if (matchedKey) applyToKey(matchedKey)
+  }
+  return next
+}
+
 export function EvaluationPage() {
   const { t } = useLanguage()
   const [rubric, setRubric] = useState(RUBRIC)
   const [criteria, setCriteria] = useState(() => criteriaStateFromRubric(RUBRIC))
+  /** Scores shown in summary: defaults until AI evaluation completes, then last AI scores only. */
+  const [displayCriteria, setDisplayCriteria] = useState(() =>
+    criteriaStateFromRubric(RUBRIC),
+  )
   const [isLoadingRubric, setIsLoadingRubric] = useState(true)
   const [isEvaluating, setIsEvaluating] = useState(false)
   const [apiKey, setApiKey] = useState(() =>
@@ -64,10 +107,26 @@ export function EvaluationPage() {
 
   useEffect(() => {
     loadEvaluationCriteria().then((criteriaFromOntology) => {
-      if (criteriaFromOntology && criteriaFromOntology.length > 0) {
-        setRubric(criteriaFromOntology)
-        setCriteria(criteriaStateFromRubric(criteriaFromOntology))
-      }
+      const fromOntology =
+        Array.isArray(criteriaFromOntology) && criteriaFromOntology.length > 0
+      const effective = fromOntology ? criteriaFromOntology : RUBRIC
+      const source = fromOntology
+        ? 'ontology (/ontology/zerocollab-evaluation.ttl)'
+        : criteriaFromOntology == null
+          ? 'fallback: loadEvaluationCriteria() returned null or failed'
+          : 'fallback: empty criteria array — using RUBRIC constant'
+
+      // eslint-disable-next-line no-console
+      console.log('[Evaluation] Rubric loaded:', {
+        source,
+        count: effective.length,
+        criteria: effective,
+      })
+
+      setRubric(effective)
+      const initial = criteriaStateFromRubric(effective)
+      setCriteria(initial)
+      setDisplayCriteria(initial)
       setIsLoadingRubric(false)
     })
   }, [])
@@ -92,7 +151,15 @@ export function EvaluationPage() {
     }
   }, [])
 
-  const totals = useMemo(() => computeTotals(criteria, rubric), [criteria, rubric])
+  const summaryTotals = useMemo(
+    () => computeTotals(displayCriteria, rubric),
+    [displayCriteria, rubric],
+  )
+
+  const snapshotTotals = useMemo(
+    () => computeTotals(criteria, rubric),
+    [criteria, rubric],
+  )
 
   const saveCurrent = () => {
     const createdAt = Date.now()
@@ -108,7 +175,7 @@ export function EvaluationPage() {
         }
         return acc
       }, {}),
-      ...totals,
+      ...snapshotTotals,
     }
 
     setHistory((prev) => [snapshot, ...prev])
@@ -200,41 +267,8 @@ Respond in this exact JSON format with no markdown or code blocks:
       const parsed = JSON.parse(clean)
 
       if (parsed.criteria) {
-        setCriteria((prev) => {
-          const next = { ...prev }
-          for (const [aiKey, val] of Object.entries(parsed.criteria)) {
-            if (!val || typeof val !== 'object') continue
-
-            const applyToKey = (targetKey) => {
-              if (!next[targetKey] || !prev[targetKey]) return
-              const crit = rubric.find((c) => c.id === targetKey)
-              const min = crit?.min ?? 1
-              const max = crit?.max ?? 20
-              next[targetKey] = {
-                score: clampScore(
-                  val.suggestedScore ?? prev[targetKey].score,
-                  min,
-                  max,
-                ),
-                comments: val.feedback ?? prev[targetKey].comments,
-              }
-            }
-
-            if (next[aiKey]) {
-              applyToKey(aiKey)
-              continue
-            }
-            const matchedKey = Object.keys(next).find(
-              (k) =>
-                k.toLowerCase().includes(aiKey.toLowerCase()) ||
-                aiKey.toLowerCase().includes(k.toLowerCase()) ||
-                k.toLowerCase().replace(/_/g, '') ===
-                  aiKey.toLowerCase().replace(/_/g, ''),
-            )
-            if (matchedKey) applyToKey(matchedKey)
-          }
-          return next
-        })
+        setCriteria((prev) => applyAiCriteriaDelta(prev, parsed.criteria, rubric))
+        setDisplayCriteria((prev) => applyAiCriteriaDelta(prev, parsed.criteria, rubric))
       }
       if (parsed?.overallFeedback) {
         alert(parsed.overallFeedback)
@@ -265,9 +299,9 @@ Respond in this exact JSON format with no markdown or code blocks:
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="space-y-6">
           <EvaluationSummary
-            total={totals.total}
-            max={totals.max}
-            percentage={totals.percentage}
+            total={summaryTotals.total}
+            max={summaryTotals.max}
+            percentage={summaryTotals.percentage}
           />
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -277,6 +311,9 @@ Respond in this exact JSON format with no markdown or code blocks:
               </h2>
               <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
                 {t('eval_rubric_sub')}
+              </p>
+              <p className="mt-2 text-xs text-[rgb(var(--zc-muted))]">
+                {t('eval_scores_ai_hint')}
               </p>
             </div>
             <div className="flex items-center gap-2">

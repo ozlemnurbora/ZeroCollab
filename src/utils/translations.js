@@ -192,6 +192,9 @@ export const TRANSLATIONS = {
     // Evaluation
     eval_rubric: 'Rubric',
     eval_rubric_sub: 'Provide scores and written feedback for each criterion.',
+    eval_scores_ai_hint:
+      "Scores are automatically assigned by AI evaluation. Click 'Evaluate with AI' to get scores.",
+    eval_set_by_ai: 'Set by AI',
     eval_ai: 'Evaluate with AI',
     eval_ai_loading: 'Evaluating...',
     eval_api_key_title: 'API Key',
@@ -490,6 +493,9 @@ export const TRANSLATIONS = {
 
     eval_rubric: 'Rubrik',
     eval_rubric_sub: 'Her ölçüt için puan ve yazılı geri bildirim verin.',
+    eval_scores_ai_hint:
+      'Puanlar yapay zeka değerlendirmesiyle otomatik atanır. Puan almak için «Yapay zeka ile değerlendir»e tıklayın.',
+    eval_set_by_ai: 'Yapay zeka tarafından',
     eval_ai: 'Yapay zeka ile değerlendir',
     eval_ai_loading: 'Değerlendiriliyor...',
     eval_api_key_title: 'API Anahtarı',

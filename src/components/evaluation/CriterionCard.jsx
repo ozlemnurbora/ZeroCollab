@@ -9,6 +9,7 @@ export function CriterionCard({ criterion, value, onChange }) {
   const comments = value?.comments ?? ''
   const label = criterion.label ?? t(`rubric_${criterion.id}`)
   const description = criterion.description
+  const clamped = clampScore(score, min, max)
 
   return (
     <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
@@ -24,23 +25,21 @@ export function CriterionCard({ criterion, value, onChange }) {
 
       <div className="px-4 py-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="flex-1">
+          <div className="flex-1 opacity-60">
             <input
               type="range"
               min={min}
               max={max}
-              value={clampScore(score, min, max)}
-              onChange={(e) =>
-                onChange?.({
-                  score: clampScore(e.target.value, min, max),
-                  comments,
-                })
-              }
-              className="w-full accent-indigo-500"
+              value={clamped}
+              disabled
+              readOnly
+              aria-readonly="true"
+              tabIndex={-1}
+              className="w-full cursor-not-allowed accent-indigo-500"
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <label className="text-xs font-medium text-[rgb(var(--zc-muted2))]">
               {t('eval_score_label')}
             </label>
@@ -48,16 +47,17 @@ export function CriterionCard({ criterion, value, onChange }) {
               type="number"
               min={min}
               max={max}
-              value={clampScore(score, min, max)}
-              onChange={(e) =>
-                onChange?.({
-                  score: clampScore(e.target.value, min, max),
-                  comments,
-                })
-              }
-              className="h-9 w-20 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+              value={clamped}
+              disabled
+              readOnly
+              aria-readonly="true"
+              tabIndex={-1}
+              className="h-9 w-20 cursor-not-allowed rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] opacity-70"
             />
             <span className="text-xs text-[rgb(var(--zc-subtle))]">/ {max}</span>
+            <span className="text-[11px] font-medium text-[rgb(var(--zc-muted))]">
+              {t('eval_set_by_ai')}
+            </span>
           </div>
         </div>
 
@@ -69,7 +69,7 @@ export function CriterionCard({ criterion, value, onChange }) {
             value={comments}
             onChange={(e) =>
               onChange?.({
-                score: clampScore(score, min, max),
+                score: clamped,
                 comments: e.target.value,
               })
             }
