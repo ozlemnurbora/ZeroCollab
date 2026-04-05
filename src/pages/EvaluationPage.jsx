@@ -11,6 +11,9 @@ import {
 } from '../components/evaluation/evaluationStorage.js'
 import { clampScore, computeTotals } from '../components/evaluation/evaluationUtils.js'
 import { useLanguage } from '../utils/LanguageContext.jsx'
+import { loadEvaluationCriteria } from '../utils/ontologyLoader.js'
+
+const ANTHROPIC_API_KEY_STORAGE = 'zc-anthropic-key'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -18,29 +21,56 @@ function createId() {
   return `eval_${Date.now()}_${Math.random().toString(16).slice(2)}`
 }
 
-function defaultCriteriaState() {
-  return RUBRIC.reduce((acc, c) => {
-    acc[c.id] = { score: 7, comments: '' }
+function criteriaStateFromRubric(rubric) {
+  return rubric.reduce((acc, c) => {
+    const min = c.min ?? 1
+    const max = c.max ?? 20
+    acc[c.id] = {
+      score: clampScore(7, min, max),
+      comments: '',
+    }
     return acc
   }, {})
 }
 
 export function EvaluationPage() {
   const { t } = useLanguage()
-  const [criteria, setCriteria] = useState(() => defaultCriteriaState())
+  const [rubric, setRubric] = useState(RUBRIC)
+  const [criteria, setCriteria] = useState(() => criteriaStateFromRubric(RUBRIC))
+  const [isLoadingRubric, setIsLoadingRubric] = useState(true)
+  const [isEvaluating, setIsEvaluating] = useState(false)
+  const [apiKey, setApiKey] = useState(() =>
+    typeof localStorage !== 'undefined'
+      ? localStorage.getItem(ANTHROPIC_API_KEY_STORAGE) || ''
+      : '',
+  )
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false)
   const [history, setHistory] = useState([])
   const [isLoadingHistory, setIsLoadingHistory] = useState(true)
   const [hasLoadedHistory, setHasLoadedHistory] = useState(false)
   const [selectedHistory, setSelectedHistory] = useState(null)
 
-  const rubricWithLabels = useMemo(
-    () =>
-      RUBRIC.map((c) => ({
+  const rubricWithLabels = useMemo(() => {
+    return rubric.map((c) => {
+      const tk = `rubric_${c.id}`
+      const tr = t(tk)
+      const translated = tr !== tk ? tr : null
+      return {
         ...c,
-        label: t(`rubric_${c.id}`),
-      })),
-    [t],
-  )
+        label: translated ?? c.label,
+      }
+    })
+  }, [rubric, t])
+
+  useEffect(() => {
+    loadEvaluationCriteria().then((criteriaFromOntology) => {
+      if (criteriaFromOntology && criteriaFromOntology.length > 0) {
+        setRubric(criteriaFromOntology)
+        setCriteria(criteriaStateFromRubric(criteriaFromOntology))
+      }
+      setIsLoadingRubric(false)
+    })
+  }, [])
 
   useEffect(() => {
     if (!hasLoadedHistory) return
@@ -62,16 +92,18 @@ export function EvaluationPage() {
     }
   }, [])
 
-  const totals = useMemo(() => computeTotals(criteria), [criteria])
+  const totals = useMemo(() => computeTotals(criteria, rubric), [criteria, rubric])
 
   const saveCurrent = () => {
     const createdAt = Date.now()
     const snapshot = {
       id: createId(),
       createdAt,
-      criteria: RUBRIC.reduce((acc, c) => {
+      criteria: rubric.reduce((acc, c) => {
+        const min = c.min ?? 1
+        const max = c.max ?? 20
         acc[c.id] = {
-          score: clampScore(criteria[c.id]?.score ?? 1, 1, c.max ?? 10),
+          score: clampScore(criteria[c.id]?.score ?? min, min, max),
           comments: criteria[c.id]?.comments ?? '',
         }
         return acc
@@ -80,6 +112,139 @@ export function EvaluationPage() {
     }
 
     setHistory((prev) => [snapshot, ...prev])
+  }
+
+  const runAiEvaluation = async () => {
+    const key =
+      typeof localStorage !== 'undefined'
+        ? localStorage.getItem(ANTHROPIC_API_KEY_STORAGE)
+        : null
+    if (!key) {
+      setShowApiKeyModal(true)
+      return
+    }
+    setIsEvaluating(true)
+    try {
+      const criteriaText = rubric
+        .map(
+          (c) =>
+            `- ${c.label} (${c.min ?? 1}-${c.max ?? 20} points): ${c.description || ''}`,
+        )
+        .join('\n')
+
+      const scoresText = rubric
+        .map((c) => {
+          const max = c.max ?? 20
+          return `- ${c.label}: ${criteria[c.id]?.score ?? c.min ?? 1}/${max} — "${criteria[c.id]?.comments || 'No feedback yet'}"`
+        })
+        .join('\n')
+
+      const response = await fetch(
+        'https://api.anthropic.com/v1/messages',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': key,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+          },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 1500,
+            messages: [
+              {
+                role: 'user',
+                content: `You are an expert software engineering professor evaluating a capstone project called ZeroCollab — a P2P Project Management PWA built with React, WebRTC/PeerJS, IndexedDB, and OWL ontologies.
+
+Evaluation criteria (from ontology):
+${criteriaText}
+
+Current scores and feedback:
+${scoresText}
+
+For each criterion:
+1. Validate or adjust the score if needed
+2. Write specific, evidence-based feedback (2-3 sentences)
+3. Give one concrete improvement suggestion
+
+IMPORTANT: Use exactly these criterion keys: ${rubric.map((c) => c.id).join(', ')}
+
+Respond in this exact JSON format with no markdown or code blocks:
+{
+  "criteria": {
+    "criterion_key": {
+      "suggestedScore": number,
+      "feedback": "string"
+    }
+  },
+  "overallFeedback": "string"
+}`,
+              },
+            ],
+          }),
+        },
+      )
+
+      const data = await response.json()
+      console.log('[Evaluation] Anthropic response:', data)
+
+      if (!response.ok) {
+        throw new Error(`API error ${response.status}: ${JSON.stringify(data)}`)
+      }
+
+      const text = data.content?.[0]?.text || ''
+      if (!text) throw new Error('Empty response from AI')
+
+      const clean = text.replace(/```json|```/g, '').trim()
+      const parsed = JSON.parse(clean)
+
+      if (parsed.criteria) {
+        setCriteria((prev) => {
+          const next = { ...prev }
+          for (const [aiKey, val] of Object.entries(parsed.criteria)) {
+            if (!val || typeof val !== 'object') continue
+
+            const applyToKey = (targetKey) => {
+              if (!next[targetKey] || !prev[targetKey]) return
+              const crit = rubric.find((c) => c.id === targetKey)
+              const min = crit?.min ?? 1
+              const max = crit?.max ?? 20
+              next[targetKey] = {
+                score: clampScore(
+                  val.suggestedScore ?? prev[targetKey].score,
+                  min,
+                  max,
+                ),
+                comments: val.feedback ?? prev[targetKey].comments,
+              }
+            }
+
+            if (next[aiKey]) {
+              applyToKey(aiKey)
+              continue
+            }
+            const matchedKey = Object.keys(next).find(
+              (k) =>
+                k.toLowerCase().includes(aiKey.toLowerCase()) ||
+                aiKey.toLowerCase().includes(k.toLowerCase()) ||
+                k.toLowerCase().replace(/_/g, '') ===
+                  aiKey.toLowerCase().replace(/_/g, ''),
+            )
+            if (matchedKey) applyToKey(matchedKey)
+          }
+          return next
+        })
+      }
+      if (parsed?.overallFeedback) {
+        alert(parsed.overallFeedback)
+      }
+    } catch (err) {
+      console.error('[Evaluation] Full error:', err)
+      alert(`AI evaluation failed: ${err.message}`)
+    } finally {
+      setIsEvaluating(false)
+    }
   }
 
   return (
@@ -117,26 +282,35 @@ export function EvaluationPage() {
             <div className="flex items-center gap-2">
               <Button
                 variant="secondary"
-                onClick={() => alert(t('eval_ai_alert'))}
+                onClick={runAiEvaluation}
+                disabled={isEvaluating || isLoadingRubric}
               >
-                {t('eval_ai')}
+                {isEvaluating ? t('eval_ai_loading') : t('eval_ai')}
               </Button>
-              <Button onClick={saveCurrent}>{t('eval_save')}</Button>
+              <Button onClick={saveCurrent} disabled={isLoadingRubric}>
+                {t('eval_save')}
+              </Button>
             </div>
           </div>
 
-          <div className="grid gap-4">
-            {rubricWithLabels.map((criterion) => (
-              <CriterionCard
-                key={criterion.id}
-                criterion={criterion}
-                value={criteria[criterion.id]}
-                onChange={(next) =>
-                  setCriteria((prev) => ({ ...prev, [criterion.id]: next }))
-                }
-              />
-            ))}
-          </div>
+          {isLoadingRubric ? (
+            <div className="rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
+              {t('loading_rubric')}
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {rubricWithLabels.map((criterion) => (
+                <CriterionCard
+                  key={criterion.id}
+                  criterion={criterion}
+                  value={criteria[criterion.id]}
+                  onChange={(next) =>
+                    setCriteria((prev) => ({ ...prev, [criterion.id]: next }))
+                  }
+                />
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="space-y-6">
@@ -205,6 +379,42 @@ export function EvaluationPage() {
             </div>
           </div>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={showApiKeyModal}
+        onClose={() => setShowApiKeyModal(false)}
+        title={t('eval_api_key_title')}
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="secondary" onClick={() => setShowApiKeyModal(false)}>
+              {t('btn_cancel')}
+            </Button>
+            <Button
+              onClick={() => {
+                if (typeof localStorage !== 'undefined') {
+                  localStorage.setItem(ANTHROPIC_API_KEY_STORAGE, apiKey)
+                }
+                setShowApiKeyModal(false)
+              }}
+            >
+              {t('btn_save')}
+            </Button>
+          </div>
+        }
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-[rgb(var(--zc-muted))]">
+            Enter your Anthropic API key. Get one at console.anthropic.com
+          </p>
+          <input
+            type="password"
+            className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            placeholder="sk-ant-..."
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+          />
+        </div>
       </Modal>
     </section>
   )

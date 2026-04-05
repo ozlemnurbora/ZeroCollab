@@ -6,16 +6,18 @@ export function clampScore(value, min = 1, max = 20) {
   return Math.min(max, Math.max(min, Math.round(n)))
 }
 
-export function maxTotalScore() {
-  return RUBRIC.reduce((sum, c) => sum + (c.max ?? 10), 0)
+export function maxTotalScore(rubric = RUBRIC) {
+  return rubric.reduce((sum, c) => sum + (c.max ?? 10), 0)
 }
 
-export function computeTotals(criteria) {
-  const total = RUBRIC.reduce((sum, c) => {
-    const v = Number(criteria?.[c.id]?.score ?? 1)
-    return sum + clampScore(v, 1, c.max ?? 10)
+export function computeTotals(criteria, rubric = RUBRIC) {
+  const total = rubric.reduce((sum, c) => {
+    const min = c.min ?? 1
+    const max = c.max ?? 10
+    const v = Number(criteria?.[c.id]?.score ?? min)
+    return sum + clampScore(v, min, max)
   }, 0)
-  const max = maxTotalScore()
+  const max = maxTotalScore(rubric)
   const percentage = max ? (total / max) * 100 : 0
   return { total, max, percentage }
 }

@@ -1,0 +1,159 @@
+@prefix : <http://zerocollab.dev/ontology/evaluation#> .
+@prefix zce: <http://zerocollab.dev/ontology/evaluation#> .
+@prefix ztq: <http://zt4swe.dev/ontology/quality#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+# ─────────────────────────────────────────────
+# Ontology Header
+# ─────────────────────────────────────────────
+<http://zerocollab.dev/ontology/evaluation> a owl:Ontology ;
+    rdfs:label "ZeroCollab Evaluation Ontology"@en ;
+    dcterms:title "ZeroCollab Project Evaluation Ontology"@en ;
+    dcterms:description "Defines rubric criteria for AI-assisted evaluation of the ZeroCollab P2P Project Management capstone project. Criteria are loaded dynamically at runtime so that changing this ontology updates the evaluation page automatically."@en ;
+    dcterms:creator "ZeroCollab Team — Özlem Nur Bora, Songül Nur Öztürk, Nisanur Karataş"@en ;
+    dcterms:created "2026-04-05"^^xsd:date ;
+    owl:versionInfo "1.0.0" .
+
+# ─────────────────────────────────────────────
+# Core Classes
+# ─────────────────────────────────────────────
+
+zce:EvaluationRubric a owl:Class ;
+    rdfs:label "Evaluation Rubric"@en ;
+    skos:definition "A structured set of criteria used to assess a software project deliverable."@en .
+
+zce:RubricCriterion a owl:Class ;
+    rdfs:label "Rubric Criterion"@en ;
+    skos:definition "A single measurable dimension within an evaluation rubric, carrying a label, description, minimum score, maximum score, and weight."@en .
+
+zce:Score a owl:Class ;
+    rdfs:label "Score"@en ;
+    skos:definition "A numeric value assigned to a criterion during an evaluation session."@en .
+
+zce:EvaluationSession a owl:Class ;
+    rdfs:label "Evaluation Session"@en ;
+    skos:definition "A single run of the rubric-based evaluation, capturing all criterion scores and AI-generated feedback."@en .
+
+# ─────────────────────────────────────────────
+# Properties
+# ─────────────────────────────────────────────
+
+zce:hasCriterion a owl:ObjectProperty ;
+    rdfs:label "has criterion"@en ;
+    rdfs:domain zce:EvaluationRubric ;
+    rdfs:range zce:RubricCriterion ;
+    skos:definition "Links a rubric to its constituent criteria."@en .
+
+zce:criterionKey a owl:DatatypeProperty ;
+    rdfs:label "criterion key"@en ;
+    rdfs:domain zce:RubricCriterion ;
+    rdfs:range xsd:string ;
+    skos:definition "Machine-readable identifier used by the application to reference this criterion (e.g. 'code_quality')."@en .
+
+zce:criterionLabel a owl:DatatypeProperty ;
+    rdfs:label "criterion label"@en ;
+    rdfs:domain zce:RubricCriterion ;
+    rdfs:range xsd:string ;
+    skos:definition "Human-readable display name shown in the evaluation UI."@en .
+
+zce:criterionDescription a owl:DatatypeProperty ;
+    rdfs:label "criterion description"@en ;
+    rdfs:domain zce:RubricCriterion ;
+    rdfs:range xsd:string ;
+    skos:definition "Detailed explanation of what this criterion measures and how it should be assessed."@en .
+
+zce:minScore a owl:DatatypeProperty ;
+    rdfs:label "min score"@en ;
+    rdfs:domain zce:RubricCriterion ;
+    rdfs:range xsd:integer ;
+    skos:definition "Minimum allowable score for this criterion."@en .
+
+zce:maxScore a owl:DatatypeProperty ;
+    rdfs:label "max score"@en ;
+    rdfs:domain zce:RubricCriterion ;
+    rdfs:range xsd:integer ;
+    skos:definition "Maximum allowable score for this criterion."@en .
+
+zce:weight a owl:DatatypeProperty ;
+    rdfs:label "weight"@en ;
+    rdfs:domain zce:RubricCriterion ;
+    rdfs:range xsd:decimal ;
+    skos:definition "Relative weight of this criterion in the overall score calculation (0.0–1.0, all weights must sum to 1.0)."@en .
+
+zce:order a owl:DatatypeProperty ;
+    rdfs:label "display order"@en ;
+    rdfs:domain zce:RubricCriterion ;
+    rdfs:range xsd:integer ;
+    skos:definition "Integer defining the display order of this criterion in the UI (ascending)."@en .
+
+# ─────────────────────────────────────────────
+# Rubric Individual
+# ─────────────────────────────────────────────
+
+zce:ZeroCollabRubric a zce:EvaluationRubric ;
+    rdfs:label "ZeroCollab Capstone Rubric"@en ;
+    skos:definition "Official rubric for evaluating the ZeroCollab P2P Project Management and Assessment Tool capstone project."@en ;
+    zce:hasCriterion zce:CodeQuality ;
+    zce:hasCriterion zce:Documentation ;
+    zce:hasCriterion zce:Functionality ;
+    zce:hasCriterion zce:UIUXDesign ;
+    zce:hasCriterion zce:P2PImplementation .
+
+# ─────────────────────────────────────────────
+# Criterion Individuals
+# ─────────────────────────────────────────────
+
+zce:CodeQuality a zce:RubricCriterion ;
+    rdfs:label "Code Quality"@en ;
+    zce:criterionKey "code_quality" ;
+    zce:criterionLabel "Code Quality" ;
+    zce:criterionDescription "Evaluates readability, modularity, naming conventions, absence of code smells, and adherence to React/JavaScript best practices. Considers component structure, hook usage, and separation of concerns." ;
+    zce:minScore 1 ;
+    zce:maxScore 20 ;
+    zce:weight "0.20"^^xsd:decimal ;
+    zce:order 1 .
+
+zce:Documentation a zce:RubricCriterion ;
+    rdfs:label "Documentation"@en ;
+    zce:criterionKey "documentation" ;
+    zce:criterionLabel "Documentation" ;
+    zce:criterionDescription "Assesses the quality and completeness of code comments, README files, ontology annotations (rdfs:label, skos:definition), and any technical documentation accompanying the project." ;
+    zce:minScore 1 ;
+    zce:maxScore 20 ;
+    zce:weight "0.20"^^xsd:decimal ;
+    zce:order 2 .
+
+zce:Functionality a zce:RubricCriterion ;
+    rdfs:label "Functionality"@en ;
+    zce:criterionKey "functionality" ;
+    zce:criterionLabel "Functionality" ;
+    zce:criterionDescription "Measures whether all specified features work correctly: task management, calendar, P2P chat, real-time sync, LLM-assisted evaluation, and token economics. Considers edge cases and error handling." ;
+    zce:minScore 1 ;
+    zce:maxScore 20 ;
+    zce:weight "0.20"^^xsd:decimal ;
+    zce:order 3 .
+
+zce:UIUXDesign a zce:RubricCriterion ;
+    rdfs:label "UI/UX Design"@en ;
+    zce:criterionKey "uiux_design" ;
+    zce:criterionLabel "UI/UX Design" ;
+    zce:criterionDescription "Evaluates the visual design, responsiveness, accessibility, consistency of the interface, dark/light theme support, and overall user experience across Dashboard, Tasks, Calendar, Chat, and Evaluation pages." ;
+    zce:minScore 1 ;
+    zce:maxScore 20 ;
+    zce:weight "0.20"^^xsd:decimal ;
+    zce:order 4 .
+
+zce:P2PImplementation a zce:RubricCriterion ;
+    rdfs:label "P2P Implementation"@en ;
+    zce:criterionKey "p2p_implementation" ;
+    zce:criterionLabel "P2P Implementation" ;
+    zce:criterionDescription "Specifically assesses the WebRTC/PeerJS implementation: connection stability, TURN server integration, multi-peer support, real-time task synchronisation, offline-first IndexedDB persistence, and PWA compliance." ;
+    zce:minScore 1 ;
+    zce:maxScore 20 ;
+    zce:weight "0.20"^^xsd:decimal ;
+    zce:order 5 .

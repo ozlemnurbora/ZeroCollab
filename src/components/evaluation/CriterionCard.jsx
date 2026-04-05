@@ -3,17 +3,22 @@ import { useLanguage } from '../../utils/LanguageContext.jsx'
 
 export function CriterionCard({ criterion, value, onChange }) {
   const { t } = useLanguage()
-  const score = value?.score ?? 14
-  const comments = value?.comments ?? ''
+  const min = criterion.min ?? 1
   const max = criterion.max ?? 10
+  const score = value?.score ?? Math.round((min + max) / 2)
+  const comments = value?.comments ?? ''
   const label = criterion.label ?? t(`rubric_${criterion.id}`)
+  const description = criterion.description
 
   return (
     <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
       <header className="border-b border-[rgb(var(--zc-border))] px-4 py-3">
         <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">{label}</h3>
+        {description ? (
+          <p className="mt-1 text-xs text-[rgb(var(--zc-muted))]">{description}</p>
+        ) : null}
         <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-          {t('eval_score_range', { max })}
+          {t('eval_score_range', { min, max })}
         </p>
       </header>
 
@@ -22,12 +27,12 @@ export function CriterionCard({ criterion, value, onChange }) {
           <div className="flex-1">
             <input
               type="range"
-              min={1}
+              min={min}
               max={max}
-              value={score}
+              value={clampScore(score, min, max)}
               onChange={(e) =>
                 onChange?.({
-                  score: clampScore(e.target.value, 1, max),
+                  score: clampScore(e.target.value, min, max),
                   comments,
                 })
               }
@@ -41,12 +46,12 @@ export function CriterionCard({ criterion, value, onChange }) {
             </label>
             <input
               type="number"
-              min={1}
+              min={min}
               max={max}
-              value={score}
+              value={clampScore(score, min, max)}
               onChange={(e) =>
                 onChange?.({
-                  score: clampScore(e.target.value, 1, max),
+                  score: clampScore(e.target.value, min, max),
                   comments,
                 })
               }
@@ -64,7 +69,7 @@ export function CriterionCard({ criterion, value, onChange }) {
             value={comments}
             onChange={(e) =>
               onChange?.({
-                score: clampScore(score, 1, max),
+                score: clampScore(score, min, max),
                 comments: e.target.value,
               })
             }
