@@ -2,7 +2,14 @@ import { Button } from '../ui/Button.jsx'
 import { statusColorClasses } from './taskIndicators.js'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 
-export function DayTasksModal({ open, onClose, isoDate, tasks, onAdd }) {
+export function DayTasksModal({
+  open,
+  onClose,
+  isoDate,
+  tasks,
+  onAdd,
+  onTaskClick,
+}) {
   const { t } = useLanguage()
   const title = isoDate
     ? t('day_modal_title', { date: isoDate })
@@ -41,26 +48,35 @@ export function DayTasksModal({ open, onClose, isoDate, tasks, onAdd }) {
         {tasks?.length ? (
           <ul className="divide-y divide-[rgb(var(--zc-border))]">
             {tasks.map((task) => (
-              <li key={task.id} className="flex items-center justify-between gap-4 py-3">
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
-                    {task.title}
-                  </p>
-                  <p className="mt-1 text-xs text-[rgb(var(--zc-muted2))]">
-                    {task.assignee
-                      ? `${t('task_assignee')}: ${task.assignee}`
-                      : t('dash_unassigned')}
-                  </p>
-                </div>
-                <span className="flex shrink-0 items-center gap-2">
-                  <span
-                    className={['h-2 w-2 rounded-full', statusColorClasses(task.status)].join(' ')}
-                    aria-hidden="true"
-                  />
-                  <span className="text-xs text-[rgb(var(--zc-muted))]">
-                    {statusLabel(task.status)}
+              <li key={task.id} className="py-1.5">
+                <button
+                  type="button"
+                  onClick={() => onTaskClick?.(task)}
+                  className="flex w-full items-center justify-between gap-4 rounded-lg px-2 py-2 text-left transition hover:bg-[rgb(var(--zc-border)/0.35)]"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
+                      {task.title}
+                    </p>
+                    <p className="mt-1 text-xs text-[rgb(var(--zc-muted2))]">
+                      {task.assignee
+                        ? `${t('task_assignee')}: ${task.assignee}`
+                        : t('dash_unassigned')}
+                    </p>
+                  </div>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span
+                      className={[
+                        'h-2 w-2 rounded-full',
+                        statusColorClasses(task.status),
+                      ].join(' ')}
+                      aria-hidden="true"
+                    />
+                    <span className="text-xs text-[rgb(var(--zc-muted))]">
+                      {statusLabel(task.status)}
+                    </span>
                   </span>
-                </span>
+                </button>
               </li>
             ))}
           </ul>

@@ -1,7 +1,20 @@
 import { formatDueDate, isOverdue } from './dateUtils.js'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 
-export function TaskCard({ task, onDragStart, isDragging, onDelete }) {
+function truncate(text, n) {
+  const s = String(text || '')
+  if (!s) return ''
+  return s.length > n ? `${s.slice(0, n)}…` : s
+}
+
+export function TaskCard({
+  task,
+  onDragStart,
+  isDragging,
+  onDelete,
+  onClick,
+  onEdit,
+}) {
   const { t, locale } = useLanguage()
   const overdue = isOverdue(task.dueDate)
   const dueLabel = formatDueDate(task.dueDate, locale)
@@ -16,25 +29,56 @@ export function TaskCard({ task, onDragStart, isDragging, onDelete }) {
       ].join(' ')}
       draggable
       onDragStart={(e) => onDragStart?.(e, task.id)}
+      onClick={() => onClick?.(task)}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={(e) => {
+        if (!onClick) return
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault()
+          onClick?.(task)
+        }
+      }}
     >
       <div className="min-w-0">
         <div className="flex items-start justify-between gap-2">
           <p className="min-w-0 truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
             {task.title}
           </p>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation()
-              onDelete?.(task.id)
-            }}
-            onMouseDown={(e) => e.stopPropagation()}
-            className="ml-2 shrink-0 rounded p-1 text-rose-400 opacity-0 transition-opacity hover:bg-rose-500/20 hover:text-rose-300 group-hover:opacity-100"
-            aria-label={t('task_delete')}
-          >
-            ✕
-          </button>
+          <span className="ml-2 flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onEdit?.(task)
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="rounded p-1 text-[rgb(var(--zc-muted2))] hover:bg-[rgb(var(--zc-border)/0.5)] hover:text-[rgb(var(--zc-text))]"
+              aria-label={t('task_edit')}
+              title={t('task_edit')}
+            >
+              ✎
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                onDelete?.(task.id)
+              }}
+              onMouseDown={(e) => e.stopPropagation()}
+              className="rounded p-1 text-rose-400 hover:bg-rose-500/20 hover:text-rose-300"
+              aria-label={t('task_delete')}
+              title={t('task_delete')}
+            >
+              ✕
+            </button>
+          </span>
         </div>
+        {task.description ? (
+          <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+            {truncate(task.description, 60)}
+          </p>
+        ) : null}
         <p className="mt-1 text-xs text-[rgb(var(--zc-muted))]">
           <span className="text-[rgb(var(--zc-muted2))]">{t('task_assignee')}:</span>{' '}
           {task.assignee}
@@ -57,6 +101,12 @@ export function TaskCard({ task, onDragStart, isDragging, onDelete }) {
           {t('task_drag')}
         </span>
       </div>
+
+      {task.startDate ? (
+        <p className="mt-2 text-[11px] text-[rgb(var(--zc-subtle))]">
+          {t('task_start_prefix')} {formatDueDate(task.startDate, locale)}
+        </p>
+      ) : null}
     </div>
   )
 }

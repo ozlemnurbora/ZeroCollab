@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { MonthlyCalendar } from '../components/calendar/MonthlyCalendar.jsx'
 import { DayTasksModal } from '../components/calendar/DayTasksModal.jsx'
 import { AddTaskModal } from '../components/kanban/AddTaskModal.jsx'
+import { TaskDetailModal } from '../components/kanban/TaskDetailModal.jsx'
 import { loadTasks, saveTasks } from '../components/kanban/taskStorage.js'
 import {
   addDaysCalendar,
@@ -11,6 +12,7 @@ import {
 import { getCurrentUser } from '../components/settings/settingsStorage.js'
 import { Button } from '../components/ui/Button.jsx'
 import { useLanguage } from '../utils/LanguageContext.jsx'
+import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { on, sendToAllPeers, P2P_EVENTS } from '../utils/p2pManager.js'
 import { mergeTasksFromSync, tasksForP2PBroadcast } from '../utils/taskP2PSync.js'
 
@@ -36,6 +38,7 @@ const CALENDAR_COLORS = [
 
 export function CalendarPage() {
   const { t } = useLanguage()
+  const { activeProject } = useWorkspace()
   const [tasks, setTasks] = useState([])
   const [currentUserName, setCurrentUserName] = useState('')
   const [activeCalendar, setActiveCalendar] = useState('general')
@@ -49,6 +52,8 @@ export function CalendarPage() {
   const [selectedISODate, setSelectedISODate] = useState(() => toISODate(new Date()))
   const [isDayOpen, setIsDayOpen] = useState(false)
   const [isAddOpen, setIsAddOpen] = useState(false)
+  const [selectedTask, setSelectedTask] = useState(null)
+  const [detailInitialEdit, setDetailInitialEdit] = useState(false)
   const [syncNotice, setSyncNotice] = useState(false)
   const [customCalendars, setCustomCalendars] = useState(() => {
     try {
@@ -66,6 +71,12 @@ export function CalendarPage() {
   useEffect(() => {
     tasksRef.current = tasks
   }, [tasks])
+
+  useEffect(() => {
+    if (!selectedTask) return
+    const latest = tasks.find((t) => t.id === selectedTask.id)
+    if (latest) setSelectedTask(latest)
+  }, [tasks, selectedTask])
 
   useEffect(() => {
     if (typeof localStorage === 'undefined') return
@@ -172,9 +183,29 @@ export function CalendarPage() {
     const map = new Map()
     for (const task of filteredTasks) {
       if (!task.dueDate) continue
-      const list = map.get(task.dueDate) ?? []
-      list.push(task)
-      map.set(task.dueDate, list)
+      const startISO = task.startDate || task.dueDate
+      const endISO = task.dueDate
+      const start = new Date(startISO + 'T00:00:00')
+      const end = new Date(endISO + 'T00:00:00')
+      if (start > end) {
+        const list = map.get(endISO) ?? []
+        list.push(task)
+        map.set(endISO, list)
+        continue
+      }
+      const cur = new Date(start)
+      while (cur <= end) {
+        const y = cur.getFullYear()
+        const m = String(cur.getMonth() + 1).padStart(2, '0')
+        const d = String(cur.getDate()).padStart(2, '0')
+        const iso = `${y}-${m}-${d}`
+        const list = map.get(iso) ?? []
+        if (!list.some((t) => t.id === task.id)) {
+          list.push(task)
+          map.set(iso, list)
+        }
+        cur.setDate(cur.getDate() + 1)
+      }
     }
     for (const [, list] of map.entries()) {
       list.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
@@ -243,11 +274,37 @@ export function CalendarPage() {
     })
   }
 
+  const updateTask = (taskId, updates) => {
+    setTasks((prev) => {
+      const next = prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
+      broadcastTasks(next)
+      return next
+    })
+  }
+
+  const deleteTask = (taskId) => {
+    setTasks((prev) => {
+      const next = prev.filter((t) => t.id !== taskId)
+      broadcastTasks(next)
+      return next
+    })
+  }
+
   return (
     <section>
       <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
         {t('page_calendar_title')}
       </h1>
+      {activeProject ? (
+        <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
+          <span
+            className={`h-2 w-2 rounded-full ${activeProject.color}`}
+          />
+          <span className="text-xs font-medium text-indigo-300">
+            {activeProject.name}
+          </span>
+        </div>
+      ) : null}
       <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
         {t('page_calendar_subtitle')}
       </p>
@@ -426,6 +483,10 @@ export function CalendarPage() {
         isoDate={selectedISODate}
         tasks={selectedTasks}
         onAdd={() => setIsAddOpen(true)}
+        onTaskClick={(task) => {
+          setSelectedTask(task)
+          setDetailInitialEdit(false)
+        }}
       />
 
       <AddTaskModal
@@ -439,6 +500,20 @@ export function CalendarPage() {
             : activeCalendar,
           calendarId: activeCalendar,
         }}
+        customCalendars={customCalendars}
+      />
+
+      <TaskDetailModal
+        open={!!selectedTask}
+        onClose={() => setSelectedTask(null)}
+        task={selectedTask}
+        onUpdate={updateTask}
+        onDelete={(id) => {
+          deleteTask(id)
+          setSelectedTask(null)
+        }}
+        customCalendars={customCalendars}
+        initialEdit={detailInitialEdit}
       />
     </section>
   )

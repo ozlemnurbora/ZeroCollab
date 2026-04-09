@@ -4,6 +4,7 @@ import { KANBAN_COLUMNS } from './kanbanConstants.js'
 import { loadTasks, saveTasks } from './taskStorage.js'
 import { Button } from '../ui/Button.jsx'
 import { KanbanColumn } from './KanbanColumn.jsx'
+import { TaskDetailModal } from './TaskDetailModal.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 import { on, sendToAllPeers, P2P_EVENTS } from '../../utils/p2pManager.js'
 import { mergeTasksFromSync, tasksForP2PBroadcast } from '../../utils/taskP2PSync.js'
@@ -20,14 +21,33 @@ export function KanbanBoard() {
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
   const [hasLoadedTasks, setHasLoadedTasks] = useState(false)
   const [isAddOpen, setIsAddOpen] = useState(false)
+  const [selectedTask, setSelectedTask] = useState(null)
+  const [detailInitialEdit, setDetailInitialEdit] = useState(false)
   const [draggingTaskId, setDraggingTaskId] = useState(null)
   const [dropTargetColumnId, setDropTargetColumnId] = useState(null)
   const [syncNotice, setSyncNotice] = useState(false)
+  const [customCalendars] = useState(() => {
+    try {
+      if (typeof localStorage === 'undefined') return []
+      const parsed = JSON.parse(
+        localStorage.getItem('zc-custom-calendars') || '[]',
+      )
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  })
   const tasksRef = useRef(tasks)
 
   useEffect(() => {
     tasksRef.current = tasks
   }, [tasks])
+
+  useEffect(() => {
+    if (!selectedTask) return
+    const latest = tasks.find((t) => t.id === selectedTask.id)
+    if (latest) setSelectedTask(latest)
+  }, [tasks, selectedTask])
 
   const broadcastTasks = useCallback((updatedTasks) => {
     const generalTasks = tasksForP2PBroadcast(updatedTasks)
@@ -141,6 +161,14 @@ export function KanbanBoard() {
     })
   }
 
+  const updateTask = (taskId, updates) => {
+    setTasks((prev) => {
+      const next = prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
+      broadcastTasks(next)
+      return next
+    })
+  }
+
   const deleteTask = (taskId) => {
     setTasks((prev) => {
       const next = prev.filter((t) => t.id !== taskId)
@@ -197,7 +225,18 @@ export function KanbanBoard() {
               column={column}
               tasks={tasksByColumn.get(column.id) ?? []}
               onDropTask={moveTask}
-              onDeleteTask={deleteTask}
+              onDeleteTask={(id) => {
+                deleteTask(id)
+                if (selectedTask?.id === id) setSelectedTask(null)
+              }}
+              onClickTask={(task) => {
+                setSelectedTask(task)
+                setDetailInitialEdit(false)
+              }}
+              onEditTask={(task) => {
+                setSelectedTask(task)
+                setDetailInitialEdit(true)
+              }}
               draggingTaskId={draggingTaskId}
               setDraggingTaskId={setDraggingTaskId}
               isDropTarget={dropTargetColumnId === column.id}
@@ -212,6 +251,20 @@ export function KanbanBoard() {
         open={isAddOpen}
         onClose={() => setIsAddOpen(false)}
         onCreate={createTask}
+        customCalendars={customCalendars}
+      />
+
+      <TaskDetailModal
+        open={!!selectedTask}
+        onClose={() => setSelectedTask(null)}
+        task={selectedTask}
+        onUpdate={updateTask}
+        onDelete={(id) => {
+          deleteTask(id)
+          setSelectedTask(null)
+        }}
+        customCalendars={customCalendars}
+        initialEdit={detailInitialEdit}
       />
     </div>
   )

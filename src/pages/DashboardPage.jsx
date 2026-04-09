@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { ASSIGNEES } from '../components/kanban/kanbanConstants.js'
 import { loadTasks } from '../components/kanban/taskStorage.js'
 import { useLanguage } from '../utils/LanguageContext.jsx'
+import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import {
   Line,
   LineChart,
@@ -25,6 +26,7 @@ function statusPieColor(id) {
 
 export function DashboardPage() {
   const { t } = useLanguage()
+  const { activeProject } = useWorkspace()
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
 
@@ -134,6 +136,17 @@ export function DashboardPage() {
       <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
         {t('page_dashboard_title')}
       </h1>
+
+      {activeProject ? (
+        <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
+          <span
+            className={`h-2 w-2 rounded-full ${activeProject.color}`}
+          />
+          <span className="text-xs font-medium text-indigo-300">
+            {activeProject.name}
+          </span>
+        </div>
+      ) : null}
 
       <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
         {t('page_dashboard_subtitle')}

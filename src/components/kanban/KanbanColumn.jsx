@@ -5,6 +5,8 @@ export function KanbanColumn({
   tasks,
   onDropTask,
   onDeleteTask,
+  onClickTask,
+  onEditTask,
   draggingTaskId,
   setDraggingTaskId,
   isDropTarget,
@@ -52,6 +54,8 @@ export function KanbanColumn({
             key={task.id}
             task={task}
             onDelete={onDeleteTask}
+            onClick={onClickTask}
+            onEdit={onEditTask}
             isDragging={draggingTaskId === task.id}
             onDragStart={(e, id) => {
               setDraggingTaskId?.(id)
