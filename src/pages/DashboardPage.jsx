@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ASSIGNEES } from '../components/kanban/kanbanConstants.js'
 import { loadTasks } from '../components/kanban/taskStorage.js'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
@@ -26,7 +25,7 @@ function statusPieColor(id) {
 
 export function DashboardPage() {
   const { t } = useLanguage()
-  const { activeProject } = useWorkspace()
+  const { activeProject, teams } = useWorkspace()
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
 
@@ -51,6 +50,32 @@ export function DashboardPage() {
     )
   }, [tasks, activeProject])
 
+  const projectMembers = useMemo(() => {
+    if (!activeProject || !teams || teams.length === 0) {
+      const assignees = new Set()
+      tasks.forEach((task) => {
+        if (task.assignee) assignees.add(task.assignee)
+      })
+      return Array.from(assignees)
+    }
+
+    const projectTeamIds = activeProject.teamIds || []
+    const projectTeams = teams.filter((team) => projectTeamIds.includes(team.id))
+
+    const members = new Set()
+    projectTeams.forEach((team) => {
+      ;(team.members || []).forEach((member) => members.add(member))
+    })
+
+    if (members.size === 0) {
+      tasks.forEach((task) => {
+        if (task.assignee) members.add(task.assignee)
+      })
+    }
+
+    return Array.from(members)
+  }, [activeProject, teams, tasks])
+
   const stats = useMemo(() => {
     const total = visibleTasks.length
     const inProgress = visibleTasks.filter((task) => task.status === 'in_progress').length
@@ -60,7 +85,7 @@ export function DashboardPage() {
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
       .slice(0, 5)
 
-    const workload = ASSIGNEES.map((name) => ({
+    const workload = projectMembers.map((name) => ({
       name,
       count: visibleTasks.filter((task) => task.assignee === name).length,
     }))
@@ -136,7 +161,7 @@ export function DashboardPage() {
       weeklyActivity,
       progressPct,
     }
-  }, [visibleTasks, t])
+  }, [visibleTasks, t, projectMembers])
 
   return (
     <section>
@@ -183,8 +208,8 @@ export function DashboardPage() {
         />
         <SummaryCard
           title={t('dash_team_members')}
-          value={ASSIGNEES.length}
-          helper={ASSIGNEES.join(', ')}
+          value={projectMembers.length}
+          helper={projectMembers.join(', ') || t('dash_no_members')}
         />
       </div>
 

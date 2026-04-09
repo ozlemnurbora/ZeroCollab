@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react'
-import { CHAT_USERS } from './chatConstants.js'
 import { formatTimestamp, formatTimestampLong } from './timeUtils.js'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 
@@ -10,13 +9,20 @@ function initials(name) {
 }
 
 function avatarColor(name) {
-  const idx = Math.max(0, CHAT_USERS.indexOf(name))
   const colors = [
     'bg-indigo-500/30 text-indigo-200 ring-indigo-500/30',
     'bg-emerald-500/20 text-emerald-200 ring-emerald-500/30',
     'bg-rose-500/20 text-rose-200 ring-rose-500/30',
+    'bg-amber-500/20 text-amber-200 ring-amber-500/30',
+    'bg-cyan-500/20 text-cyan-200 ring-cyan-500/30',
+    'bg-violet-500/20 text-violet-200 ring-violet-500/30',
   ]
-  return colors[idx] ?? colors[0]
+  const s = String(name || '')
+  let h = 0
+  for (let i = 0; i < s.length; i++) {
+    h = (h * 31 + s.charCodeAt(i)) >>> 0
+  }
+  return colors[h % colors.length]
 }
 
 export function MessageList({

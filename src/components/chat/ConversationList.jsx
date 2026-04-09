@@ -1,18 +1,19 @@
-import { CHAT_CHANNELS } from './chatConstants.js'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 
 function iconFor(item) {
   return item.type === 'dm' ? '•' : '#'
 }
 
-export function ConversationList({ activeId, onSelect }) {
+export function ConversationList({ conversations = [], activeId, onSelect }) {
   const { t } = useLanguage()
-  const channels = CHAT_CHANNELS.filter((c) => c.type === 'channel')
-  const dms = CHAT_CHANNELS.filter((c) => c.type === 'dm')
+  const channels = conversations.filter((c) => c.type === 'channel')
+  const dms = conversations.filter((c) => c.type === 'dm')
 
-  const labelFor = (id) => {
-    const key = `channel_${id.replace(/:/g, '_')}`
-    return t(key)
+  const labelFor = (c) => {
+    if (c?.name) return c.name
+    const key = `channel_${String(c.id).replace(/:/g, '_')}`
+    const tr = t(key)
+    return tr !== key ? tr : c.id
   }
 
   return (
@@ -28,27 +29,39 @@ export function ConversationList({ activeId, onSelect }) {
 
       <div className="h-[calc(100%-56px)] overflow-y-auto px-2 py-2">
         <Section title={t('chat_section_channels')}>
-          {channels.map((c) => (
-            <Item
-              key={c.id}
-              label={labelFor(c.id)}
-              active={c.id === activeId}
-              onClick={() => onSelect?.(c.id)}
-              icon={iconFor(c)}
-            />
-          ))}
+          {channels.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-[rgb(var(--zc-muted2))]">
+              {t('chat_no_channels')}
+            </p>
+          ) : (
+            channels.map((c) => (
+              <Item
+                key={c.id}
+                label={labelFor(c)}
+                active={c.id === activeId}
+                onClick={() => onSelect?.(c.id)}
+                icon={iconFor(c)}
+              />
+            ))
+          )}
         </Section>
 
         <Section title={t('chat_section_dms')}>
-          {dms.map((c) => (
-            <Item
-              key={c.id}
-              label={labelFor(c.id)}
-              active={c.id === activeId}
-              onClick={() => onSelect?.(c.id)}
-              icon={iconFor(c)}
-            />
-          ))}
+          {dms.length === 0 ? (
+            <p className="px-3 py-2 text-xs text-[rgb(var(--zc-muted2))]">
+              {t('chat_no_dms')}
+            </p>
+          ) : (
+            dms.map((c) => (
+              <Item
+                key={c.id}
+                label={labelFor(c)}
+                active={c.id === activeId}
+                onClick={() => onSelect?.(c.id)}
+                icon={iconFor(c)}
+              />
+            ))
+          )}
         </Section>
       </div>
     </aside>

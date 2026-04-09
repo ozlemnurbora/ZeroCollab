@@ -2,16 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { ConversationList } from './ConversationList.jsx'
 import { MessageList } from './MessageList.jsx'
 import { MessageComposer } from './MessageComposer.jsx'
-import { CHAT_CHANNELS, CHAT_USERS } from './chatConstants.js'
+import { DEFAULT_CHANNELS } from './chatConstants.js'
 import {
   loadActiveChannelId,
-  loadChatUser,
   loadMessages,
   saveActiveChannelId,
-  saveChatUser,
   saveMessages,
 } from './chatStorage.js'
-import { loadSettings } from '../settings/settingsStorage.js'
+import { loadSettings, saveSettings } from '../settings/settingsStorage.js'
+import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import {
   P2P_EVENTS,
   P2P_STATUS,
@@ -36,12 +35,73 @@ function createId() {
 
 export function ChatShell() {
   const { t } = useLanguage()
+  const { activeProject, teams } = useWorkspace()
+
+  const dynamicChannels = useMemo(() => {
+    const channels = [...DEFAULT_CHANNELS]
+
+    if (activeProject && activeProject.teamIds && activeProject.teamIds.length > 0) {
+      const projectTeams = (teams || []).filter((team) =>
+        activeProject.teamIds.includes(team.id),
+      )
+      projectTeams.forEach((team) => {
+        channels.push({
+          id: `team:${team.id}`,
+          type: 'channel',
+          name: team.name,
+          teamId: team.id,
+        })
+      })
+    } else if (!activeProject) {
+      ;(teams || []).forEach((team) => {
+        channels.push({
+          id: `team:${team.id}`,
+          type: 'channel',
+          name: team.name,
+          teamId: team.id,
+        })
+      })
+    }
+
+    return channels
+  }, [teams, activeProject])
+
+  const dmList = useMemo(() => {
+    if (!activeProject || !teams) return []
+    const projectTeamIds = activeProject.teamIds || []
+    const projectTeams = teams.filter((team) => projectTeamIds.includes(team.id))
+    const members = new Set()
+    projectTeams.forEach((team) => {
+      ;(team.members || []).forEach((member) => members.add(member))
+    })
+    return Array.from(members).map((member) => ({
+      id: `dm:${member.toLowerCase().replace(/\s+/g, '_')}`,
+      type: 'dm',
+      name: member,
+    }))
+  }, [activeProject, teams])
+
+  const allConversations = useMemo(
+    () => [...dynamicChannels, ...dmList],
+    [dynamicChannels, dmList],
+  )
 
   const channelLabel = (id) => {
-    const key = `channel_${id.replace(/:/g, '_')}`
-    return t(key)
+    const found = allConversations.find((c) => c.id === id)
+    if (found) return found.name
+    return id
   }
-  const [me, setMe] = useState(CHAT_USERS[0])
+
+  const [profileDisplayNameDraft, setProfileDisplayNameDraft] = useState('')
+  const [settingsCurrentUser, setSettingsCurrentUser] = useState('')
+
+  const me = useMemo(() => {
+    const d = profileDisplayNameDraft.trim()
+    if (d) return d
+    const u = (settingsCurrentUser || '').trim()
+    if (u) return u
+    return t('chat_anonymous')
+  }, [profileDisplayNameDraft, settingsCurrentUser, t])
   const [activeId, setActiveId] = useState('general')
   const [messages, setMessages] = useState([])
   const [myAvatarColor, setMyAvatarColor] = useState(null)
@@ -154,11 +214,6 @@ export function ChatShell() {
 
   useEffect(() => {
     if (!hasLoadedChat) return
-    void saveChatUser(me)
-  }, [me])
-
-  useEffect(() => {
-    if (!hasLoadedChat) return
     void saveActiveChannelId(activeId)
   }, [activeId])
 
@@ -171,17 +226,18 @@ export function ChatShell() {
     let cancelled = false
     ;(async () => {
       setIsLoadingChat(true)
-      const [u, ch, msgs, s] = await Promise.all([
-        loadChatUser(),
+      const [ch, msgs, s] = await Promise.all([
         loadActiveChannelId(),
         loadMessages(),
         loadSettings(),
       ])
       if (cancelled) return
-      setMe(u ?? CHAT_USERS[0])
+      const p = s?.profile
+      setProfileDisplayNameDraft(typeof p?.displayName === 'string' ? p.displayName : '')
+      setSettingsCurrentUser(typeof p?.currentUser === 'string' ? p.currentUser : '')
       setActiveId(ch)
       setMessages(Array.isArray(msgs) ? msgs : [])
-      setMyAvatarColor(s?.profile?.avatarColor || null)
+      setMyAvatarColor(p?.avatarColor || null)
       setHasLoadedChat(true)
       setIsLoadingChat(false)
     })()
@@ -362,14 +418,25 @@ export function ChatShell() {
       // For now, only react to settings changes so that local
       // message state is not overridden right after sending.
       if (detail.store === 'settings') {
-        void loadChatUser().then((u) => setMe(u ?? CHAT_USERS[0]))
         void loadActiveChannelId().then(setActiveId)
-        void loadSettings().then((s) => setMyAvatarColor(s?.profile?.avatarColor || null))
+        void loadSettings().then((s) => {
+          const p = s?.profile
+          setProfileDisplayNameDraft(typeof p?.displayName === 'string' ? p.displayName : '')
+          setSettingsCurrentUser(typeof p?.currentUser === 'string' ? p.currentUser : '')
+          setMyAvatarColor(p?.avatarColor || null)
+        })
       }
     }
     window.addEventListener('zerocollab:idb', onDbChange)
     return () => window.removeEventListener('zerocollab:idb', onDbChange)
   }, [])
+
+  useEffect(() => {
+    const ids = new Set(allConversations.map((c) => c.id))
+    if (ids.size > 0 && !ids.has(activeId)) {
+      setActiveId('general')
+    }
+  }, [allConversations, activeId])
 
   const activeMessages = useMemo(
     () => messages.filter((m) => m.channelId === activeId),
@@ -620,6 +687,7 @@ export function ChatShell() {
     <div className="mt-6 grid gap-4 lg:grid-cols-[320px_1fr]">
       <div className="lg:sticky lg:top-6 lg:h-[calc(100vh-11rem)]">
         <ConversationList
+          conversations={allConversations}
           activeId={activeId}
           onSelect={(id) => setActiveId(id)}
         />
@@ -681,21 +749,34 @@ export function ChatShell() {
           </div>
 
           <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-            <div className="flex items-center gap-2">
+            <div className="flex min-w-0 flex-col gap-1 sm:max-w-[220px]">
               <label className="text-xs font-medium text-[rgb(var(--zc-muted2))]">
                 {t('chat_you')}
               </label>
-              <select
-                className="h-9 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                value={me}
-                onChange={(e) => setMe(e.target.value)}
-              >
-                {CHAT_USERS.map((u) => (
-                  <option key={u} value={u}>
-                    {u}
-                  </option>
-                ))}
-              </select>
+              <input
+                type="text"
+                className="h-9 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                placeholder={t('chat_display_name_placeholder')}
+                value={profileDisplayNameDraft}
+                onChange={(e) => setProfileDisplayNameDraft(e.target.value)}
+                onBlur={(e) => {
+                  const v = e.target.value
+                  void (async () => {
+                    const prev = await loadSettings()
+                    const base = prev && typeof prev === 'object' ? prev : {}
+                    await saveSettings({
+                      ...base,
+                      profile: {
+                        ...(base.profile ?? {}),
+                        displayName: v,
+                      },
+                    })
+                  })()
+                }}
+              />
+              <p className="truncate text-[10px] text-[rgb(var(--zc-subtle))]" title={me}>
+                {me}
+              </p>
             </div>
 
             <div className="flex items-center gap-2">
