@@ -20,10 +20,22 @@ export function WorkspaceProvider({ children }) {
       return []
     }
   })
+  const [activeTeam, setActiveTeamState] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('zc-active-team') || 'null')
+    } catch {
+      return null
+    }
+  })
 
   const selectProject = (project) => {
     setActiveProjectState(project)
     setActiveProject(project)
+  }
+
+  const selectTeam = (team) => {
+    setActiveTeamState(team)
+    localStorage.setItem('zc-active-team', JSON.stringify(team))
   }
 
   const updateProjects = (updated) => {
@@ -42,7 +54,9 @@ export function WorkspaceProvider({ children }) {
         projects,
         activeProject,
         teams,
+        activeTeam,
         selectProject,
+        selectTeam,
         updateProjects,
         updateTeams,
       }}

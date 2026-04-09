@@ -12,7 +12,9 @@ export function SidebarLayout() {
     projects,
     activeProject,
     teams,
+    activeTeam,
     selectProject,
+    selectTeam,
     updateProjects,
     updateTeams,
   } = useWorkspace()
@@ -105,12 +107,14 @@ export function SidebarLayout() {
     const updated = teams.filter((t) => t.id !== id)
     updateTeams(updated)
     if (selectedTeam?.id === id) setSelectedTeam(null)
+    if (activeTeam?.id === id) selectTeam(null)
   }
 
   const updateTeam = (updated) => {
     const updatedList = teams.map((t) => (t.id === updated.id ? updated : t))
     updateTeams(updatedList)
     setSelectedTeam((prev) => (prev?.id === updated.id ? updated : prev))
+    if (activeTeam?.id === updated.id) selectTeam(updated)
   }
 
   const navItems = useMemo(
@@ -163,17 +167,14 @@ export function SidebarLayout() {
         </div>
 
         <div className="flex-1 overflow-y-auto py-3">
-          {/* Active Project Badge */}
-          {activeProject ? (
+          {activeProject && (
             <div className="mx-3 mb-3 flex items-center gap-2 rounded-lg bg-[rgb(var(--zc-border)/0.4)] px-3 py-2">
-              <span
-                className={`h-2.5 w-2.5 shrink-0 rounded-full ${activeProject.color}`}
-              />
-              <span className="truncate text-xs font-medium text-[rgb(var(--zc-text))]">
-                {activeProject.name}
-              </span>
+              <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${activeProject.color}`} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-xs font-medium text-[rgb(var(--zc-text))]">{activeProject.name}</p>
+              </div>
             </div>
-          ) : null}
+          )}
 
           {/* Navigation */}
           <nav className="space-y-0.5 px-3">
@@ -212,7 +213,7 @@ export function SidebarLayout() {
                   <div key={project.id} className="group flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={() => setSelectedProject(project)}
+                      onClick={() => selectProject(project)}
                       className={[
                         'flex flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm transition',
                         activeProject?.id === project.id
@@ -220,17 +221,39 @@ export function SidebarLayout() {
                           : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.35)] hover:text-[rgb(var(--zc-text))]',
                       ].join(' ')}
                     >
-                      <span
-                        className={`h-2 w-2 shrink-0 rounded-full ${project.color}`}
-                      />
-                      <span className="truncate text-sm">{project.name}</span>
+                      <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`h-2 w-2 shrink-0 rounded-full ${project.color}`}
+                          />
+                          <span className="truncate text-sm">{project.name}</span>
+                        </div>
+                        {project.teamIds && project.teamIds.length > 0 ? (
+                          <div className="ml-4 mt-0.5 flex flex-wrap gap-1">
+                            {teams
+                              .filter((team) => project.teamIds.includes(team.id))
+                              .map((team) => (
+                                <span
+                                  key={team.id}
+                                  className="inline-flex items-center gap-1 rounded-full bg-[rgb(var(--zc-border)/0.5)] px-1.5 py-0.5 text-[10px] text-[rgb(var(--zc-muted2))]"
+                                >
+                                  <span
+                                    className={`h-1.5 w-1.5 rounded-full ${team.color}`}
+                                  />
+                                  {team.name}
+                                </span>
+                              ))}
+                          </div>
+                        ) : null}
+                      </div>
                     </button>
                     <button
                       type="button"
-                      onClick={() => deleteProject(project.id)}
-                      className="hidden group-hover:flex items-center justify-center w-5 h-5 rounded text-[rgb(var(--zc-subtle))] hover:text-rose-400 hover:bg-rose-500/10 text-xs shrink-0"
+                      onClick={() => setSelectedProject(project)}
+                      className="hidden group-hover:flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs text-[rgb(var(--zc-subtle))] hover:bg-[rgb(var(--zc-border)/0.5)] hover:text-[rgb(var(--zc-text))]"
+                      title="Project settings"
                     >
-                      ✕
+                      ⚙
                     </button>
                   </div>
                 ))}
@@ -306,25 +329,29 @@ export function SidebarLayout() {
               <div className="mt-1 space-y-0.5">
                 {teams.map((team) => (
                   <div key={team.id} className="group flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedTeam(team)}
-                      className="flex flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.35)] hover:text-[rgb(var(--zc-text))] transition"
+                    <div
+                      className={[
+                        'flex flex-1 min-w-0 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm',
+                        activeTeam?.id === team.id
+                          ? 'bg-[rgb(var(--zc-border)/0.5)] text-[rgb(var(--zc-text))] font-medium'
+                          : 'text-[rgb(var(--zc-muted))]',
+                      ].join(' ')}
                     >
                       <span
                         className={`h-2 w-2 shrink-0 rounded-full ${team.color}`}
                       />
                       <span className="truncate text-sm">{team.name}</span>
-                      <span className="ml-auto text-[10px] text-[rgb(var(--zc-subtle))]">
+                      <span className="ml-auto shrink-0 text-[10px] text-[rgb(var(--zc-subtle))]">
                         {team.members?.length || 0} members
                       </span>
-                    </button>
+                    </div>
                     <button
                       type="button"
-                      onClick={() => deleteTeam(team.id)}
-                      className="hidden group-hover:flex items-center justify-center w-5 h-5 rounded text-[rgb(var(--zc-subtle))] hover:text-rose-400 hover:bg-rose-500/10 text-xs shrink-0"
+                      onClick={() => setSelectedTeam(team)}
+                      className="hidden group-hover:flex items-center justify-center w-5 h-5 rounded text-[rgb(var(--zc-subtle))] hover:text-[rgb(var(--zc-text))] hover:bg-[rgb(var(--zc-border)/0.5)] text-xs shrink-0"
+                      title="Team settings"
                     >
-                      ✕
+                      ⚙
                     </button>
                   </div>
                 ))}
@@ -385,23 +412,25 @@ export function SidebarLayout() {
           <p>{t('brand_tagline')}</p>
         </div>
 
-        <ProjectDetailModal
-          open={!!selectedProject}
-          onClose={() => setSelectedProject(null)}
-          project={selectedProject}
-          teams={teams}
-          onUpdate={updateProject}
-          onDelete={deleteProject}
-        />
-
-        <TeamDetailModal
-          open={!!selectedTeam}
-          onClose={() => setSelectedTeam(null)}
-          team={selectedTeam}
-          onUpdate={updateTeam}
-          onDelete={deleteTeam}
-        />
       </aside>
+
+      {/* Modals rendered outside sidebar to prevent position issues */}
+      <ProjectDetailModal
+        open={!!selectedProject}
+        onClose={() => setSelectedProject(null)}
+        project={selectedProject}
+        teams={teams}
+        onUpdate={updateProject}
+        onDelete={deleteProject}
+      />
+
+      <TeamDetailModal
+        open={!!selectedTeam}
+        onClose={() => setSelectedTeam(null)}
+        team={selectedTeam}
+        onUpdate={updateTeam}
+        onDelete={deleteTeam}
+      />
 
       <div className="flex-1 flex flex-col">
         <OfflineBanner />

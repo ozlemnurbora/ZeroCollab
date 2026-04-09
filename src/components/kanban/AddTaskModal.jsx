@@ -10,6 +10,8 @@ const initialForm = {
   startDate: '',
   dueDate: '',
   calendarId: 'personal',
+  projectId: '',
+  teamId: '',
 }
 
 export function AddTaskModal({
@@ -18,6 +20,8 @@ export function AddTaskModal({
   onCreate,
   initialValues,
   customCalendars,
+  activeProject,
+  activeTeam,
 }) {
   const { t } = useLanguage()
   const [form, setForm] = useState(initialForm)
@@ -32,9 +36,11 @@ export function AddTaskModal({
       ...(initialValues ?? {}),
       assignee: initialValues?.assignee ?? initialForm.assignee,
       calendarId,
+      projectId: activeProject?.id || '',
+      teamId: activeTeam?.id || '',
     })
     setTouched(false)
-  }, [open, initialValues])
+  }, [open, initialValues, activeProject, activeTeam])
 
   const errors = useMemo(() => {
     const next = {}
@@ -80,6 +86,8 @@ export function AddTaskModal({
                 dueDate: form.dueDate || '',
                 calendarType,
                 calendarId,
+                projectId: form.projectId || '',
+                teamId: form.teamId || '',
               })
               onClose?.()
             }}
@@ -90,6 +98,21 @@ export function AddTaskModal({
       }
     >
       <div className="grid gap-4">
+        {activeProject && (
+          <div className="flex items-center gap-2 rounded-lg bg-[rgb(var(--zc-border)/0.3)] px-3 py-2 text-xs">
+            <span className={`h-2 w-2 rounded-full ${activeProject.color}`} />
+            <span className="text-[rgb(var(--zc-muted))]">Project: </span>
+            <span className="text-[rgb(var(--zc-text))] font-medium">{activeProject.name}</span>
+            {activeTeam && (
+              <>
+                <span className="text-[rgb(var(--zc-subtle))]">·</span>
+                <span className={`h-2 w-2 rounded-full ${activeTeam.color}`} />
+                <span className="text-[rgb(var(--zc-text))] font-medium">{activeTeam.name}</span>
+              </>
+            )}
+          </div>
+        )}
+
         <div>
           <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
             {t('label_title')}

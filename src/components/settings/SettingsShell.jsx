@@ -7,6 +7,7 @@ import { APP_VERSION, USERS } from './settingsConstants.js'
 import { getOrCreatePeerId, loadSettings, saveSettings } from './settingsStorage.js'
 import { usePwaInstallPrompt } from '../../utils/pwaInstall.js'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
+import { requestNotificationPermission } from '../../utils/taskReminder.js'
 import {
   P2P_EVENTS,
   P2P_STATUS,
@@ -66,6 +67,28 @@ export function SettingsShell() {
   const [p2pStatus, setP2pStatus] = useState(P2P_STATUS.OFFLINE)
   const [connectedPeers, setConnectedPeers] = useState([])
   const { canInstall, isInstalled, promptInstall } = usePwaInstallPrompt()
+  const [browserNotifPermission, setBrowserNotifPermission] = useState(
+    () =>
+      typeof window !== 'undefined' && 'Notification' in window
+        ? Notification.permission
+        : 'unsupported',
+  )
+
+  const refreshBrowserNotifPermission = () => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setBrowserNotifPermission('unsupported')
+      return
+    }
+    setBrowserNotifPermission(Notification.permission)
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) {
+      setBrowserNotifPermission('unsupported')
+      return
+    }
+    setBrowserNotifPermission(Notification.permission)
+  }, [])
 
   useEffect(() => {
     if (!settingsHydrated) return
@@ -245,6 +268,34 @@ export function SettingsShell() {
               </div>
             </div>
 
+            <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
+              <p className="text-sm font-medium text-[rgb(var(--zc-text))]">
+                {t('settings_notifications')}
+              </p>
+              <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                {browserNotifPermission === 'unsupported'
+                  ? t('settings_notif_unsupported')
+                  : browserNotifPermission === 'granted'
+                    ? t('settings_notif_granted')
+                    : browserNotifPermission === 'denied'
+                      ? t('settings_notif_denied')
+                      : t('settings_notif_status_prompt')}
+              </p>
+              {browserNotifPermission === 'default' ? (
+                <div className="mt-3">
+                  <Button
+                    onClick={() => {
+                      void requestNotificationPermission().then(() => {
+                        refreshBrowserNotifPermission()
+                      })
+                    }}
+                  >
+                    {t('settings_notif_enable')}
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+
             <div>
               <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
                 {t('settings_language')}
@@ -271,7 +322,7 @@ export function SettingsShell() {
 
             <div className="grid gap-3">
               <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-                {t('settings_notifications')}
+                {t('settings_notification_prefs')}
               </p>
               <Toggle
                 label={t('settings_notif_tasks')}

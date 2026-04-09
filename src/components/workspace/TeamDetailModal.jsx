@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../ui/Modal.jsx'
 import { Button } from '../ui/Button.jsx'
+import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 
 export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete }) {
+  const { selectTeam } = useWorkspace()
   const [name, setName] = useState(team?.name || '')
   const [members, setMembers] = useState(team?.members || [])
   const [newMember, setNewMember] = useState('')
@@ -52,7 +54,7 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete }) {
           >
             Delete Team
           </Button>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {isEditing ? (
               <>
                 <Button
@@ -69,6 +71,14 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete }) {
               </>
             ) : (
               <>
+                <Button
+                  onClick={() => {
+                    selectTeam(team)
+                    onClose?.()
+                  }}
+                >
+                  Set as Active Team
+                </Button>
                 <Button variant="secondary" onClick={onClose}>
                   Close
                 </Button>

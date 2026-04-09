@@ -6,8 +6,10 @@ import { Button } from '../ui/Button.jsx'
 import { KanbanColumn } from './KanbanColumn.jsx'
 import { TaskDetailModal } from './TaskDetailModal.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
+import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import { on, sendToAllPeers, P2P_EVENTS } from '../../utils/p2pManager.js'
 import { mergeTasksFromSync, tasksForP2PBroadcast } from '../../utils/taskP2PSync.js'
+import { checkTaskReminders, startReminderChecker } from '../../utils/taskReminder.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -17,6 +19,7 @@ function createId() {
 
 export function KanbanBoard() {
   const { t } = useLanguage()
+  const { activeProject, activeTeam } = useWorkspace()
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
   const [hasLoadedTasks, setHasLoadedTasks] = useState(false)
@@ -49,19 +52,29 @@ export function KanbanBoard() {
     if (latest) setSelectedTask(latest)
   }, [tasks, selectedTask])
 
-  const broadcastTasks = useCallback((updatedTasks) => {
-    const generalTasks = tasksForP2PBroadcast(updatedTasks)
-    if (generalTasks.length === 0) return
-    sendToAllPeers({
-      type: 'TASK_SYNC',
-      tasks: generalTasks,
-    })
-  }, [])
+  const broadcastTasks = useCallback(
+    (updatedTasks) => {
+      const generalTasks = tasksForP2PBroadcast(updatedTasks, activeProject)
+      if (generalTasks.length === 0) return
+      sendToAllPeers({
+        type: 'TASK_SYNC',
+        tasks: generalTasks,
+      })
+    },
+    [activeProject],
+  )
 
   useEffect(() => {
     if (!hasLoadedTasks) return
     void saveTasks(tasks)
   }, [tasks, hasLoadedTasks])
+
+  useEffect(() => {
+    if (!hasLoadedTasks) return
+    checkTaskReminders(tasks)
+    const stop = startReminderChecker(() => tasksRef.current)
+    return () => stop()
+  }, [hasLoadedTasks, tasks])
 
   useEffect(() => {
     let cancelled = false
@@ -86,14 +99,18 @@ export function KanbanBoard() {
       // eslint-disable-next-line no-console
       console.log('[KanbanBoard] message received', data)
       if (data?.type !== 'TASK_SYNC') return
-      const incomingGeneralTasks = (data.tasks ?? []).filter(
-        (t) => t && t.calendarType === 'general',
+      const incomingGeneralTasks = (data.tasks ?? []).filter((t) =>
+        t &&
+        t.calendarType === 'general' &&
+        (!activeProject?.id ||
+          !t.projectId ||
+          t.projectId === activeProject.id),
       )
       if (incomingGeneralTasks.length === 0) return
       setSyncNotice(true)
       window.clearTimeout(hideTimer)
       hideTimer = window.setTimeout(() => setSyncNotice(false), 3200)
-      setTasks((prev) => mergeTasksFromSync(prev, data.tasks))
+      setTasks((prev) => mergeTasksFromSync(prev, data.tasks, activeProject))
     })
     const unsubPeer = on(P2P_EVENTS.PEER_CONNECTED, () => {
       // eslint-disable-next-line no-console
@@ -109,7 +126,7 @@ export function KanbanBoard() {
       unsubMsg()
       unsubPeer()
     }
-  }, [broadcastTasks])
+  }, [broadcastTasks, activeProject])
 
   useEffect(() => {
     const onDragEnd = () => {
@@ -120,9 +137,16 @@ export function KanbanBoard() {
     return () => window.removeEventListener('dragend', onDragEnd)
   }, [])
 
+  const filteredTasks = useMemo(() => {
+    if (!activeProject) return tasks
+    return tasks.filter(
+      (t) => t.projectId === activeProject.id || !t.projectId,
+    )
+  }, [tasks, activeProject])
+
   const tasksByColumn = useMemo(() => {
     const map = new Map(KANBAN_COLUMNS.map((c) => [c.id, []]))
-    for (const task of tasks) {
+    for (const task of filteredTasks) {
       const col = map.get(task.status) ?? map.get('todo')
       col.push(task)
     }
@@ -130,7 +154,7 @@ export function KanbanBoard() {
       colTasks.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
     }
     return map
-  }, [tasks])
+  }, [filteredTasks])
 
   const moveTask = (taskId, nextStatus) => {
     setTasks((prev) => {
@@ -153,6 +177,8 @@ export function KanbanBoard() {
           createdAt: now,
           ...payload,
           calendarType,
+          projectId: activeProject?.id || payload.projectId || null,
+          teamId: activeTeam?.id || payload.teamId || null,
         },
         ...prev,
       ]
@@ -177,7 +203,7 @@ export function KanbanBoard() {
     })
   }
 
-  const total = tasks.length
+  const total = filteredTasks.length
 
   const columnsWithTitles = useMemo(
     () =>
@@ -252,6 +278,8 @@ export function KanbanBoard() {
         onClose={() => setIsAddOpen(false)}
         onCreate={createTask}
         customCalendars={customCalendars}
+        activeProject={activeProject}
+        activeTeam={activeTeam}
       />
 
       <TaskDetailModal

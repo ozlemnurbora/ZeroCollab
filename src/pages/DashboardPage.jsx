@@ -44,21 +44,28 @@ export function DashboardPage() {
     }
   }, [])
 
-  const stats = useMemo(() => {
-    const total = tasks.length
-    const inProgress = tasks.filter((task) => task.status === 'in_progress').length
-    const done = tasks.filter((task) => task.status === 'done').length
+  const visibleTasks = useMemo(() => {
+    if (!activeProject) return tasks
+    return tasks.filter(
+      (t) => t.projectId === activeProject.id || !t.projectId,
+    )
+  }, [tasks, activeProject])
 
-    const recent = [...tasks]
+  const stats = useMemo(() => {
+    const total = visibleTasks.length
+    const inProgress = visibleTasks.filter((task) => task.status === 'in_progress').length
+    const done = visibleTasks.filter((task) => task.status === 'done').length
+
+    const recent = [...visibleTasks]
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
       .slice(0, 5)
 
     const workload = ASSIGNEES.map((name) => ({
       name,
-      count: tasks.filter((task) => task.assignee === name).length,
+      count: visibleTasks.filter((task) => task.assignee === name).length,
     }))
 
-    const todo = tasks.filter(
+    const todo = visibleTasks.filter(
       (task) => task.status !== 'in_progress' && task.status !== 'done',
     ).length
 
@@ -76,7 +83,7 @@ export function DashboardPage() {
       completedByDay.set(key, 0)
     }
 
-    for (const task of tasks) {
+    for (const task of visibleTasks) {
       if (task.createdAt) {
         const d = new Date(task.createdAt)
         d.setHours(0, 0, 0, 0)
@@ -129,7 +136,7 @@ export function DashboardPage() {
       weeklyActivity,
       progressPct,
     }
-  }, [tasks, t])
+  }, [visibleTasks, t])
 
   return (
     <section>

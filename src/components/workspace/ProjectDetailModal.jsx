@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Modal } from '../ui/Modal.jsx'
 import { Button } from '../ui/Button.jsx'
+import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 
 export function ProjectDetailModal({
   open,
@@ -10,6 +11,7 @@ export function ProjectDetailModal({
   onUpdate,
   onDelete,
 }) {
+  const { selectProject } = useWorkspace()
   const [name, setName] = useState(project?.name || '')
   const [description, setDescription] = useState(project?.description || '')
   const [selectedTeamIds, setSelectedTeamIds] = useState(
@@ -57,7 +59,7 @@ export function ProjectDetailModal({
           >
             Delete Project
           </Button>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center justify-end gap-2">
             {isEditing ? (
               <>
                 <Button
@@ -75,6 +77,14 @@ export function ProjectDetailModal({
               </>
             ) : (
               <>
+                <Button
+                  onClick={() => {
+                    selectProject(project)
+                    onClose?.()
+                  }}
+                >
+                  Set as Active Project
+                </Button>
                 <Button variant="secondary" onClick={onClose}>
                   Close
                 </Button>

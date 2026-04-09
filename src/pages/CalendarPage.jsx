@@ -9,7 +9,6 @@ import {
   parseISODateLocal,
   toISODate,
 } from '../components/calendar/calendarDateUtils.js'
-import { getCurrentUser } from '../components/settings/settingsStorage.js'
 import { Button } from '../components/ui/Button.jsx'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
@@ -20,11 +19,6 @@ function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
     return crypto.randomUUID()
   return `task_${Date.now()}_${Math.random().toString(16).slice(2)}`
-}
-
-/** Stored tasks without `calendarType` are treated as personal. */
-function taskCalendarType(task) {
-  return task?.calendarType === 'general' ? 'general' : 'personal'
 }
 
 const CALENDAR_COLORS = [
@@ -38,9 +32,8 @@ const CALENDAR_COLORS = [
 
 export function CalendarPage() {
   const { t } = useLanguage()
-  const { activeProject } = useWorkspace()
+  const { activeProject, activeTeam } = useWorkspace()
   const [tasks, setTasks] = useState([])
-  const [currentUserName, setCurrentUserName] = useState('')
   const [activeCalendar, setActiveCalendar] = useState('general')
   const [activeView, setActiveView] = useState('month')
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
@@ -83,18 +76,17 @@ export function CalendarPage() {
     localStorage.setItem('zc-custom-calendars', JSON.stringify(customCalendars))
   }, [customCalendars])
 
-  const broadcastTasks = useCallback((updatedTasks) => {
-    const generalTasks = tasksForP2PBroadcast(updatedTasks)
-    if (generalTasks.length === 0) return
-    sendToAllPeers({
-      type: 'TASK_SYNC',
-      tasks: generalTasks,
-    })
-  }, [])
-
-  useEffect(() => {
-    void getCurrentUser().then(setCurrentUserName)
-  }, [])
+  const broadcastTasks = useCallback(
+    (updatedTasks) => {
+      const generalTasks = tasksForP2PBroadcast(updatedTasks, activeProject)
+      if (generalTasks.length === 0) return
+      sendToAllPeers({
+        type: 'TASK_SYNC',
+        tasks: generalTasks,
+      })
+    },
+    [activeProject],
+  )
 
   useEffect(() => {
     if (!hasLoadedTasks) return
@@ -121,14 +113,18 @@ export function CalendarPage() {
     let peerBroadcastTimer
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
       if (data?.type !== 'TASK_SYNC') return
-      const incomingGeneralTasks = (data.tasks ?? []).filter(
-        (t) => t && t.calendarType === 'general',
+      const incomingGeneralTasks = (data.tasks ?? []).filter((t) =>
+        t &&
+        t.calendarType === 'general' &&
+        (!activeProject?.id ||
+          !t.projectId ||
+          t.projectId === activeProject.id),
       )
       if (incomingGeneralTasks.length === 0) return
       setSyncNotice(true)
       window.clearTimeout(hideTimer)
       hideTimer = window.setTimeout(() => setSyncNotice(false), 3200)
-      setTasks((prev) => mergeTasksFromSync(prev, data.tasks))
+      setTasks((prev) => mergeTasksFromSync(prev, data.tasks, activeProject))
     })
     const unsubPeer = on(P2P_EVENTS.PEER_CONNECTED, () => {
       window.clearTimeout(peerBroadcastTimer)
@@ -142,23 +138,30 @@ export function CalendarPage() {
       unsubMsg()
       unsubPeer()
     }
-  }, [broadcastTasks])
+  }, [broadcastTasks, activeProject])
 
   const filteredTasks = useMemo(() => {
-    const list = Array.isArray(tasks) ? tasks : []
-    if (activeCalendar === 'general') {
-      return list.filter((task) => taskCalendarType(task) === 'general')
-    }
-    if (activeCalendar === 'personal') {
-      const u = currentUserName.trim()
-      if (!u) return []
-      return list.filter(
-        (task) =>
-          taskCalendarType(task) === 'personal' && (task.assignee || '') === u,
+    let list = Array.isArray(tasks) ? tasks : []
+
+    // Filter by active project
+    if (activeProject) {
+      list = list.filter(
+        (t) => t.projectId === activeProject.id || !t.projectId,
       )
     }
+
+    // Filter by calendar selection
+    if (activeCalendar === 'general') {
+      return list.filter((task) => task.calendarType === 'general')
+    }
+
+    if (activeCalendar === 'personal') {
+      return list.filter((task) => task.calendarType !== 'general')
+    }
+
+    // Custom calendar
     return list.filter((task) => task.calendarId === activeCalendar)
-  }, [tasks, activeCalendar, currentUserName, customCalendars])
+  }, [tasks, activeCalendar, activeProject])
 
   const addCalendar = () => {
     const name = newCalendarName.trim()
@@ -263,9 +266,10 @@ export function CalendarPage() {
           id: createId(),
           status: 'todo',
           createdAt: now,
+          projectId: activeProject?.id || null,
+          teamId: activeTeam?.id || null,
           ...payload,
           calendarType,
-          calendarId: activeCalendar,
         },
         ...(Array.isArray(prev) ? prev : []),
       ]
@@ -501,6 +505,8 @@ export function CalendarPage() {
           calendarId: activeCalendar,
         }}
         customCalendars={customCalendars}
+        activeProject={activeProject}
+        activeTeam={activeTeam}
       />
 
       <TaskDetailModal
