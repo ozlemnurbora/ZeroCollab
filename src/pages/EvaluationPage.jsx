@@ -209,15 +209,16 @@ export function EvaluationPage() {
         },
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 2000,
+          max_tokens: 3500,
           messages: [
             {
               role: 'user',
-              content: `You are an expert software engineering professor. 
-          
-You must evaluate the following project using the methodology defined in this ontology:
+              content: `You are an expert software engineering professor evaluating a student project.
 
-=== ONTOLOGY (Evaluation Methodology) ===
+You have access to an evaluation ontology that defines quality dimensions and methodology.
+The ontology dimensions are EXAMPLES and GUIDELINES — not a fixed list.
+
+=== EVALUATION ONTOLOGY ===
 ${ontologyText}
 === END ONTOLOGY ===
 
@@ -225,15 +226,37 @@ ${ontologyText}
 ${projectContext}
 === END PROJECT ===
 
-Follow the ZeroCollabMethodology steps defined in the ontology:
-1. Read the project files carefully
-2. Determine which QualityDimensions from the ontology are applicable
-3. Score each applicable dimension from 1-10 using the scoringGuideline
-4. Normalize to 100: (sum of rawScores / (count * 10)) * 100
-5. Generate specific evidence-based feedback for each dimension
+YOUR TASK:
+1. Read the project files carefully and identify ALL significant technical aspects
+2. For each aspect, determine if it matches a dimension in the ontology OR if it requires a NEW dimension not in the ontology
+3. Use ontology dimensions when they match. CREATE NEW dimensions when the project has important aspects not covered by the ontology
+4. For NEW dimensions you create: assign a weight between 1.0 and 2.0 based on complexity
+5. Score each applicable dimension from 1 to 10 using the scoringGuideline from ontology (or your own judgment for new dimensions)
+6. Calculate normalizedTotal using WEIGHTED formula: (sum of rawScore*weight) / (sum of weights * 10) * 100
+7. Write specific evidence-based feedback for each dimension referencing actual code
 
-Use the ResponseFormatRule JSON format defined in the ontology. 
-Respond with ONLY the JSON, no markdown, no explanation outside JSON.`,
+IMPORTANT RULES:
+- Do NOT skip important project aspects just because they are not in the ontology
+- If you create a new dimension, give it a clear descriptive label
+- Scores must vary based on actual quality — do not give identical scores
+- Always include the weight for each dimension in your response
+
+Respond with ONLY this JSON format, no markdown:
+{
+  "detectedDimensions": ["key1", "key2"],
+  "criteria": {
+    "dimension_key": {
+      "label": "Human readable label",
+      "rawScore": 7,
+      "maxRawScore": 10,
+      "weight": 1.5,
+      "isNewDimension": false,
+      "feedback": "Specific evidence-based feedback."
+    }
+  },
+  "normalizedTotal": 72,
+  "overallFeedback": "3-4 sentence overall assessment."
+}`,
             },
           ],
         }),
@@ -253,6 +276,8 @@ Respond with ONLY the JSON, no markdown, no explanation outside JSON.`,
           label: val.label || key,
           rawScore: val.rawScore || 0,
           maxRawScore: val.maxRawScore || 10,
+          weight: typeof val.weight === 'number' ? val.weight : 1,
+          isNewDimension: Boolean(val.isNewDimension),
           feedback: val.feedback || '',
         }),
       )
@@ -387,13 +412,25 @@ Respond with ONLY the JSON, no markdown, no explanation outside JSON.`,
                   key={criterion.id}
                   className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-4"
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-                      {criterion.label}
-                    </h3>
-                    <span className="rounded-md bg-indigo-500/15 px-3 py-1 text-sm font-medium text-indigo-300">
-                      {criterion.rawScore} / {criterion.maxRawScore}
-                    </span>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">
+                        {criterion.label}
+                      </h3>
+                      {criterion.isNewDimension ? (
+                        <p className="mt-0.5 text-[11px] text-amber-400/90">
+                          New dimension
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <span className="text-[11px] text-[rgb(var(--zc-muted))]">
+                        w={criterion.weight}
+                      </span>
+                      <span className="rounded-md bg-indigo-500/15 px-3 py-1 text-sm font-medium text-indigo-300">
+                        {criterion.rawScore} / {criterion.maxRawScore}
+                      </span>
+                    </div>
                   </div>
                   {criterion.feedback ? (
                     <p className="mt-2 text-sm text-[rgb(var(--zc-muted))]">
@@ -461,26 +498,42 @@ Respond with ONLY the JSON, no markdown, no explanation outside JSON.`,
                   const maxRaw = v?.maxRawScore ?? v?.max ?? 10
                   const feedback = v?.feedback ?? v?.comments ?? ''
                   const applicable = v?.applicable !== false
+                  const weight = v?.weight
+                  const isNew = Boolean(v?.isNewDimension)
                   return (
                     <div
                       key={id}
                       className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] p-3"
                     >
                       <div className="flex items-start justify-between gap-3">
-                        <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-                          {label}
-                        </p>
-                        <span className="rounded-md bg-[rgb(var(--zc-bg)/0.4)] px-2 py-1 text-xs text-[rgb(var(--zc-muted))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
-                          {!applicable ? (
-                            <span className="text-[rgb(var(--zc-subtle))]">
-                              {t('eval_not_applicable')}
+                        <div>
+                          <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
+                            {label}
+                          </p>
+                          {isNew ? (
+                            <p className="mt-0.5 text-[11px] text-amber-400/90">
+                              New dimension
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          {typeof weight === 'number' ? (
+                            <span className="text-[11px] text-[rgb(var(--zc-muted))]">
+                              w={weight}
                             </span>
-                          ) : (
-                            <>
-                              {raw ?? 0} / {maxRaw}
-                            </>
-                          )}
-                        </span>
+                          ) : null}
+                          <span className="rounded-md bg-[rgb(var(--zc-bg)/0.4)] px-2 py-1 text-xs text-[rgb(var(--zc-muted))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
+                            {!applicable ? (
+                              <span className="text-[rgb(var(--zc-subtle))]">
+                                {t('eval_not_applicable')}
+                              </span>
+                            ) : (
+                              <>
+                                {raw ?? 0} / {maxRaw}
+                              </>
+                            )}
+                          </span>
+                        </div>
                       </div>
                       {feedback ? (
                         <p className="mt-2 whitespace-pre-wrap text-sm text-[rgb(var(--zc-muted))]">

@@ -84,9 +84,18 @@ zce:ZeroCollabMethodology a zce:EvaluationMethodology ;
 # Quality Dimension Catalog
 # ─────────────────────────────────────────────
 
+zce:dimensionWeight a owl:DatatypeProperty ;
+    rdfs:label "dimension weight"@en ;
+    rdfs:domain zce:QualityDimension ;
+    rdfs:range xsd:decimal ;
+    skos:definition """Relative importance of this dimension. Used for weighted scoring: 
+    final score = sum(rawScore_i * weight_i) / sum(weight_i) * 10, then normalized to 100. 
+    Higher weight = more impact on final score."""@en .
+
 zce:CodeQualityDimension a zce:QualityDimension ;
     rdfs:label "Code Quality"@en ;
     zce:dimensionKey "code_quality" ;
+    zce:dimensionWeight "1.5"^^xsd:decimal ;
     zce:applicabilityCondition """Applicable to ANY software project that contains source code."""@en ;
     zce:scoringGuideline """Score 1-3: Poor structure, no conventions, many code smells. 
     Score 4-6: Adequate structure, some issues present. 
@@ -96,6 +105,7 @@ zce:CodeQualityDimension a zce:QualityDimension ;
 zce:DocumentationDimension a zce:QualityDimension ;
     rdfs:label "Documentation"@en ;
     zce:dimensionKey "documentation" ;
+    zce:dimensionWeight "1.0"^^xsd:decimal ;
     zce:applicabilityCondition """Applicable to ANY software project."""@en ;
     zce:scoringGuideline """Score 1-3: No documentation or README. 
     Score 4-6: Basic README, minimal comments. 
@@ -105,6 +115,7 @@ zce:DocumentationDimension a zce:QualityDimension ;
 zce:FunctionalityDimension a zce:QualityDimension ;
     rdfs:label "Functionality"@en ;
     zce:dimensionKey "functionality" ;
+    zce:dimensionWeight "2.0"^^xsd:decimal ;
     zce:applicabilityCondition """Applicable to ANY software project."""@en ;
     zce:scoringGuideline """Score 1-3: Core features missing or broken. 
     Score 4-6: Core features work, edge cases fail. 
@@ -114,6 +125,7 @@ zce:FunctionalityDimension a zce:QualityDimension ;
 zce:UIUXDimension a zce:QualityDimension ;
     rdfs:label "UI/UX Design"@en ;
     zce:dimensionKey "uiux_design" ;
+    zce:dimensionWeight "1.0"^^xsd:decimal ;
     zce:applicabilityCondition """Applicable to projects with a user interface (web, mobile, desktop apps)."""@en ;
     zce:scoringGuideline """Score 1-3: Poor or unusable interface. 
     Score 4-6: Functional but poor aesthetics or UX. 
@@ -123,6 +135,7 @@ zce:UIUXDimension a zce:QualityDimension ;
 zce:P2PDimension a zce:QualityDimension ;
     rdfs:label "P2P / Real-time Communication"@en ;
     zce:dimensionKey "p2p_implementation" ;
+    zce:dimensionWeight "2.0"^^xsd:decimal ;
     zce:applicabilityCondition """Applicable ONLY if the project implements peer-to-peer 
     communication, WebRTC, PeerJS, WebSockets for real-time sync, or similar technologies."""@en ;
     zce:scoringGuideline """Score 1-3: P2P attempted but unreliable or broken. 
@@ -133,6 +146,7 @@ zce:P2PDimension a zce:QualityDimension ;
 zce:PWADimension a zce:QualityDimension ;
     rdfs:label "PWA / Offline Capabilities"@en ;
     zce:dimensionKey "pwa_compliance" ;
+    zce:dimensionWeight "1.0"^^xsd:decimal ;
     zce:applicabilityCondition """Applicable ONLY if the project is a Progressive Web App 
     with service workers, offline support, or installability."""@en ;
     zce:scoringGuideline """Score 1-3: PWA attempted but non-functional offline. 
@@ -143,6 +157,7 @@ zce:PWADimension a zce:QualityDimension ;
 zce:OntologyDimension a zce:QualityDimension ;
     rdfs:label "Ontology / Semantic Web"@en ;
     zce:dimensionKey "ontology_quality" ;
+    zce:dimensionWeight "2.0"^^xsd:decimal ;
     zce:applicabilityCondition """Applicable ONLY if the project uses OWL ontologies, 
     RDF, SPARQL, SHACL, or semantic web technologies."""@en ;
     zce:scoringGuideline """Score 1-3: Ontology exists but poorly structured. 
@@ -153,6 +168,7 @@ zce:OntologyDimension a zce:QualityDimension ;
 zce:MLDimension a zce:QualityDimension ;
     rdfs:label "AI / Machine Learning Integration"@en ;
     zce:dimensionKey "ml_integration" ;
+    zce:dimensionWeight "1.5"^^xsd:decimal ;
     zce:applicabilityCondition """Applicable ONLY if the project integrates AI/ML models, 
     LLMs, neural networks, or machine learning APIs."""@en ;
     zce:scoringGuideline """Score 1-3: AI integrated but produces poor results. 
@@ -163,6 +179,7 @@ zce:MLDimension a zce:QualityDimension ;
 zce:BlockchainDimension a zce:QualityDimension ;
     rdfs:label "Blockchain / Distributed Ledger"@en ;
     zce:dimensionKey "blockchain_integration" ;
+    zce:dimensionWeight "2.0"^^xsd:decimal ;
     zce:applicabilityCondition """Applicable ONLY if the project uses blockchain, 
     smart contracts, token economics, or distributed ledger technologies."""@en ;
     zce:scoringGuideline """Score 1-3: Blockchain attempted but non-functional. 
@@ -173,6 +190,7 @@ zce:BlockchainDimension a zce:QualityDimension ;
 zce:TestingDimension a zce:QualityDimension ;
     rdfs:label "Testing Coverage"@en ;
     zce:dimensionKey "testing_coverage" ;
+    zce:dimensionWeight "1.5"^^xsd:decimal ;
     zce:applicabilityCondition """Applicable ONLY if the project contains test files 
     (unit, integration, or end-to-end tests)."""@en ;
     zce:scoringGuideline """Score 1-3: Minimal tests, most code untested. 
@@ -183,6 +201,7 @@ zce:TestingDimension a zce:QualityDimension ;
 zce:SecurityDimension a zce:QualityDimension ;
     rdfs:label "Security"@en ;
     zce:dimensionKey "security" ;
+    zce:dimensionWeight "1.5"^^xsd:decimal ;
     zce:applicabilityCondition """Applicable if the project handles user data, 
     authentication, authorization, or sensitive information."""@en ;
     zce:scoringGuideline """Score 1-3: Obvious security issues present. 
@@ -193,6 +212,7 @@ zce:SecurityDimension a zce:QualityDimension ;
 zce:PerformanceDimension a zce:QualityDimension ;
     rdfs:label "Performance"@en ;
     zce:dimensionKey "performance" ;
+    zce:dimensionWeight "1.0"^^xsd:decimal ;
     zce:applicabilityCondition """Applicable if the project has measurable performance 
     requirements or handles significant data/computation."""@en ;
     zce:scoringGuideline """Score 1-3: Noticeably slow or resource-heavy. 
@@ -214,13 +234,20 @@ zce:ResponseFormatRule a zce:ScoringRule ;
       "label": "Human readable label",
       "rawScore": 7,
       "maxRawScore": 10,
+      "weight": 1.5,
       "feedback": "Specific evidence-based feedback referencing actual code."
     }
   },
   "normalizedTotal": 72,
   "overallFeedback": "3-4 sentence overall assessment."
 }
-The normalizedTotal must equal: (sum of rawScores / (count * 10)) * 100, rounded to integer."""@en .
+WEIGHTED SCORING FORMULA (mandatory):
+- Each dimension has a weight defined in the ontology (zce:dimensionWeight)
+- weightedScore_i = rawScore_i * weight_i
+- normalizedTotal = (sum of weightedScore_i / (sum of weight_i * 10)) * 100, rounded to integer
+- Always include the weight value in each criterion's JSON object
+- Example: if code_quality (weight=1.5) scores 7, functionality (weight=2.0) scores 8:
+  weightedTotal = (7*1.5 + 8*2.0) / ((1.5+2.0)*10) * 100 = (10.5+16)/(35) * 100 = 75.7 → 76"""@en .
 
 # ─────────────────────────────────────────────
 # Grade Thresholds
