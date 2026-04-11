@@ -1,8 +1,5 @@
-@prefix : <http://zerocollab.dev/ontology/evaluation#> .
 @prefix zce: <http://zerocollab.dev/ontology/evaluation#> .
-@prefix ztq: <http://zt4swe.dev/ontology/quality#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
-@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
@@ -11,152 +8,219 @@
 # ─────────────────────────────────────────────
 # Ontology Header
 # ─────────────────────────────────────────────
+
 <http://zerocollab.dev/ontology/evaluation> a owl:Ontology ;
     rdfs:label "ZeroCollab Evaluation Ontology"@en ;
     dcterms:title "ZeroCollab Project Evaluation Ontology"@en ;
-    dcterms:description "Defines rubric criteria for AI-assisted evaluation of the ZeroCollab P2P Project Management capstone project. Criteria are loaded dynamically at runtime so that changing this ontology updates the evaluation page automatically."@en ;
+    dcterms:description """This ontology defines the methodology and rules for AI-assisted 
+    project evaluation. The AI reads this ontology and the uploaded project files together, 
+    then autonomously determines which quality dimensions are relevant and evaluates the 
+    project out of 100 points. No criteria are hardcoded — the AI decides based on what 
+    it finds in the project."""@en ;
     dcterms:creator "ZeroCollab Team — Özlem Nur Bora, Songül Nur Öztürk, Nisanur Karataş"@en ;
     dcterms:created "2026-04-05"^^xsd:date ;
-    owl:versionInfo "1.0.0" .
+    dcterms:modified "2026-04-11"^^xsd:date ;
+    owl:versionInfo "3.0.0" .
 
 # ─────────────────────────────────────────────
-# Core Classes
+# Core Evaluation Classes
 # ─────────────────────────────────────────────
-
-zce:EvaluationRubric a owl:Class ;
-    rdfs:label "Evaluation Rubric"@en ;
-    skos:definition "A structured set of criteria used to assess a software project deliverable."@en .
-
-zce:RubricCriterion a owl:Class ;
-    rdfs:label "Rubric Criterion"@en ;
-    skos:definition "A single measurable dimension within an evaluation rubric, carrying a label, description, minimum score, maximum score, and weight."@en .
-
-zce:Score a owl:Class ;
-    rdfs:label "Score"@en ;
-    skos:definition "A numeric value assigned to a criterion during an evaluation session."@en .
 
 zce:EvaluationSession a owl:Class ;
     rdfs:label "Evaluation Session"@en ;
-    skos:definition "A single run of the rubric-based evaluation, capturing all criterion scores and AI-generated feedback."@en .
+    skos:definition """A single evaluation run where the AI analyzes uploaded project files, 
+    determines applicable quality dimensions autonomously, assigns scores, and produces 
+    structured feedback. Total score is always normalized to 100 points."""@en .
+
+zce:QualityDimension a owl:Class ;
+    rdfs:label "Quality Dimension"@en ;
+    skos:definition """An abstract quality aspect that MAY be relevant to a software project. 
+    The AI reads all defined dimensions and decides which ones apply to the uploaded project. 
+    Only applicable dimensions are included in scoring. Scores are weighted equally across 
+    all applicable dimensions to always sum to 100."""@en .
+
+zce:EvaluationMethodology a owl:Class ;
+    rdfs:label "Evaluation Methodology"@en ;
+    skos:definition """The set of rules and principles the AI must follow when evaluating 
+    a project. Defines how to detect applicable dimensions, how to score, and how to 
+    generate feedback."""@en .
+
+zce:ScoringRule a owl:Class ;
+    rdfs:label "Scoring Rule"@en ;
+    skos:definition """A rule that governs how raw dimension scores are computed and 
+    normalized to produce a final score out of 100."""@en .
 
 # ─────────────────────────────────────────────
-# Properties
+# Evaluation Methodology Instance
 # ─────────────────────────────────────────────
 
-zce:hasCriterion a owl:ObjectProperty ;
-    rdfs:label "has criterion"@en ;
-    rdfs:domain zce:EvaluationRubric ;
-    rdfs:range zce:RubricCriterion ;
-    skos:definition "Links a rubric to its constituent criteria."@en .
+zce:ZeroCollabMethodology a zce:EvaluationMethodology ;
+    rdfs:label "ZeroCollab AI Evaluation Methodology"@en ;
+    skos:definition """The AI evaluation methodology for ZeroCollab."""@en ;
 
-zce:criterionKey a owl:DatatypeProperty ;
-    rdfs:label "criterion key"@en ;
-    rdfs:domain zce:RubricCriterion ;
-    rdfs:range xsd:string ;
-    skos:definition "Machine-readable identifier used by the application to reference this criterion (e.g. 'code_quality')."@en .
+    zce:step1 """STEP 1 — READ PROJECT: Carefully read all uploaded project files. 
+    Identify the technologies, architecture patterns, frameworks, and features present."""@en ;
 
-zce:criterionLabel a owl:DatatypeProperty ;
-    rdfs:label "criterion label"@en ;
-    rdfs:domain zce:RubricCriterion ;
-    rdfs:range xsd:string ;
-    skos:definition "Human-readable display name shown in the evaluation UI."@en .
+    zce:step2 """STEP 2 — DETERMINE DIMENSIONS: From the QualityDimension catalog defined 
+    in this ontology, select ONLY the dimensions that are genuinely applicable to this project. 
+    A dimension is applicable if the project actually implements or attempts to implement 
+    that aspect. Do NOT include dimensions for features the project does not have."""@en ;
 
-zce:criterionDescription a owl:DatatypeProperty ;
-    rdfs:label "criterion description"@en ;
-    rdfs:domain zce:RubricCriterion ;
-    rdfs:range xsd:string ;
-    skos:definition "Detailed explanation of what this criterion measures and how it should be assessed."@en .
+    zce:step3 """STEP 3 — SCORE EACH DIMENSION: For each applicable dimension, assign a 
+    raw score from 1 to 10 based on the scoring guidelines defined in that dimension."""@en ;
 
-zce:minScore a owl:DatatypeProperty ;
-    rdfs:label "min score"@en ;
-    rdfs:domain zce:RubricCriterion ;
-    rdfs:range xsd:integer ;
-    skos:definition "Minimum allowable score for this criterion."@en .
+    zce:step4 """STEP 4 — NORMALIZE TO 100: Compute the final score as: 
+    (sum of raw scores / (number of applicable dimensions * 10)) * 100. 
+    This ensures the total is always out of 100 regardless of how many dimensions apply."""@en ;
 
-zce:maxScore a owl:DatatypeProperty ;
-    rdfs:label "max score"@en ;
-    rdfs:domain zce:RubricCriterion ;
-    rdfs:range xsd:integer ;
-    skos:definition "Maximum allowable score for this criterion."@en .
+    zce:step5 """STEP 5 — GENERATE FEEDBACK: For each applicable dimension, write 2-3 
+    sentences of specific, evidence-based feedback referencing actual code or files. 
+    Include one concrete improvement suggestion per dimension."""@en ;
 
-zce:weight a owl:DatatypeProperty ;
-    rdfs:label "weight"@en ;
-    rdfs:domain zce:RubricCriterion ;
-    rdfs:range xsd:decimal ;
-    skos:definition "Relative weight of this criterion in the overall score calculation (0.0–1.0, all weights must sum to 1.0)."@en .
-
-zce:order a owl:DatatypeProperty ;
-    rdfs:label "display order"@en ;
-    rdfs:domain zce:RubricCriterion ;
-    rdfs:range xsd:integer ;
-    skos:definition "Integer defining the display order of this criterion in the UI (ascending)."@en .
+    zce:step6 """STEP 6 — OVERALL SUMMARY: Write a 3-4 sentence overall assessment 
+    summarizing strengths, weaknesses, and the most important improvement area."""@en .
 
 # ─────────────────────────────────────────────
-# Rubric Individual
+# Quality Dimension Catalog
 # ─────────────────────────────────────────────
 
-zce:ZeroCollabRubric a zce:EvaluationRubric ;
-    rdfs:label "ZeroCollab Capstone Rubric"@en ;
-    skos:definition "Official rubric for evaluating the ZeroCollab P2P Project Management and Assessment Tool capstone project."@en ;
-    zce:hasCriterion zce:CodeQuality ;
-    zce:hasCriterion zce:Documentation ;
-    zce:hasCriterion zce:Functionality ;
-    zce:hasCriterion zce:UIUXDesign ;
-    zce:hasCriterion zce:P2PImplementation .
-
-# ─────────────────────────────────────────────
-# Criterion Individuals
-# ─────────────────────────────────────────────
-
-zce:CodeQuality a zce:RubricCriterion ;
+zce:CodeQualityDimension a zce:QualityDimension ;
     rdfs:label "Code Quality"@en ;
-    zce:criterionKey "code_quality" ;
-    zce:criterionLabel "Code Quality" ;
-    zce:criterionDescription "Evaluates readability, modularity, naming conventions, absence of code smells, and adherence to React/JavaScript best practices. Considers component structure, hook usage, and separation of concerns." ;
-    zce:minScore 1 ;
-    zce:maxScore 20 ;
-    zce:weight "0.20"^^xsd:decimal ;
-    zce:order 1 .
+    zce:dimensionKey "code_quality" ;
+    zce:applicabilityCondition """Applicable to ANY software project that contains source code."""@en ;
+    zce:scoringGuideline """Score 1-3: Poor structure, no conventions, many code smells. 
+    Score 4-6: Adequate structure, some issues present. 
+    Score 7-8: Good modularity, clear naming, minor issues. 
+    Score 9-10: Excellent readability, clean architecture, best practices followed."""@en .
 
-zce:Documentation a zce:RubricCriterion ;
+zce:DocumentationDimension a zce:QualityDimension ;
     rdfs:label "Documentation"@en ;
-    zce:criterionKey "documentation" ;
-    zce:criterionLabel "Documentation" ;
-    zce:criterionDescription "Assesses the quality and completeness of code comments, README files, ontology annotations (rdfs:label, skos:definition), and any technical documentation accompanying the project." ;
-    zce:minScore 1 ;
-    zce:maxScore 20 ;
-    zce:weight "0.20"^^xsd:decimal ;
-    zce:order 2 .
+    zce:dimensionKey "documentation" ;
+    zce:applicabilityCondition """Applicable to ANY software project."""@en ;
+    zce:scoringGuideline """Score 1-3: No documentation or README. 
+    Score 4-6: Basic README, minimal comments. 
+    Score 7-8: Good README, code comments, setup instructions. 
+    Score 9-10: Comprehensive docs, API references, architecture explained."""@en .
 
-zce:Functionality a zce:RubricCriterion ;
+zce:FunctionalityDimension a zce:QualityDimension ;
     rdfs:label "Functionality"@en ;
-    zce:criterionKey "functionality" ;
-    zce:criterionLabel "Functionality" ;
-    zce:criterionDescription "Measures whether all specified features work correctly: task management, calendar, P2P chat, real-time sync, LLM-assisted evaluation, and token economics. Considers edge cases and error handling." ;
-    zce:minScore 1 ;
-    zce:maxScore 20 ;
-    zce:weight "0.20"^^xsd:decimal ;
-    zce:order 3 .
+    zce:dimensionKey "functionality" ;
+    zce:applicabilityCondition """Applicable to ANY software project."""@en ;
+    zce:scoringGuideline """Score 1-3: Core features missing or broken. 
+    Score 4-6: Core features work, edge cases fail. 
+    Score 7-8: All features work, minor issues. 
+    Score 9-10: All features work correctly with good error handling."""@en .
 
-zce:UIUXDesign a zce:RubricCriterion ;
+zce:UIUXDimension a zce:QualityDimension ;
     rdfs:label "UI/UX Design"@en ;
-    zce:criterionKey "uiux_design" ;
-    zce:criterionLabel "UI/UX Design" ;
-    zce:criterionDescription "Evaluates the visual design, responsiveness, accessibility, consistency of the interface, dark/light theme support, and overall user experience across Dashboard, Tasks, Calendar, Chat, and Evaluation pages." ;
-    zce:minScore 1 ;
-    zce:maxScore 20 ;
-    zce:weight "0.20"^^xsd:decimal ;
-    zce:order 4 .
+    zce:dimensionKey "uiux_design" ;
+    zce:applicabilityCondition """Applicable to projects with a user interface (web, mobile, desktop apps)."""@en ;
+    zce:scoringGuideline """Score 1-3: Poor or unusable interface. 
+    Score 4-6: Functional but poor aesthetics or UX. 
+    Score 7-8: Clean design, good usability. 
+    Score 9-10: Excellent design, accessibility, responsive, consistent."""@en .
 
-zce:P2PImplementation a zce:RubricCriterion ;
-    rdfs:label "P2P Implementation"@en ;
-    zce:criterionKey "p2p_implementation" ;
-    zce:criterionLabel "P2P Implementation" ;
-    zce:criterionDescription "Specifically assesses the WebRTC/PeerJS implementation: connection stability, TURN server integration, multi-peer support, real-time task synchronisation, offline-first IndexedDB persistence, and PWA compliance." ;
-    zce:minScore 1 ;
-    zce:maxScore 20 ;
-    zce:weight "0.20"^^xsd:decimal ;
-    zce:order 5 .
+zce:P2PDimension a zce:QualityDimension ;
+    rdfs:label "P2P / Real-time Communication"@en ;
+    zce:dimensionKey "p2p_implementation" ;
+    zce:applicabilityCondition """Applicable ONLY if the project implements peer-to-peer 
+    communication, WebRTC, PeerJS, WebSockets for real-time sync, or similar technologies."""@en ;
+    zce:scoringGuideline """Score 1-3: P2P attempted but unreliable or broken. 
+    Score 4-6: Basic P2P works in ideal conditions. 
+    Score 7-8: Stable connections, handles reconnection. 
+    Score 9-10: Robust P2P with TURN, multi-peer, offline handling."""@en .
+
+zce:PWADimension a zce:QualityDimension ;
+    rdfs:label "PWA / Offline Capabilities"@en ;
+    zce:dimensionKey "pwa_compliance" ;
+    zce:applicabilityCondition """Applicable ONLY if the project is a Progressive Web App 
+    with service workers, offline support, or installability."""@en ;
+    zce:scoringGuideline """Score 1-3: PWA attempted but non-functional offline. 
+    Score 4-6: Basic service worker, partial offline. 
+    Score 7-8: Good offline support, installable. 
+    Score 9-10: Full PWA compliance, fast loading, complete offline functionality."""@en .
+
+zce:OntologyDimension a zce:QualityDimension ;
+    rdfs:label "Ontology / Semantic Web"@en ;
+    zce:dimensionKey "ontology_quality" ;
+    zce:applicabilityCondition """Applicable ONLY if the project uses OWL ontologies, 
+    RDF, SPARQL, SHACL, or semantic web technologies."""@en ;
+    zce:scoringGuideline """Score 1-3: Ontology exists but poorly structured. 
+    Score 4-6: Basic ontology with some annotations. 
+    Score 7-8: Well-structured ontology, good coverage. 
+    Score 9-10: Excellent ontology design, complete annotations, SHACL validation."""@en .
+
+zce:MLDimension a zce:QualityDimension ;
+    rdfs:label "AI / Machine Learning Integration"@en ;
+    zce:dimensionKey "ml_integration" ;
+    zce:applicabilityCondition """Applicable ONLY if the project integrates AI/ML models, 
+    LLMs, neural networks, or machine learning APIs."""@en ;
+    zce:scoringGuideline """Score 1-3: AI integrated but produces poor results. 
+    Score 4-6: Basic AI integration, works partially. 
+    Score 7-8: Good AI integration, meaningful results. 
+    Score 9-10: Excellent AI usage, well-prompted, handles errors gracefully."""@en .
+
+zce:BlockchainDimension a zce:QualityDimension ;
+    rdfs:label "Blockchain / Distributed Ledger"@en ;
+    zce:dimensionKey "blockchain_integration" ;
+    zce:applicabilityCondition """Applicable ONLY if the project uses blockchain, 
+    smart contracts, token economics, or distributed ledger technologies."""@en ;
+    zce:scoringGuideline """Score 1-3: Blockchain attempted but non-functional. 
+    Score 4-6: Basic on-chain operations work. 
+    Score 7-8: Solid blockchain integration, testnet deployed. 
+    Score 9-10: Production-ready, secure, well-designed token economics."""@en .
+
+zce:TestingDimension a zce:QualityDimension ;
+    rdfs:label "Testing Coverage"@en ;
+    zce:dimensionKey "testing_coverage" ;
+    zce:applicabilityCondition """Applicable ONLY if the project contains test files 
+    (unit, integration, or end-to-end tests)."""@en ;
+    zce:scoringGuideline """Score 1-3: Minimal tests, most code untested. 
+    Score 4-6: Some tests, basic coverage. 
+    Score 7-8: Good coverage, meaningful test cases. 
+    Score 9-10: Comprehensive test suite, high coverage, all layers tested."""@en .
+
+zce:SecurityDimension a zce:QualityDimension ;
+    rdfs:label "Security"@en ;
+    zce:dimensionKey "security" ;
+    zce:applicabilityCondition """Applicable if the project handles user data, 
+    authentication, authorization, or sensitive information."""@en ;
+    zce:scoringGuideline """Score 1-3: Obvious security issues present. 
+    Score 4-6: Basic security measures, some gaps. 
+    Score 7-8: Good security practices, minor concerns. 
+    Score 9-10: Strong security, proper auth, data protection, no sensitive data exposed."""@en .
+
+zce:PerformanceDimension a zce:QualityDimension ;
+    rdfs:label "Performance"@en ;
+    zce:dimensionKey "performance" ;
+    zce:applicabilityCondition """Applicable if the project has measurable performance 
+    requirements or handles significant data/computation."""@en ;
+    zce:scoringGuideline """Score 1-3: Noticeably slow or resource-heavy. 
+    Score 4-6: Acceptable performance with some inefficiencies. 
+    Score 7-8: Good performance, minor optimizations possible. 
+    Score 9-10: Excellent performance, optimized queries, lazy loading, caching."""@en .
+
+# ─────────────────────────────────────────────
+# AI Response Format Rules
+# ─────────────────────────────────────────────
+
+zce:ResponseFormatRule a zce:ScoringRule ;
+    rdfs:label "AI Response Format"@en ;
+    zce:formatInstruction """The AI MUST respond in this exact JSON format with no markdown:
+{
+  "detectedDimensions": ["dimension_key_1", "dimension_key_2"],
+  "criteria": {
+    "dimension_key": {
+      "label": "Human readable label",
+      "rawScore": 7,
+      "maxRawScore": 10,
+      "feedback": "Specific evidence-based feedback referencing actual code."
+    }
+  },
+  "normalizedTotal": 72,
+  "overallFeedback": "3-4 sentence overall assessment."
+}
+The normalizedTotal must equal: (sum of rawScores / (count * 10)) * 100, rounded to integer."""@en .
 
 # ─────────────────────────────────────────────
 # Grade Thresholds
@@ -168,17 +232,14 @@ zce:GradeThreshold a owl:Class ;
 
 zce:gradeLabel a owl:DatatypeProperty ;
     rdfs:label "grade label"@en ;
-    rdfs:domain zce:GradeThreshold ;
     rdfs:range xsd:string .
 
 zce:gradeName a owl:DatatypeProperty ;
     rdfs:label "grade name"@en ;
-    rdfs:domain zce:GradeThreshold ;
     rdfs:range xsd:string .
 
 zce:minPercentage a owl:DatatypeProperty ;
     rdfs:label "min percentage"@en ;
-    rdfs:domain zce:GradeThreshold ;
     rdfs:range xsd:integer .
 
 zce:GradeA a zce:GradeThreshold ;

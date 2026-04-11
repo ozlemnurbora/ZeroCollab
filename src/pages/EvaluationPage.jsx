@@ -1,20 +1,14 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Button } from '../components/ui/Button.jsx'
 import { Modal } from '../components/ui/Modal.jsx'
-import { CriterionCard } from '../components/evaluation/CriterionCard.jsx'
 import { EvaluationHistory } from '../components/evaluation/EvaluationHistory.jsx'
 import { EvaluationSummary } from '../components/evaluation/EvaluationSummary.jsx'
-import { RUBRIC } from '../components/evaluation/evaluationConstants.js'
 import {
   loadEvaluations,
   saveEvaluations,
 } from '../components/evaluation/evaluationStorage.js'
-import { clampScore, computeTotals } from '../components/evaluation/evaluationUtils.js'
 import { useLanguage } from '../utils/LanguageContext.jsx'
-import {
-  loadEvaluationCriteria,
-  loadGradeThresholds,
-} from '../utils/ontologyLoader.js'
+import { loadOntologyText, loadGradeThresholds } from '../utils/ontologyLoader.js'
 
 const ANTHROPIC_API_KEY_STORAGE = 'zc-anthropic-key'
 
@@ -24,80 +18,13 @@ function createId() {
   return `eval_${Date.now()}_${Math.random().toString(16).slice(2)}`
 }
 
-function criteriaStateFromRubric(rubric) {
-  return rubric.reduce((acc, c) => {
-    acc[c.id] = {
-      score: c.defaultScore ?? 0,
-      comments: '',
-      applicable: true,
-    }
-    return acc
-  }, {})
-}
-
-function resolveCriterionKey(prev, aiKey) {
-  if (prev[aiKey] !== undefined) return aiKey
-  return (
-    Object.keys(prev).find(
-      (k) =>
-        k.toLowerCase().includes(aiKey.toLowerCase()) ||
-        aiKey.toLowerCase().includes(k.toLowerCase()) ||
-        k.toLowerCase().replace(/_/g, '') ===
-          aiKey.toLowerCase().replace(/_/g, ''),
-    ) ?? aiKey
-  )
-}
-
-/** Merge AI JSON `criteria` (applicable / suggestedScore / feedback) into criterion state. */
-function mergeAiCriteriaResponse(prev, parsedCriteria, rubricRef) {
-  const next = { ...prev }
-  if (!parsedCriteria || typeof parsedCriteria !== 'object') return next
-
-  for (const [aiKey, val] of Object.entries(parsedCriteria)) {
-    if (!val || typeof val !== 'object') continue
-    const matchedKey = resolveCriterionKey(prev, aiKey)
-    if (next[matchedKey] === undefined) continue
-
-    const crit = rubricRef.find((c) => c.id === matchedKey)
-    const min = crit?.min ?? 1
-    const max = crit?.max ?? 20
-    const applicable = val.applicable !== false
-
-    let score
-    if (!applicable) {
-      score = null
-    } else if (
-      val.suggestedScore != null &&
-      val.suggestedScore !== '' &&
-      Number.isFinite(Number(val.suggestedScore))
-    ) {
-      score = clampScore(val.suggestedScore, min, max)
-    } else {
-      const prevScore = prev[matchedKey]?.score
-      score =
-        prevScore === null || prevScore === undefined
-          ? 0
-          : clampScore(prevScore, min, max)
-    }
-
-    next[matchedKey] = {
-      score,
-      comments: val.feedback ?? prev[matchedKey]?.comments ?? '',
-      applicable,
-    }
-  }
-  return next
-}
-
 export function EvaluationPage() {
   const { t } = useLanguage()
-  const [rubric, setRubric] = useState(RUBRIC)
-  const [criteria, setCriteria] = useState(() => criteriaStateFromRubric(RUBRIC))
-  /** Scores shown in summary: defaults until AI evaluation completes, then last AI scores only. */
-  const [displayCriteria, setDisplayCriteria] = useState(() =>
-    criteriaStateFromRubric(RUBRIC),
-  )
-  const [isLoadingRubric, setIsLoadingRubric] = useState(true)
+  const [aiCriteria, setAiCriteria] = useState([])
+  const [ontologyText, setOntologyText] = useState('')
+  const [totalScore, setTotalScore] = useState(null)
+  const [overallFeedback, setOverallFeedback] = useState('')
+  const [hasEvaluated, setHasEvaluated] = useState(false)
   const [isEvaluating, setIsEvaluating] = useState(false)
   const [apiKey, setApiKey] = useState(() =>
     typeof localStorage !== 'undefined'
@@ -114,44 +41,12 @@ export function EvaluationPage() {
   const [fileContents, setFileContents] = useState('')
   const [gradeThresholds, setGradeThresholds] = useState(null)
 
-  const rubricWithLabels = useMemo(() => {
-    return rubric.map((c) => {
-      const tk = `rubric_${c.id}`
-      const tr = t(tk)
-      const translated = tr !== tk ? tr : null
-      return {
-        ...c,
-        label: translated ?? c.label,
-      }
-    })
-  }, [rubric, t])
-
   useEffect(() => {
-    void loadGradeThresholds().then((grades) => {
-      if (grades) setGradeThresholds(grades)
+    loadOntologyText().then((text) => {
+      if (text) setOntologyText(text)
     })
-    loadEvaluationCriteria().then((criteriaFromOntology) => {
-      const fromOntology =
-        Array.isArray(criteriaFromOntology) && criteriaFromOntology.length > 0
-      const effective = fromOntology ? criteriaFromOntology : RUBRIC
-      const source = fromOntology
-        ? 'ontology (/ontology/zerocollab-evaluation.ttl)'
-        : criteriaFromOntology == null
-          ? 'fallback: loadEvaluationCriteria() returned null or failed'
-          : 'fallback: empty criteria array — using RUBRIC constant'
-
-      // eslint-disable-next-line no-console
-      console.log('[Evaluation] Rubric loaded:', {
-        source,
-        count: effective.length,
-        criteria: effective,
-      })
-
-      setRubric(effective)
-      const initial = criteriaStateFromRubric(effective)
-      setCriteria(initial)
-      setDisplayCriteria(initial)
-      setIsLoadingRubric(false)
+    loadGradeThresholds().then((grades) => {
+      if (grades) setGradeThresholds(grades)
     })
   }, [])
 
@@ -174,16 +69,6 @@ export function EvaluationPage() {
       cancelled = true
     }
   }, [])
-
-  const summaryTotals = useMemo(
-    () => computeTotals(displayCriteria, rubric),
-    [displayCriteria, rubric],
-  )
-
-  const snapshotTotals = useMemo(
-    () => computeTotals(criteria, rubric),
-    [criteria, rubric],
-  )
 
   const getGrade = (percentage) => {
     if (!gradeThresholds || gradeThresholds.length === 0) {
@@ -290,49 +175,7 @@ export function EvaluationPage() {
     setFileContents(contents.join('\n'))
   }
 
-  const saveCurrent = () => {
-    const createdAt = Date.now()
-    const snapshot = {
-      id: createId(),
-      createdAt,
-      criteria: rubric.reduce((acc, c) => {
-        const min = c.min ?? 1
-        const max = c.max ?? 20
-        const entry = criteria[c.id]
-        const applicable = entry?.applicable !== false
-        const raw = entry?.score
-        let score
-        if (!applicable) {
-          score = null
-        } else if (raw === null || raw === undefined) {
-          score = 0
-        } else {
-          score = clampScore(raw, min, max)
-        }
-        acc[c.id] = {
-          score,
-          comments: entry?.comments ?? '',
-          applicable,
-        }
-        return acc
-      }, {}),
-      ...snapshotTotals,
-    }
-
-    setHistory((prev) => [snapshot, ...prev])
-  }
-
   const runAiEvaluation = async () => {
-    const projectContext = `
-${projectInfo.trim() ? `Project Description:\n${projectInfo.trim()}\n` : ''}
-${fileContents.trim() ? `\nProject Code Files:\n${fileContents.trim()}` : ''}
-`.trim()
-
-    if (!projectContext) {
-      alert(t('eval_no_project'))
-      return
-    }
-
     const key =
       typeof localStorage !== 'undefined'
         ? localStorage.getItem(ANTHROPIC_API_KEY_STORAGE)
@@ -341,100 +184,96 @@ ${fileContents.trim() ? `\nProject Code Files:\n${fileContents.trim()}` : ''}
       setShowApiKeyModal(true)
       return
     }
+
+    const projectContext = [
+      projectInfo ? `Project Description:\n${projectInfo}` : '',
+      fileContents ? `\nProject Files:\n${fileContents}` : '',
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    if (!projectContext.trim()) {
+      alert(t('eval_no_project'))
+      return
+    }
+
     setIsEvaluating(true)
     try {
-      const criteriaText = rubric
-        .map(
-          (c) =>
-            `- ${c.label} (${c.min ?? 1}-${c.max ?? 20} points): ${c.description || ''}`,
-        )
-        .join('\n')
-
-      const promptContent = `You are an expert software engineering professor evaluating a student project.
-
-First, analyze the submitted project and determine which criteria are applicable.
-If a criterion is not relevant to this project, mark it as not applicable.
-
-Project files:
-${projectContext}
-
-Rubric criteria (from ontology):
-${criteriaText}
-
-For each criterion:
-- If the criterion IS applicable: give a score and specific feedback
-- If the criterion is NOT applicable: set applicable to false, suggestedScore to null
-
-IMPORTANT rules:
-- Non-applicable criteria must NOT count toward the total score
-- Only score criteria that are relevant to the actual project
-- Scores must vary based on actual quality, do not give same score to all
-
-Use exactly these criterion keys: ${rubric.map((c) => c.id).join(', ')}
-
-Respond in this exact JSON format with no markdown or code blocks (use double quotes for all keys and string values):
-{
-  "criteria": {
-    "criterion_key": {
-      "applicable": true,
-      "suggestedScore": 12,
-      "feedback": "string"
-    }
-  },
-  "overallFeedback": "string"
-}
-
-For non-applicable criteria use: "applicable": false, "suggestedScore": null, and briefly explain why in "feedback".`
-
-      const response = await fetch(
-        'https://api.anthropic.com/v1/messages',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-api-key': key,
-            'anthropic-version': '2023-06-01',
-            'anthropic-dangerous-direct-browser-access': 'true',
-          },
-          body: JSON.stringify({
-            model: 'claude-haiku-4-5-20251001',
-            max_tokens: 2800,
-            messages: [
-              {
-                role: 'user',
-                content: promptContent,
-              },
-            ],
-          }),
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
         },
-      )
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 2000,
+          messages: [
+            {
+              role: 'user',
+              content: `You are an expert software engineering professor. 
+          
+You must evaluate the following project using the methodology defined in this ontology:
+
+=== ONTOLOGY (Evaluation Methodology) ===
+${ontologyText}
+=== END ONTOLOGY ===
+
+=== PROJECT TO EVALUATE ===
+${projectContext}
+=== END PROJECT ===
+
+Follow the ZeroCollabMethodology steps defined in the ontology:
+1. Read the project files carefully
+2. Determine which QualityDimensions from the ontology are applicable
+3. Score each applicable dimension from 1-10 using the scoringGuideline
+4. Normalize to 100: (sum of rawScores / (count * 10)) * 100
+5. Generate specific evidence-based feedback for each dimension
+
+Use the ResponseFormatRule JSON format defined in the ontology. 
+Respond with ONLY the JSON, no markdown, no explanation outside JSON.`,
+            },
+          ],
+        }),
+      })
 
       const data = await response.json()
-      console.log('[Evaluation] Anthropic response:', data)
-
-      if (!response.ok) {
+      if (!response.ok)
         throw new Error(`API error ${response.status}: ${JSON.stringify(data)}`)
-      }
 
       const text = data.content?.[0]?.text || ''
-      if (!text) throw new Error('Empty response from AI')
-
       const clean = text.replace(/```json|```/g, '').trim()
       const parsed = JSON.parse(clean)
 
-      if (parsed.criteria) {
-        setCriteria((prev) =>
-          mergeAiCriteriaResponse(prev, parsed.criteria, rubric),
-        )
-        setDisplayCriteria((prev) =>
-          mergeAiCriteriaResponse(prev, parsed.criteria, rubric),
-        )
+      const newCriteria = Object.entries(parsed.criteria || {}).map(
+        ([key, val]) => ({
+          id: key,
+          label: val.label || key,
+          rawScore: val.rawScore || 0,
+          maxRawScore: val.maxRawScore || 10,
+          feedback: val.feedback || '',
+        }),
+      )
+
+      setAiCriteria(newCriteria)
+      setTotalScore(parsed.normalizedTotal || 0)
+      setOverallFeedback(parsed.overallFeedback || '')
+      setHasEvaluated(true)
+
+      const snapshot = {
+        id: createId(),
+        createdAt: Date.now(),
+        criteria: parsed.criteria,
+        total: parsed.normalizedTotal || 0,
+        max: 100,
+        percentage: parsed.normalizedTotal || 0,
+        overallFeedback: parsed.overallFeedback || '',
       }
-      if (parsed?.overallFeedback) {
-        alert(parsed.overallFeedback)
-      }
+      setHistory((prev) => [snapshot, ...prev])
     } catch (err) {
-      console.error('[Evaluation] Full error:', err)
+      console.error('[EvaluationPage] AI error:', err)
       alert(`AI evaluation failed: ${err.message}`)
     } finally {
       setIsEvaluating(false)
@@ -459,10 +298,10 @@ For non-applicable criteria use: "applicable": false, "suggestedScore": null, an
       <div className="mt-6 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
         <div className="space-y-6">
           <EvaluationSummary
-            total={summaryTotals.total}
-            max={summaryTotals.max}
-            percentage={summaryTotals.percentage}
-            grade={getGrade(summaryTotals.percentage)}
+            total={hasEvaluated ? totalScore : 0}
+            max={100}
+            percentage={hasEvaluated ? totalScore : 0}
+            grade={getGrade(hasEvaluated ? totalScore : 0)}
           />
 
           <div className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-4">
@@ -477,7 +316,6 @@ For non-applicable criteria use: "applicable": false, "suggestedScore": null, an
               placeholder={t('eval_project_placeholder')}
               value={projectInfo}
               onChange={(e) => setProjectInfo(e.target.value)}
-              disabled={isLoadingRubric}
             />
             <div className="mt-3">
               <label className="mb-2 block text-sm font-medium text-[rgb(var(--zc-muted))]">
@@ -488,7 +326,6 @@ For non-applicable criteria use: "applicable": false, "suggestedScore": null, an
                 multiple
                 accept=".js,.jsx,.ts,.tsx,.html,.css,.json,.md,.txt,.py,.zip"
                 onChange={(ev) => void handleFileUpload(ev)}
-                disabled={isLoadingRubric}
                 className="block w-full cursor-pointer text-sm text-[rgb(var(--zc-muted))] file:mr-4 file:rounded-md file:border-0 file:bg-indigo-500/20 file:px-4 file:py-2 file:text-sm file:font-medium file:text-indigo-300 hover:file:bg-indigo-500/30"
               />
               {uploadedFiles.length > 0 ? (
@@ -503,7 +340,7 @@ For non-applicable criteria use: "applicable": false, "suggestedScore": null, an
                 type="button"
                 variant="primary"
                 size="sm"
-                disabled={isEvaluating || isLoadingRubric}
+                disabled={isEvaluating}
                 onClick={() => void runAiEvaluation()}
               >
                 {isEvaluating ? t('eval_ai_loading') : t('eval_submit_project')}
@@ -527,32 +364,54 @@ For non-applicable criteria use: "applicable": false, "suggestedScore": null, an
               <Button
                 variant="secondary"
                 onClick={() => void runAiEvaluation()}
-                disabled={isEvaluating || isLoadingRubric}
+                disabled={isEvaluating}
               >
                 {isEvaluating ? t('eval_ai_loading') : t('eval_ai')}
-              </Button>
-              <Button onClick={saveCurrent} disabled={isLoadingRubric}>
-                {t('eval_save')}
               </Button>
             </div>
           </div>
 
-          {isLoadingRubric ? (
-            <div className="rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
-              {t('loading_rubric')}
+          {!hasEvaluated ? (
+            <div className="rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-8 text-center">
+              <p className="text-sm font-medium text-[rgb(var(--zc-text))]">
+                {t('eval_empty_title')}
+              </p>
+              <p className="mt-2 text-xs text-[rgb(var(--zc-muted))]">
+                {t('eval_empty_hint')}
+              </p>
             </div>
           ) : (
             <div className="grid gap-4">
-              {rubricWithLabels.map((criterion) => (
-                <CriterionCard
+              {aiCriteria.map((criterion) => (
+                <div
                   key={criterion.id}
-                  criterion={criterion}
-                  value={criteria[criterion.id]}
-                  onChange={(next) =>
-                    setCriteria((prev) => ({ ...prev, [criterion.id]: next }))
-                  }
-                />
+                  className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-4"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">
+                      {criterion.label}
+                    </h3>
+                    <span className="rounded-md bg-indigo-500/15 px-3 py-1 text-sm font-medium text-indigo-300">
+                      {criterion.rawScore} / {criterion.maxRawScore}
+                    </span>
+                  </div>
+                  {criterion.feedback ? (
+                    <p className="mt-2 text-sm text-[rgb(var(--zc-muted))]">
+                      {criterion.feedback}
+                    </p>
+                  ) : null}
+                </div>
               ))}
+              {overallFeedback ? (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-4">
+                  <p className="text-sm font-semibold text-emerald-300">
+                    Overall Assessment
+                  </p>
+                  <p className="mt-2 text-sm text-[rgb(var(--zc-muted))]">
+                    {overallFeedback}
+                  </p>
+                </div>
+              ) : null}
             </div>
           )}
         </div>
@@ -595,42 +454,58 @@ For non-applicable criteria use: "applicable": false, "suggestedScore": null, an
               grade={getGrade(selectedHistory.percentage ?? 0)}
             />
             <div className="space-y-3">
-              {rubricWithLabels.map((c) => {
-                const v = selectedHistory.criteria?.[c.id]
-                return (
-                  <div
-                    key={c.id}
-                    className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] p-3"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-                        {c.label}
-                      </p>
-                      <span className="rounded-md bg-[rgb(var(--zc-bg)/0.4)] px-2 py-1 text-xs text-[rgb(var(--zc-muted))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
-                        {v?.applicable === false ? (
-                          <span className="text-[rgb(var(--zc-subtle))]">
-                            {t('eval_not_applicable')}
-                          </span>
-                        ) : (
-                          <>
-                            {v?.score ?? 0} / {c.max ?? 10}
-                          </>
-                        )}
-                      </span>
+              {Object.entries(selectedHistory.criteria || {}).map(
+                ([id, v]) => {
+                  const label = v?.label ?? id
+                  const raw = v?.rawScore ?? v?.score
+                  const maxRaw = v?.maxRawScore ?? v?.max ?? 10
+                  const feedback = v?.feedback ?? v?.comments ?? ''
+                  const applicable = v?.applicable !== false
+                  return (
+                    <div
+                      key={id}
+                      className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] p-3"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
+                          {label}
+                        </p>
+                        <span className="rounded-md bg-[rgb(var(--zc-bg)/0.4)] px-2 py-1 text-xs text-[rgb(var(--zc-muted))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
+                          {!applicable ? (
+                            <span className="text-[rgb(var(--zc-subtle))]">
+                              {t('eval_not_applicable')}
+                            </span>
+                          ) : (
+                            <>
+                              {raw ?? 0} / {maxRaw}
+                            </>
+                          )}
+                        </span>
+                      </div>
+                      {feedback ? (
+                        <p className="mt-2 whitespace-pre-wrap text-sm text-[rgb(var(--zc-muted))]">
+                          {feedback}
+                        </p>
+                      ) : (
+                        <p className="mt-2 text-sm text-[rgb(var(--zc-subtle))]">
+                          {t('eval_no_feedback')}
+                        </p>
+                      )}
                     </div>
-                    {v?.comments ? (
-                      <p className="mt-2 whitespace-pre-wrap text-sm text-[rgb(var(--zc-muted))]">
-                        {v.comments}
-                      </p>
-                    ) : (
-                      <p className="mt-2 text-sm text-[rgb(var(--zc-subtle))]">
-                        {t('eval_no_feedback')}
-                      </p>
-                    )}
-                  </div>
-                )
-              })}
+                  )
+                },
+              )}
             </div>
+            {selectedHistory.overallFeedback ? (
+              <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 p-3">
+                <p className="text-sm font-semibold text-emerald-300">
+                  Overall Assessment
+                </p>
+                <p className="mt-2 text-sm text-[rgb(var(--zc-muted))]">
+                  {selectedHistory.overallFeedback}
+                </p>
+              </div>
+            ) : null}
           </div>
         ) : null}
       </Modal>

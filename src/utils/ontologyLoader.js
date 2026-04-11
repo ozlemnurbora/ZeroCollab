@@ -1,55 +1,7 @@
-export async function loadEvaluationCriteria() {
+export async function loadOntologyText() {
   try {
     const response = await fetch('/ontology/zerocollab-evaluation.ttl')
-    const text = await response.text()
-    const criteria = []
-
-    // Find all RubricCriterion individuals by looking for the pattern
-    const lines = text.split('\n')
-    let currentBlock = []
-    let inCriterion = false
-
-    for (const line of lines) {
-      if (line.includes('a zce:RubricCriterion')) {
-        inCriterion = true
-        currentBlock = [line]
-      } else if (inCriterion) {
-        currentBlock.push(line)
-        // End of block when we hit a line with just a dot or empty line after content
-        if (line.trim() === '.' || (line.trim() === '' && currentBlock.length > 3)) {
-          const block = currentBlock.join('\n')
-          const key = extractLiteral(block, 'zce:criterionKey')
-          const label = extractLiteral(block, 'zce:criterionLabel')
-          const description = extractLiteral(block, 'zce:criterionDescription')
-          const minScore = parseInt(extractLiteral(block, 'zce:minScore') || '1')
-          const maxScore = parseInt(extractLiteral(block, 'zce:maxScore') || '20')
-          const order = parseInt(extractLiteral(block, 'zce:order') || '99')
-          if (key && label) {
-            criteria.push({ id: key, label, description, min: minScore, max: maxScore, order })
-          }
-          currentBlock = []
-          inCriterion = false
-        }
-      }
-    }
-
-    // Also try the last block if file doesn't end with empty line
-    if (inCriterion && currentBlock.length > 0) {
-      const block = currentBlock.join('\n')
-      const key = extractLiteral(block, 'zce:criterionKey')
-      const label = extractLiteral(block, 'zce:criterionLabel')
-      const description = extractLiteral(block, 'zce:criterionDescription')
-      const minScore = parseInt(extractLiteral(block, 'zce:minScore') || '1')
-      const maxScore = parseInt(extractLiteral(block, 'zce:maxScore') || '20')
-      const order = parseInt(extractLiteral(block, 'zce:order') || '99')
-      if (key && label) {
-        criteria.push({ id: key, label, description, min: minScore, max: maxScore, order })
-      }
-    }
-
-    criteria.sort((a, b) => a.order - b.order)
-    console.log('[ontologyLoader] loaded criteria:', criteria.length, criteria.map(c => c.id))
-    return criteria.length > 0 ? criteria : null
+    return await response.text()
   } catch (err) {
     console.error('[ontologyLoader] failed to load TTL:', err)
     return null
@@ -58,54 +10,38 @@ export async function loadEvaluationCriteria() {
 
 export async function loadGradeThresholds() {
   try {
-    const response = await fetch('/ontology/zerocollab-evaluation.ttl')
-    const text = await response.text()
+    const text = await loadOntologyText()
+    if (!text) return null
     const grades = []
     const lines = text.split('\n')
     let currentBlock = []
     let inGrade = false
 
-    const pushGradeFromBlock = (blockLines) => {
-      if (blockLines.length === 0) return
+    const pushGrade = (blockLines) => {
+      if (!blockLines.length) return
       const block = blockLines.join('\n')
       const label = extractLiteral(block, 'zce:gradeLabel')
       const name = extractLiteral(block, 'zce:gradeName')
-      const minPct = parseInt(
-        extractLiteral(block, 'zce:minPercentage') || '0',
-        10,
-      )
-      if (label) {
-        grades.push({ label, name: name || label, minPercentage: minPct })
-      }
+      const minPct = parseInt(extractLiteral(block, 'zce:minPercentage') || '0', 10)
+      if (label) grades.push({ label, name: name || label, minPercentage: minPct })
     }
 
     for (const line of lines) {
-      if (
-        line.includes('a zce:GradeThreshold') &&
-        !line.includes('owl:Class')
-      ) {
-        if (inGrade && currentBlock.length > 0) {
-          pushGradeFromBlock(currentBlock)
-        }
+      if (line.includes('a zce:GradeThreshold') && !line.includes('owl:Class')) {
+        if (inGrade && currentBlock.length) pushGrade(currentBlock)
         inGrade = true
         currentBlock = [line]
       } else if (inGrade) {
         currentBlock.push(line)
-        if (
-          line.trim() === '.' ||
-          (line.trim() === '' && currentBlock.length > 3)
-        ) {
-          pushGradeFromBlock(currentBlock)
+        if (line.trim() === '.' || (line.trim() === '' && currentBlock.length > 3)) {
+          pushGrade(currentBlock)
           currentBlock = []
           inGrade = false
         }
       }
     }
-    if (inGrade && currentBlock.length > 0) {
-      pushGradeFromBlock(currentBlock)
-    }
+    if (inGrade && currentBlock.length) pushGrade(currentBlock)
     grades.sort((a, b) => b.minPercentage - a.minPercentage)
-    console.log('[ontologyLoader] loaded grades:', grades)
     return grades.length > 0 ? grades : null
   } catch (err) {
     console.error('[ontologyLoader] failed to load grades:', err)

@@ -28,7 +28,8 @@ export const TRANSLATIONS = {
     page_chat_title: 'Chat',
     page_chat_subtitle: 'Team messaging in a channel + DM layout. (Local only for now.)',
     page_evaluation_title: 'Evaluation',
-    page_evaluation_subtitle: 'Rubric-based project assessment with saved history.',
+    page_evaluation_subtitle:
+      'Ontology-guided AI assessment: methodology from the TTL, scores out of 100, saved locally.',
     page_settings_title: 'Settings',
     page_settings_subtitle: 'Manage your profile, app preferences, and local data.',
 
@@ -240,6 +241,9 @@ export const TRANSLATIONS = {
     eval_history: 'History',
     eval_history_sub: 'Past evaluations saved locally',
     eval_none: 'No evaluations yet.',
+    eval_empty_title: 'No evaluation yet',
+    eval_empty_hint:
+      'Upload your project files and click Evaluate with AI to get started',
     eval_view: 'View',
     eval_notes_title: 'Academic notes',
     eval_notes_body:
@@ -367,14 +371,14 @@ export const TRANSLATIONS = {
     page_chat_title: 'Sohbet',
     page_chat_subtitle: 'Kanal + DM düzeninde ekip mesajlaşması. (Şimdilik yerel.)',
     page_evaluation_title: 'Değerlendirme',
-    page_evaluation_subtitle: 'Kayıtlı geçmiş ile rubrik tabanlı proje değerlendirmesi.',
+    page_evaluation_subtitle:
+      'TTL’deki metodolojiye dayalı yapay zeka değerlendirmesi: 100 üzerinden puan, yerel kayıt.',
     page_settings_title: 'Ayarlar',
     page_settings_subtitle: 'Profilinizi, uygulama tercihlerini ve yerel verileri yönetin.',
 
     loading_tasks: 'Görevler yükleniyor…',
     loading_chat: 'Sohbet yükleniyor…',
     loading_eval_history: 'Değerlendirme geçmişi yükleniyor…',
-    loading_rubric: 'Değerlendirme ölçütleri yükleniyor…',
     loading_rubric: 'Değerlendirme ölçütleri yükleniyor…',
 
     dash_total_tasks: 'Toplam Görev',
@@ -575,6 +579,9 @@ export const TRANSLATIONS = {
     eval_history: 'Geçmiş',
     eval_history_sub: 'Yerel olarak kaydedilen geçmiş değerlendirmeler',
     eval_none: 'Henüz değerlendirme yok.',
+    eval_empty_title: 'Henüz değerlendirme yok',
+    eval_empty_hint:
+      'Proje dosyalarınızı yükleyin ve başlamak için Yapay Zeka ile Değerlendir butonuna tıklayın',
     eval_view: 'Görüntüle',
     eval_notes_title: 'Akademik notlar',
     eval_notes_body:
