@@ -3,11 +3,13 @@ import { NavLink, Outlet } from 'react-router-dom'
 import { OfflineBanner } from '../components/pwa/OfflineBanner.jsx'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
+import { useAuth } from '../utils/AuthContext.jsx'
 import { ProjectDetailModal } from '../components/workspace/ProjectDetailModal.jsx'
 import { TeamDetailModal } from '../components/workspace/TeamDetailModal.jsx'
 
 export function SidebarLayout() {
   const { t } = useLanguage()
+  const { user, signOut } = useAuth()
   const {
     projects,
     activeProject,
@@ -407,9 +409,20 @@ export function SidebarLayout() {
           </div>
         </div>
 
-        {/* Bottom */}
-        <div className="border-t border-[rgb(var(--zc-border))] px-4 py-3 text-xs text-[rgb(var(--zc-subtle))]">
-          <p>{t('brand_tagline')}</p>
+        <div className="border-t border-[rgb(var(--zc-border))] px-4 py-3 space-y-2">
+          <p className="text-xs text-[rgb(var(--zc-subtle))]">{t('brand_tagline')}</p>
+          {user && (
+            <div className="space-y-1">
+              <p className="text-xs text-[rgb(var(--zc-muted2))] truncate">{user.email}</p>
+              <button
+                type="button"
+                onClick={() => signOut()}
+                className="w-full rounded-md bg-rose-500/15 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-500/25 transition"
+              >
+                Sign Out
+              </button>
+            </div>
+          )}
         </div>
 
       </aside>

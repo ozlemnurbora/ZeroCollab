@@ -342,6 +342,18 @@ export const TRANSLATIONS = {
     data_clear_body:
       'This will remove tasks, chat messages, evaluations, and all preferences stored in your browser for this app.',
 
+    auth_forgot_password: 'Forgot your password?',
+    auth_reset_title: 'Reset Password',
+    auth_reset_subtitle: 'Enter your email to receive a reset link',
+    auth_reset_send: 'Send Reset Link',
+    auth_reset_sent: 'Reset link sent! Check your email.',
+    auth_back_signin: 'Back to Sign In',
+    auth_pass_length: 'At least 8 characters',
+    auth_pass_uppercase: 'At least one uppercase letter',
+    auth_pass_number: 'At least one number',
+    auth_pass_match: 'Passwords match',
+    auth_pass_no_match: 'Passwords do not match',
+
     btn_dark: 'Dark',
     btn_light: 'Light',
     btn_connect: 'Connect',
@@ -677,6 +689,18 @@ export const TRANSLATIONS = {
     data_clear_yes: 'Evet, temizle',
     data_clear_body:
       'Bu işlem görevleri, sohbet mesajlarını, değerlendirmeleri ve tarayıcıdaki tüm tercihleri kaldırır.',
+
+    auth_forgot_password: 'Şifremi unuttum',
+    auth_reset_title: 'Şifre Sıfırla',
+    auth_reset_subtitle: 'Sıfırlama bağlantısı için email girin',
+    auth_reset_send: 'Sıfırlama Bağlantısı Gönder',
+    auth_reset_sent: 'Sıfırlama bağlantısı gönderildi! Emailinizi kontrol edin.',
+    auth_back_signin: 'Giriş sayfasına dön',
+    auth_pass_length: 'En az 8 karakter',
+    auth_pass_uppercase: 'En az bir büyük harf',
+    auth_pass_number: 'En az bir rakam',
+    auth_pass_match: 'Şifreler eşleşiyor',
+    auth_pass_no_match: 'Şifreler eşleşmiyor',
 
     btn_dark: 'Koyu',
     btn_light: 'Açık',

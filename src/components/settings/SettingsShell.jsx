@@ -3,9 +3,10 @@ import { Button } from '../ui/Button.jsx'
 import { SectionCard } from './SectionCard.jsx'
 import { Toggle } from './Toggle.jsx'
 import { DataManagement } from './DataManagement.jsx'
-import { APP_VERSION, USERS } from './settingsConstants.js'
+import { APP_VERSION } from './settingsConstants.js'
 import { getOrCreatePeerId, loadSettings, saveSettings } from './settingsStorage.js'
 import { usePwaInstallPrompt } from '../../utils/pwaInstall.js'
+import { useAuth } from '../../utils/AuthContext.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 import { requestNotificationPermission } from '../../utils/taskReminder.js'
 import {
@@ -21,7 +22,7 @@ import {
 
 const defaultSettings = {
   profile: {
-    currentUser: USERS[0],
+    currentUser: '',
     displayName: '',
   },
   app: {
@@ -59,6 +60,7 @@ function applyTheme(theme) {
 }
 
 export function SettingsShell() {
+  const { user } = useAuth()
   const { language, setLanguage, t } = useLanguage()
   const [settings, setSettings] = useState(() => mergeDefaults(null))
   const [settingsHydrated, setSettingsHydrated] = useState(false)
@@ -160,8 +162,8 @@ export function SettingsShell() {
   }
 
   const displayNamePreview = useMemo(() => {
-    return settings.profile.displayName?.trim() || settings.profile.currentUser
-  }, [settings.profile.currentUser, settings.profile.displayName])
+    return settings.profile.displayName?.trim() || user?.email?.split('@')[0] || 'User'
+  }, [settings.profile.displayName, user])
 
   return (
     <div className="mt-6 space-y-6">
@@ -176,22 +178,14 @@ export function SettingsShell() {
                 <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
                   {t('settings_current_user')}
                 </label>
-                <select
-                  className="mt-1 h-9 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  value={settings.profile.currentUser}
-                  onChange={(e) =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      profile: { ...prev.profile, currentUser: e.target.value },
-                    }))
-                  }
-                >
-                  {USERS.map((u) => (
-                    <option key={u} value={u}>
-                      {u}
-                    </option>
-                  ))}
-                </select>
+                <div className="mt-1 h-9 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 flex items-center">
+                  <span className="text-sm text-[rgb(var(--zc-muted))] truncate">
+                    {user?.email || 'Not logged in'}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                  Logged in via Supabase Auth
+                </p>
               </div>
 
               <div>
@@ -200,7 +194,7 @@ export function SettingsShell() {
                 </label>
                 <input
                   className="mt-1 h-9 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  placeholder={t('settings_display_placeholder')}
+                  placeholder={user?.email?.split('@')[0] || t('settings_display_placeholder')}
                   value={settings.profile.displayName}
                   onChange={(e) =>
                     setSettings((prev) => ({

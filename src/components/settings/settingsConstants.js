@@ -1,5 +1,3 @@
-export const USERS = ['Özlem', 'Songül', 'Nisanur']
-
 export const SETTINGS_STORAGE_KEY = 'zerocollab.settings.v1'
 export const PEER_ID_STORAGE_KEY = 'zerocollab.p2p.peerId.v1'
 

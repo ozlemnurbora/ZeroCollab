@@ -2,6 +2,7 @@ import { useEffect } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { LanguageProvider } from './utils/LanguageContext.jsx'
 import { WorkspaceProvider } from './utils/WorkspaceContext.jsx'
+import { AuthProvider, useAuth } from './utils/AuthContext.jsx'
 import { connectToPeer, initP2P } from './utils/p2pManager.js'
 import { requestNotificationPermission } from './utils/taskReminder.js'
 import { SidebarLayout } from './layouts/SidebarLayout.jsx'
@@ -11,6 +12,37 @@ import { CalendarPage } from './pages/CalendarPage.jsx'
 import { ChatPage } from './pages/ChatPage.jsx'
 import { EvaluationPage } from './pages/EvaluationPage.jsx'
 import { SettingsPage } from './pages/SettingsPage.jsx'
+import { AuthPage } from './pages/AuthPage.jsx'
+
+function AppRoutes() {
+  const { user, loading } = useAuth()
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[rgb(var(--zc-bg))] flex items-center justify-center">
+        <p className="text-[rgb(var(--zc-muted))]">Loading...</p>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return <AuthPage />
+  }
+
+  return (
+    <Routes>
+      <Route path="/" element={<SidebarLayout />}>
+        <Route index element={<DashboardPage />} />
+        <Route path="tasks" element={<TasksPage />} />
+        <Route path="calendar" element={<CalendarPage />} />
+        <Route path="chat" element={<ChatPage />} />
+        <Route path="evaluation" element={<EvaluationPage />} />
+        <Route path="settings" element={<SettingsPage />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Route>
+    </Routes>
+  )
+}
 
 function App() {
   useEffect(() => {
@@ -65,17 +97,9 @@ function App() {
   return (
     <LanguageProvider>
       <WorkspaceProvider>
-        <Routes>
-          <Route path="/" element={<SidebarLayout />}>
-            <Route index element={<DashboardPage />} />
-            <Route path="tasks" element={<TasksPage />} />
-            <Route path="calendar" element={<CalendarPage />} />
-            <Route path="chat" element={<ChatPage />} />
-            <Route path="evaluation" element={<EvaluationPage />} />
-            <Route path="settings" element={<SettingsPage />} />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Route>
-        </Routes>
+        <AuthProvider>
+          <AppRoutes />
+        </AuthProvider>
       </WorkspaceProvider>
     </LanguageProvider>
   )
