@@ -9,8 +9,15 @@ import {
   saveActiveChannelId,
   saveMessages,
 } from './chatStorage.js'
-import { loadSettings, saveSettings } from '../settings/settingsStorage.js'
+import { loadSettings } from '../settings/settingsStorage.js'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
+import { useAuth } from '../../utils/AuthContext.jsx'
+import {
+  joinProjectHub,
+  leaveProjectHub,
+  broadcastMessage,
+  getOnlineMembers,
+} from '../../utils/hubManager.js'
 import {
   P2P_EVENTS,
   P2P_STATUS,
@@ -35,7 +42,9 @@ function createId() {
 
 export function ChatShell() {
   const { t } = useLanguage()
+  const { user } = useAuth()
   const { activeProject, teams } = useWorkspace()
+  const [onlineMembers, setOnlineMembers] = useState([])
 
   const dynamicChannels = useMemo(() => {
     const channels = [...DEFAULT_CHANNELS]
@@ -92,16 +101,12 @@ export function ChatShell() {
     return id
   }
 
-  const [profileDisplayNameDraft, setProfileDisplayNameDraft] = useState('')
-  const [settingsCurrentUser, setSettingsCurrentUser] = useState('')
-
   const me = useMemo(() => {
-    const d = profileDisplayNameDraft.trim()
-    if (d) return d
-    const u = (settingsCurrentUser || '').trim()
-    if (u) return u
+    if (user?.email) {
+      return user.email.split('@')[0]
+    }
     return t('chat_anonymous')
-  }, [profileDisplayNameDraft, settingsCurrentUser, t])
+  }, [user, t])
   const [activeId, setActiveId] = useState('general')
   const [messages, setMessages] = useState([])
   const [myAvatarColor, setMyAvatarColor] = useState(null)
@@ -109,7 +114,6 @@ export function ChatShell() {
   const [hasLoadedChat, setHasLoadedChat] = useState(false)
   const [peerId, setPeerId] = useState('')
   const [p2pStatus, setP2pStatus] = useState(P2P_STATUS.OFFLINE)
-  const [connectPeerInput, setConnectPeerInput] = useState('')
   const [connectedPeers, setConnectedPeers] = useState([])
   const [pendingFile, setPendingFile] = useState(null)
   const [fileUrls, setFileUrls] = useState({})
@@ -233,8 +237,6 @@ export function ChatShell() {
       ])
       if (cancelled) return
       const p = s?.profile
-      setProfileDisplayNameDraft(typeof p?.displayName === 'string' ? p.displayName : '')
-      setSettingsCurrentUser(typeof p?.currentUser === 'string' ? p.currentUser : '')
       setActiveId(ch)
       setMessages(Array.isArray(msgs) ? msgs : [])
       setMyAvatarColor(p?.avatarColor || null)
@@ -421,8 +423,6 @@ export function ChatShell() {
         void loadActiveChannelId().then(setActiveId)
         void loadSettings().then((s) => {
           const p = s?.profile
-          setProfileDisplayNameDraft(typeof p?.displayName === 'string' ? p.displayName : '')
-          setSettingsCurrentUser(typeof p?.currentUser === 'string' ? p.currentUser : '')
           setMyAvatarColor(p?.avatarColor || null)
         })
       }
@@ -437,6 +437,28 @@ export function ChatShell() {
       setActiveId('general')
     }
   }, [allConversations, activeId])
+
+  useEffect(() => {
+    if (!activeProject || !user) return
+
+    joinProjectHub(activeProject.id, user.id, user.email).then(() => {
+      setOnlineMembers(getOnlineMembers())
+    })
+
+    const handleHubMessage = (e) => {
+      const msg = e.detail
+      setMessages((prev) => {
+        if (prev.find((m) => m.id === msg.id)) return prev
+        return [...prev, msg]
+      })
+    }
+    window.addEventListener('hub:message', handleHubMessage)
+
+    return () => {
+      leaveProjectHub()
+      window.removeEventListener('hub:message', handleHubMessage)
+    }
+  }, [activeProject, user])
 
   const activeMessages = useMemo(
     () => messages.filter((m) => m.channelId === activeId),
@@ -463,6 +485,9 @@ export function ChatShell() {
     // eslint-disable-next-line no-console
     console.log('[ChatShell] broadcasting over P2P', next)
     sendToAllPeers({ type: 'chat-message', payload: next })
+    void broadcastMessage(next).catch((err) =>
+      console.error('[ChatShell] hub broadcast failed:', err),
+    )
   }
 
   const handleFileSelected = (file) => {
@@ -579,20 +604,6 @@ export function ChatShell() {
       percent: 100,
     })
     handleCancelFile()
-  }
-
-  const handleConnectClick = async () => {
-    const value = connectPeerInput.trim()
-    if (!value || value === getPeerId()) return
-    // eslint-disable-next-line no-console
-    console.log('[ChatShell] connectToPeer clicked', value)
-    await connectToPeer(value)
-    setConnectedPeers(getConnectedPeers())
-    sendToAllPeers({
-      type: 'peer-introduce',
-      payload: { peerId: value },
-    })
-    setConnectPeerInput('')
   }
 
   const handleCallClick = async () => {
@@ -748,54 +759,16 @@ export function ChatShell() {
             </div>
           </div>
 
-          <div className="flex flex-col items-stretch gap-2 sm:flex-row sm:items-center">
-            <div className="flex min-w-0 flex-col gap-1 sm:max-w-[220px]">
-              <label className="text-xs font-medium text-[rgb(var(--zc-muted2))]">
-                {t('chat_you')}
-              </label>
-              <input
-                type="text"
-                className="h-9 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                placeholder={t('chat_display_name_placeholder')}
-                value={profileDisplayNameDraft}
-                onChange={(e) => setProfileDisplayNameDraft(e.target.value)}
-                onBlur={(e) => {
-                  const v = e.target.value
-                  void (async () => {
-                    const prev = await loadSettings()
-                    const base = prev && typeof prev === 'object' ? prev : {}
-                    await saveSettings({
-                      ...base,
-                      profile: {
-                        ...(base.profile ?? {}),
-                        displayName: v,
-                      },
-                    })
-                  })()
-                }}
-              />
-              <p className="truncate text-[10px] text-[rgb(var(--zc-subtle))]" title={me}>
-                {me}
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                className="h-9 flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-xs text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                placeholder={t('chat_connect_placeholder')}
-                value={connectPeerInput}
-                onChange={(e) => setConnectPeerInput(e.target.value)}
-              />
-              <button
-                type="button"
-                className="h-9 rounded-md bg-indigo-500/90 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-indigo-500/40"
-                onClick={handleConnectClick}
-                disabled={!connectPeerInput.trim()}
-              >
-                {t('btn_connect')}
-              </button>
-              <CallButton onClick={handleCallClick} />
-            </div>
+          <div className="flex items-center gap-2 sm:shrink-0">
+            {onlineMembers.length > 0 && (
+              <div className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 border border-emerald-500/30">
+                <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                <span className="text-xs text-emerald-300">
+                  {onlineMembers.length} online
+                </span>
+              </div>
+            )}
+            <CallButton onClick={handleCallClick} />
           </div>
         </header>
 
