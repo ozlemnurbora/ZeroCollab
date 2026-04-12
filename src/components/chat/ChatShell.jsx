@@ -439,7 +439,11 @@ export function ChatShell() {
   }, [allConversations, activeId])
 
   useEffect(() => {
-    if (!activeProject || !user) return
+    console.log('[Hub] useEffect triggered, activeProject:', activeProject?.id, 'user:', user?.id)
+    if (!activeProject || !user) {
+      console.log('[Hub] skipping - no project or user')
+      return
+    }
 
     joinProjectHub(activeProject.id, user.id, user.email).then(() => {
       setOnlineMembers(getOnlineMembers())
