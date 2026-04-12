@@ -6,6 +6,7 @@ import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
 import { ProjectDetailModal } from '../components/workspace/ProjectDetailModal.jsx'
 import { TeamDetailModal } from '../components/workspace/TeamDetailModal.jsx'
+import { InvitationsPanel } from '../components/workspace/InvitationsPanel.jsx'
 
 export function SidebarLayout() {
   const { t } = useLanguage()
@@ -169,6 +170,7 @@ export function SidebarLayout() {
         </div>
 
         <div className="flex-1 overflow-y-auto py-3">
+          <InvitationsPanel />
           {activeProject && (
             <div className="mx-3 mb-3 flex items-center gap-2 rounded-lg bg-[rgb(var(--zc-border)/0.4)] px-3 py-2">
               <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${activeProject.color}`} />

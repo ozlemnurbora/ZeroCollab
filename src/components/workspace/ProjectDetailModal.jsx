@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import { Modal } from '../ui/Modal.jsx'
 import { Button } from '../ui/Button.jsx'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
+import { sendProjectInvitation } from '../../utils/invitationManager.js'
+import { useAuth } from '../../utils/AuthContext.jsx'
 
 export function ProjectDetailModal({
   open,
@@ -12,6 +14,9 @@ export function ProjectDetailModal({
   onDelete,
 }) {
   const { selectProject } = useWorkspace()
+  const { user } = useAuth()
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteStatus, setInviteStatus] = useState('')
   const [name, setName] = useState(project?.name || '')
   const [description, setDescription] = useState(project?.description || '')
   const [selectedTeamIds, setSelectedTeamIds] = useState(
@@ -41,6 +46,26 @@ export function ProjectDetailModal({
   const handleSave = () => {
     onUpdate?.({ ...project, name, description, teamIds: selectedTeamIds })
     setIsEditing(false)
+  }
+
+  const handleInvite = async () => {
+    if (!inviteEmail.trim()) return
+    try {
+      setInviteStatus('sending')
+      await sendProjectInvitation(
+        project.id,
+        project.name,
+        user.email,
+        inviteEmail.trim()
+      )
+      setInviteStatus('sent')
+      setInviteEmail('')
+      setTimeout(() => setInviteStatus(''), 3000)
+    } catch (err) {
+      console.error('[Invite] error:', err)
+      setInviteStatus('error')
+      setTimeout(() => setInviteStatus(''), 3000)
+    }
   }
 
   return (
@@ -184,6 +209,30 @@ export function ProjectDetailModal({
                       </div>
                     ))}
                 </div>
+              )}
+            </div>
+            <div className="mt-4">
+              <p className="text-sm font-medium text-[rgb(var(--zc-muted))] mb-2">
+                Invite to Project
+              </p>
+              <div className="flex gap-2">
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={e => setInviteEmail(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleInvite()}
+                  placeholder="Enter email address..."
+                  className="flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
+                <Button onClick={handleInvite} disabled={!inviteEmail.trim() || inviteStatus === 'sending'}>
+                  {inviteStatus === 'sending' ? 'Sending...' : 'Invite'}
+                </Button>
+              </div>
+              {inviteStatus === 'sent' && (
+                <p className="mt-1 text-xs text-emerald-400">✓ Invitation sent!</p>
+              )}
+              {inviteStatus === 'error' && (
+                <p className="mt-1 text-xs text-rose-400">Failed to send invitation.</p>
               )}
             </div>
           </>
