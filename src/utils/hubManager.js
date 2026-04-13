@@ -117,8 +117,17 @@ export async function broadcastMessage(message) {
   })
 }
 
-export async function broadcastCallInvite(projectId, callerEmail, callerPeerId) {
+export async function broadcastCallInvite(
+  projectId,
+  callerEmail,
+  callerPeerId,
+  existingParticipants,
+) {
   if (!activeChannel) return
+  const participants =
+    Array.isArray(existingParticipants) && existingParticipants.length > 0
+      ? existingParticipants
+      : [callerPeerId]
   await activeChannel.send({
     type: 'broadcast',
     event: 'call-invite',
@@ -126,6 +135,7 @@ export async function broadcastCallInvite(projectId, callerEmail, callerPeerId) 
       projectId,
       callerEmail,
       callerPeerId,
+      existingParticipants: participants,
       timestamp: Date.now(),
     },
   })
@@ -138,12 +148,7 @@ export async function broadcastCallResponse(accepted, responderPeerId, callerPee
   await activeChannel.send({
     type: 'broadcast',
     event: 'call-response',
-    payload: {
-      accepted,
-      responderPeerId,
-      callerPeerId,
-      timestamp: Date.now(),
-    },
+    payload: { accepted, responderPeerId, callerPeerId, timestamp: Date.now() },
   })
 }
 

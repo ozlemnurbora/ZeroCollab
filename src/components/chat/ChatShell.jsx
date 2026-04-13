@@ -19,7 +19,6 @@ import {
   getOnlineMembers,
   broadcastCallInvite,
   broadcastCallResponse,
-  broadcastCallParticipants,
 } from '../../utils/hubManager.js'
 import {
   P2P_EVENTS,
@@ -122,6 +121,7 @@ export function ChatShell() {
   const [isCallOpen, setIsCallOpen] = useState(false)
   const [incomingGroupCall, setIncomingGroupCall] = useState(null)
   const [remoteStreams, setRemoteStreams] = useState(() => new Map())
+  const [remoteStream, setRemoteStream] = useState(null)
   const [localStream, setLocalStream] = useState(null)
   const [isMuted, setIsMuted] = useState(false)
   const [isCameraOff, setIsCameraOff] = useState(false)
@@ -132,7 +132,7 @@ export function ChatShell() {
   const callStreamsRef = useRef(new Map())
   const localStreamRef = useRef(null)
   const isInCallRef = useRef(false)
-  const placeMeshCallRef = useRef(async () => {})
+  const participantPeerIdsRef = useRef([])
   const wireMediaCallRef = useRef(() => {})
   const teardownCallRef = useRef(() => {})
   const cameraTrackRef = useRef(null)
@@ -162,6 +162,8 @@ export function ChatShell() {
     setRemoteStreams((prev) => {
       const next = new Map(prev)
       next.delete(remotePeerId)
+      const first = [...next.values()][0] ?? null
+      setRemoteStream(first)
       return next
     })
   }
@@ -172,6 +174,7 @@ export function ChatShell() {
     mediaCall.on('stream', (rs) => {
       callStreamsRef.current.set(remotePeerId, rs)
       setRemoteStreams((prev) => new Map(prev).set(remotePeerId, rs))
+      setRemoteStream(rs)
     })
     mediaCall.on('close', () => {
       cleanupRemotePeer(remotePeerId)
@@ -192,9 +195,11 @@ export function ChatShell() {
     }
     activeMediaCallsRef.current.clear()
     callStreamsRef.current.clear()
+    participantPeerIdsRef.current = []
     isInCallRef.current = false
     setIsCallOpen(false)
     setRemoteStreams(new Map())
+    setRemoteStream(null)
     stopStream(localStreamRef.current)
     setLocalStream(null)
     localStreamRef.current = null
@@ -217,24 +222,6 @@ export function ChatShell() {
     return stream
   }
 
-  const placeMeshCall = async (remotePeerId, stream) => {
-    if (!remotePeerId || remotePeerId === getPeerId()) return
-    if (activeMediaCallsRef.current.has(remotePeerId)) return
-    const peer = getPeerInstance()
-    if (!peer || !stream) return
-    // eslint-disable-next-line no-console
-    console.log('[Call] mesh outbound to', remotePeerId)
-    try {
-      const mediaCall = peer.call(remotePeerId, stream)
-      if (!mediaCall) return
-      wireMediaCall(mediaCall, remotePeerId)
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[Call] mesh call failed:', remotePeerId, err)
-    }
-  }
-
-  placeMeshCallRef.current = placeMeshCall
   wireMediaCallRef.current = wireMediaCall
   teardownCallRef.current = teardownCall
 
@@ -242,9 +229,11 @@ export function ChatShell() {
     if (isInCallRef.current) return
     try {
       await startLocalStream()
+      const myId = getPeerId()
       isInCallRef.current = true
       setIsCallOpen(true)
-      await broadcastCallInvite(activeProject?.id, me, getPeerId())
+      participantPeerIdsRef.current = [myId]
+      await broadcastCallInvite(activeProject?.id, me, myId, [myId])
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[Call] start failed:', err)
@@ -254,27 +243,54 @@ export function ChatShell() {
 
   const handleAcceptCall = async () => {
     if (!incomingGroupCall) return
+    const invite = incomingGroupCall
     try {
       const stream = await startLocalStream()
+      const myPeerId = getPeerId()
       isInCallRef.current = true
       setIsCallOpen(true)
-      const callerId = incomingGroupCall.callerPeerId
+      participantPeerIdsRef.current = [myPeerId]
       setIncomingGroupCall(null)
 
-      const peer = getPeerInstance()
-      if (peer && stream) {
-        const mediaCall = peer.call(callerId, stream)
-        if (mediaCall) {
-          wireMediaCall(mediaCall, callerId)
+      const peerInstance = getPeerInstance()
+      if (!peerInstance || !stream) return
+
+      const callAndListen = (remotePeerId) => {
+        if (!remotePeerId || remotePeerId === myPeerId) return
+        if (participantPeerIdsRef.current.includes(remotePeerId)) return
+        // eslint-disable-next-line no-console
+        console.log('[Call] calling participant:', remotePeerId)
+        let mediaCall
+        try {
+          mediaCall = peerInstance.call(remotePeerId, stream)
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error('[Call] peer.call failed:', remotePeerId, err)
+          return
         }
+        if (!mediaCall) return
+        participantPeerIdsRef.current = [...participantPeerIdsRef.current, remotePeerId]
+        wireMediaCall(mediaCall, remotePeerId)
       }
 
-      const myPeerId = getPeerId()
-      await broadcastCallResponse(true, myPeerId, callerId)
+      callAndListen(invite.callerPeerId)
+      invite.existingParticipants?.forEach((id) => callAndListen(id))
+
+      await broadcastCallResponse(true, myPeerId, invite.callerPeerId)
+
       const roster = [
-        ...new Set([callerId, myPeerId, ...activeMediaCallsRef.current.keys()]),
+        ...new Set([
+          invite.callerPeerId,
+          myPeerId,
+          ...(invite.existingParticipants || []),
+        ]),
       ]
-      await broadcastCallParticipants(roster)
+      await broadcastCallInvite(
+        activeProject?.id,
+        invite.callerEmail || me,
+        invite.callerPeerId,
+        roster,
+      )
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('[Call] accept failed:', err)
@@ -523,10 +539,15 @@ export function ChatShell() {
     }
 
     const handleCallInvite = (e) => {
-      const { callerEmail, callerPeerId, projectId } = e.detail ?? {}
+      if (isInCallRef.current) return
+      const { callerEmail, callerPeerId, projectId, existingParticipants } = e.detail ?? {}
       if (!callerPeerId || callerPeerId === getPeerId()) return
       if (projectId && activeProject?.id && projectId !== activeProject.id) return
-      setIncomingGroupCall({ callerEmail, callerPeerId })
+      const existing =
+        Array.isArray(existingParticipants) && existingParticipants.length > 0
+          ? existingParticipants
+          : [callerPeerId]
+      setIncomingGroupCall({ callerEmail, callerPeerId, existingParticipants: existing })
     }
 
     window.addEventListener('hub:message', handleHubMessage)
@@ -542,32 +563,37 @@ export function ChatShell() {
   }, [activeProject, user])
 
   useEffect(() => {
-    const handleCallResponse = async (e) => {
+    const handleHubCallResponse = async (e) => {
       const { accepted, responderPeerId } = e.detail ?? {}
       if (!accepted || responderPeerId === getPeerId()) return
       if (!isInCallRef.current || !localStreamRef.current) return
-      await placeMeshCallRef.current(responderPeerId, localStreamRef.current)
-    }
 
-    const handleCallParticipants = async (e) => {
-      const { participants } = e.detail ?? {}
-      if (!Array.isArray(participants) || participants.length === 0) return
-      if (!isInCallRef.current || !localStreamRef.current) return
-      const stream = localStreamRef.current
-      const myId = getPeerId()
-      for (const peerId of participants) {
-        if (peerId && peerId !== myId) {
-          await placeMeshCallRef.current(peerId, stream)
-        }
+      if (!participantPeerIdsRef.current.includes(responderPeerId)) {
+        participantPeerIdsRef.current = [...participantPeerIdsRef.current, responderPeerId]
       }
+      if (activeMediaCallsRef.current.has(responderPeerId)) return
+
+      // eslint-disable-next-line no-console
+      console.log('[Call] new participant joined, calling them:', responderPeerId)
+      const peerInstance = getPeerInstance()
+      if (!peerInstance) return
+
+      let mediaCall
+      try {
+        mediaCall = peerInstance.call(responderPeerId, localStreamRef.current)
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error('[Call] outbound to joiner failed:', responderPeerId, err)
+        return
+      }
+      if (!mediaCall) return
+      wireMediaCallRef.current(mediaCall, responderPeerId)
     }
 
-    window.addEventListener('hub:call-response', handleCallResponse)
-    window.addEventListener('hub:call-participants', handleCallParticipants)
+    window.addEventListener('hub:call-response', handleHubCallResponse)
 
     return () => {
-      window.removeEventListener('hub:call-response', handleCallResponse)
-      window.removeEventListener('hub:call-participants', handleCallParticipants)
+      window.removeEventListener('hub:call-response', handleHubCallResponse)
     }
   }, [isCallOpen, localStream])
 
@@ -902,7 +928,7 @@ export function ChatShell() {
         isOpen={isCallOpen}
         localStream={localStream}
         remoteStream={
-          remoteStreams.size > 0 ? [...remoteStreams.values()][0] : null
+          remoteStreams.size > 0 ? [...remoteStreams.values()][0] : remoteStream
         }
         remotePeerId={
           remoteStreams.size > 0 ? [...remoteStreams.keys()][0] : ''
