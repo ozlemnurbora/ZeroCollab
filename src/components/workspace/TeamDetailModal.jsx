@@ -10,7 +10,6 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete }) {
   const { user } = useAuth()
   const [name, setName] = useState(team?.name || '')
   const [members, setMembers] = useState(team?.members || [])
-  const [newMember, setNewMember] = useState('')
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteStatus, setInviteStatus] = useState('')
   const [isEditing, setIsEditing] = useState(false)
@@ -26,13 +25,6 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete }) {
   }, [open])
 
   if (!team) return null
-
-  const addMember = () => {
-    const m = newMember.trim()
-    if (!m || members.includes(m)) return
-    setMembers((prev) => [...prev, m])
-    setNewMember('')
-  }
 
   const removeMember = (member) => {
     setMembers((prev) => prev.filter((x) => x !== member))
@@ -163,46 +155,33 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete }) {
             ))}
           </div>
           {isEditing ? (
-            <>
+            <div className="mt-3 border-t border-[rgb(var(--zc-border))] pt-3">
+              <p className="text-xs font-medium text-[rgb(var(--zc-muted))] mb-2">
+                Invite by Email
+              </p>
               <div className="flex gap-2">
                 <input
-                  type="text"
-                  value={newMember}
-                  onChange={(e) => setNewMember(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && addMember()}
-                  placeholder="Add member name..."
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
+                  placeholder="Enter email address..."
                   className="flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 />
-                <Button onClick={addMember}>Add</Button>
+                <Button
+                  onClick={handleInvite}
+                  disabled={!inviteEmail.trim() || !user?.email || inviteStatus === 'sending'}
+                >
+                  {inviteStatus === 'sending' ? 'Sending...' : 'Invite'}
+                </Button>
               </div>
-              <div className="mt-3 border-t border-[rgb(var(--zc-border))] pt-3">
-                <p className="text-xs font-medium text-[rgb(var(--zc-muted))] mb-2">
-                  Invite by Email
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    type="email"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
-                    placeholder="Enter email address..."
-                    className="flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  />
-                  <Button
-                    onClick={handleInvite}
-                    disabled={!inviteEmail.trim() || !user?.email || inviteStatus === 'sending'}
-                  >
-                    {inviteStatus === 'sending' ? 'Sending...' : 'Invite'}
-                  </Button>
-                </div>
-                {inviteStatus === 'sent' && (
-                  <p className="mt-1 text-xs text-emerald-400">✓ Invitation sent!</p>
-                )}
-                {inviteStatus === 'error' && (
-                  <p className="mt-1 text-xs text-rose-400">Failed to send invitation.</p>
-                )}
-              </div>
-            </>
+              {inviteStatus === 'sent' && (
+                <p className="mt-1 text-xs text-emerald-400">✓ Invitation sent!</p>
+              )}
+              {inviteStatus === 'error' && (
+                <p className="mt-1 text-xs text-rose-400">Failed to send invitation.</p>
+              )}
+            </div>
           ) : null}
         </div>
       </div>

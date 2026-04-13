@@ -12,7 +12,7 @@ import {
 
 export function InvitationsPanel() {
   const { user } = useAuth()
-  const { projects, updateProjects, teams, updateTeams } = useWorkspace()
+  const { projects, updateProjects, updateTeams } = useWorkspace()
   const [invitations, setInvitations] = useState([])
   const [teamInvitations, setTeamInvitations] = useState([])
   const [loading, setLoading] = useState(true)
@@ -82,16 +82,34 @@ export function InvitationsPanel() {
     try {
       await respondToTeamInvitation(invitation.id, 'accepted')
 
-      const updatedTeams = teams.map((t) => {
-        if (t.id === invitation.team_id) {
-          const members = t.members || []
-          const userName = user.email.split('@')[0]
-          if (!members.includes(userName)) {
-            return { ...t, members: [...members, userName] }
+      const currentTeams = JSON.parse(localStorage.getItem('zc-teams') || '[]')
+      const userName = user.email.split('@')[0]
+
+      let updatedTeams
+      const existingTeam = currentTeams.find(t => t.id === invitation.team_id)
+
+      if (existingTeam) {
+        updatedTeams = currentTeams.map(t => {
+          if (t.id === invitation.team_id) {
+            const members = t.members || []
+            if (!members.includes(userName)) {
+              return { ...t, members: [...members, userName] }
+            }
           }
+          return t
+        })
+      } else {
+        const newTeam = {
+          id: invitation.team_id,
+          name: invitation.team_name,
+          color: 'bg-indigo-500',
+          createdAt: Date.now(),
+          members: [userName],
+          projectIds: [],
         }
-        return t
-      })
+        updatedTeams = [...currentTeams, newTeam]
+      }
+
       updateTeams(updatedTeams)
 
       setTeamInvitations(prev => prev.filter(i => i.id !== invitation.id))
