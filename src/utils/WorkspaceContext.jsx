@@ -6,7 +6,12 @@ import {
   setActiveProject,
 } from './workspaceStorage.js'
 import { getAcceptedTeamInvitations, subscribeToTeamMemberChanges } from './invitationManager.js'
-import { joinTeamSync, leaveTeamSync, broadcastTeamMembers } from './workspaceSync.js'
+import {
+  joinTeamSync,
+  leaveTeamSync,
+  broadcastTeamMembers,
+  broadcastProjectToTeam,
+} from './workspaceSync.js'
 
 const WorkspaceContext = createContext(null)
 
@@ -43,6 +48,13 @@ export function WorkspaceProvider({ children }) {
   const updateProjects = (updated) => {
     setProjects(updated)
     saveProjects(updated)
+    void (async () => {
+      for (const project of updated) {
+        if (project.teamIds && project.teamIds.length > 0) {
+          await broadcastProjectToTeam(project)
+        }
+      }
+    })()
   }
 
   const updateTeams = (updated) => {
@@ -75,19 +87,33 @@ export function WorkspaceProvider({ children }) {
 
   useEffect(() => {
     void (async () => {
-      await joinTeamSync((teamId, members) => {
-        setTeams((prev) => {
-          const updated = prev.map((t) => {
-            if (t.id === teamId) {
-              const merged = [...new Set([...(t.members || []), ...members])]
-              return { ...t, members: merged }
-            }
-            return t
+      await joinTeamSync(
+        (teamId, members) => {
+          setTeams((prev) => {
+            const updated = prev.map((t) => {
+              if (t.id === teamId) {
+                const merged = [...new Set([...(t.members || []), ...members])]
+                return { ...t, members: merged }
+              }
+              return t
+            })
+            localStorage.setItem('zc-teams', JSON.stringify(updated))
+            return updated
           })
-          localStorage.setItem('zc-teams', JSON.stringify(updated))
-          return updated
-        })
-      })
+        },
+        (project) => {
+          setProjects((prev) => {
+            if (prev.find((p) => p.id === project.id)) {
+              const updated = prev.map((p) => (p.id === project.id ? project : p))
+              saveProjects(updated)
+              return updated
+            }
+            const updated = [...prev, { ...project, isShared: true }]
+            saveProjects(updated)
+            return updated
+          })
+        },
+      )
     })()
     return () => {
       void leaveTeamSync()
