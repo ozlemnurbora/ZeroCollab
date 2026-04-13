@@ -68,3 +68,74 @@ export function subscribeToInvitations(userEmail, onInvitation) {
 
   return () => supabase.removeChannel(channel)
 }
+
+export async function sendTeamInvitation(teamId, teamName, projectId, projectName, inviterEmail, inviteeEmail) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const { data, error } = await supabase
+    .from('team_invitations')
+    .insert({
+      team_id: teamId,
+      team_name: teamName,
+      project_id: projectId || null,
+      project_name: projectName || null,
+      inviter_id: user.id,
+      inviter_email: inviterEmail,
+      invitee_email: inviteeEmail,
+      status: 'pending'
+    })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function getMyTeamInvitations() {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  const { data, error } = await supabase
+    .from('team_invitations')
+    .select('*')
+    .eq('invitee_email', user.email)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('[TeamInvitations] error fetching:', error)
+    return []
+  }
+  return data || []
+}
+
+export async function respondToTeamInvitation(invitationId, status) {
+  const { error } = await supabase
+    .from('team_invitations')
+    .update({ status })
+    .eq('id', invitationId)
+
+  if (error) throw error
+}
+
+export function subscribeToTeamInvitations(userEmail, onInvitation) {
+  const channel = supabase
+    .channel('team-invitations:' + userEmail)
+    .on(
+      'postgres_changes',
+      {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'team_invitations',
+        filter: `invitee_email=eq.${userEmail}`
+      },
+      (payload) => {
+        console.log('[TeamInvitations] new invitation received:', payload.new)
+        onInvitation(payload.new)
+      }
+    )
+    .subscribe()
+
+  return () => supabase.removeChannel(channel)
+}

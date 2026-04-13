@@ -2,12 +2,17 @@ import { useEffect, useState } from 'react'
 import { Modal } from '../ui/Modal.jsx'
 import { Button } from '../ui/Button.jsx'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
+import { useAuth } from '../../utils/AuthContext.jsx'
+import { sendTeamInvitation } from '../../utils/invitationManager.js'
 
 export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete }) {
   const { selectTeam } = useWorkspace()
+  const { user } = useAuth()
   const [name, setName] = useState(team?.name || '')
   const [members, setMembers] = useState(team?.members || [])
   const [newMember, setNewMember] = useState('')
+  const [inviteEmail, setInviteEmail] = useState('')
+  const [inviteStatus, setInviteStatus] = useState('')
   const [isEditing, setIsEditing] = useState(false)
 
   useEffect(() => {
@@ -36,6 +41,28 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete }) {
   const handleSave = () => {
     onUpdate?.({ ...team, name, members })
     setIsEditing(false)
+  }
+
+  const handleInvite = async () => {
+    if (!inviteEmail.trim() || !user?.email) return
+    try {
+      setInviteStatus('sending')
+      await sendTeamInvitation(
+        team.id,
+        team.name,
+        null,
+        null,
+        user.email,
+        inviteEmail.trim()
+      )
+      setInviteStatus('sent')
+      setInviteEmail('')
+      setTimeout(() => setInviteStatus(''), 3000)
+    } catch (err) {
+      console.error('[TeamInvite] error:', err)
+      setInviteStatus('error')
+      setTimeout(() => setInviteStatus(''), 3000)
+    }
   }
 
   return (
@@ -136,17 +163,46 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete }) {
             ))}
           </div>
           {isEditing ? (
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={newMember}
-                onChange={(e) => setNewMember(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && addMember()}
-                placeholder="Add member name..."
-                className="flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-              />
-              <Button onClick={addMember}>Add</Button>
-            </div>
+            <>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newMember}
+                  onChange={(e) => setNewMember(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && addMember()}
+                  placeholder="Add member name..."
+                  className="flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
+                <Button onClick={addMember}>Add</Button>
+              </div>
+              <div className="mt-3 border-t border-[rgb(var(--zc-border))] pt-3">
+                <p className="text-xs font-medium text-[rgb(var(--zc-muted))] mb-2">
+                  Invite by Email
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={(e) => setInviteEmail(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleInvite()}
+                    placeholder="Enter email address..."
+                    className="flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  />
+                  <Button
+                    onClick={handleInvite}
+                    disabled={!inviteEmail.trim() || !user?.email || inviteStatus === 'sending'}
+                  >
+                    {inviteStatus === 'sending' ? 'Sending...' : 'Invite'}
+                  </Button>
+                </div>
+                {inviteStatus === 'sent' && (
+                  <p className="mt-1 text-xs text-emerald-400">✓ Invitation sent!</p>
+                )}
+                {inviteStatus === 'error' && (
+                  <p className="mt-1 text-xs text-rose-400">Failed to send invitation.</p>
+                )}
+              </div>
+            </>
           ) : null}
         </div>
       </div>
