@@ -1,10 +1,11 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useEffect, useState } from 'react'
 import {
   loadProjects,
   saveProjects,
   getActiveProject,
   setActiveProject,
 } from './workspaceStorage.js'
+import { getAcceptedTeamInvitations, subscribeToTeamMemberChanges } from './invitationManager.js'
 
 const WorkspaceContext = createContext(null)
 
@@ -47,6 +48,53 @@ export function WorkspaceProvider({ children }) {
     setTeams(updated)
     localStorage.setItem('zc-teams', JSON.stringify(updated))
   }
+
+  useEffect(() => {
+    if (!teams || teams.length === 0) return
+
+    const teamIds = teams.map(t => t.id)
+
+    getAcceptedTeamInvitations(teamIds).then(accepted => {
+      if (accepted.length === 0) return
+
+      setTeams(prev => {
+        let updated = [...prev]
+        accepted.forEach(inv => {
+          const memberName = inv.invitee_email.split('@')[0]
+          updated = updated.map(t => {
+            if (t.id === inv.team_id) {
+              const members = t.members || []
+              if (!members.includes(memberName)) {
+                return { ...t, members: [...members, memberName] }
+              }
+            }
+            return t
+          })
+        })
+        localStorage.setItem('zc-teams', JSON.stringify(updated))
+        return updated
+      })
+    })
+
+    const unsubscribe = subscribeToTeamMemberChanges(teamIds, (inv) => {
+      const memberName = inv.invitee_email.split('@')[0]
+      setTeams(prev => {
+        const updated = prev.map(t => {
+          if (t.id === inv.team_id) {
+            const members = t.members || []
+            if (!members.includes(memberName)) {
+              return { ...t, members: [...members, memberName] }
+            }
+          }
+          return t
+        })
+        localStorage.setItem('zc-teams', JSON.stringify(updated))
+        return updated
+      })
+    })
+
+    return () => unsubscribe()
+  }, [teams.length])
 
   return (
     <WorkspaceContext.Provider

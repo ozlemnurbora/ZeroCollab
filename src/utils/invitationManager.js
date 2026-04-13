@@ -139,3 +139,41 @@ export function subscribeToTeamInvitations(userEmail, onInvitation) {
 
   return () => supabase.removeChannel(channel)
 }
+
+export async function getAcceptedTeamInvitations(teamIds) {
+  if (!teamIds || teamIds.length === 0) return []
+
+  const { data, error } = await supabase
+    .from('team_invitations')
+    .select('*')
+    .in('team_id', teamIds)
+    .eq('status', 'accepted')
+
+  if (error) return []
+  return data || []
+}
+
+export function subscribeToTeamMemberChanges(teamIds, onMemberAccepted) {
+  if (!teamIds || teamIds.length === 0) return () => {}
+
+  const channel = supabase
+    .channel('team-members-changes')
+    .on(
+      'postgres_changes',
+      {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'team_invitations',
+        filter: `status=eq.accepted`
+      },
+      (payload) => {
+        if (teamIds.includes(payload.new.team_id)) {
+          console.log('[TeamSync] member accepted invitation:', payload.new)
+          onMemberAccepted(payload.new)
+        }
+      }
+    )
+    .subscribe()
+
+  return () => supabase.removeChannel(channel)
+}
