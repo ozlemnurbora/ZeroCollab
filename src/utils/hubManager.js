@@ -74,6 +74,11 @@ export async function joinProjectHub(projectId, userId, userEmail) {
     window.dispatchEvent(event)
   })
 
+  activeChannel.on('broadcast', { event: 'call-participants' }, ({ payload }) => {
+    const event = new CustomEvent('hub:call-participants', { detail: payload })
+    window.dispatchEvent(event)
+  })
+
   // Subscribe and track presence
   await activeChannel.subscribe(async (status) => {
     if (status === 'SUBSCRIBED') {
@@ -139,6 +144,15 @@ export async function broadcastCallResponse(accepted, responderPeerId, callerPee
       callerPeerId,
       timestamp: Date.now(),
     },
+  })
+}
+
+export async function broadcastCallParticipants(participants) {
+  if (!activeChannel) return
+  await activeChannel.send({
+    type: 'broadcast',
+    event: 'call-participants',
+    payload: { participants, timestamp: Date.now() },
   })
 }
 
