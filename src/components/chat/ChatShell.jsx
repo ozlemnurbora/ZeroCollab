@@ -20,11 +20,9 @@ import {
 } from '../../utils/hubManager.js'
 import {
   P2P_EVENTS,
-  P2P_STATUS,
   connectToPeer,
   getConnectedPeers,
   getPeerId,
-  getStatus,
   initP2P,
   on as onP2PEvent,
   placeCall,
@@ -45,6 +43,7 @@ export function ChatShell() {
   const { user } = useAuth()
   const { activeProject, teams } = useWorkspace()
   const [onlineMembers, setOnlineMembers] = useState([])
+  const [hubConnected, setHubConnected] = useState(false)
 
   const dynamicChannels = useMemo(() => {
     const channels = [...DEFAULT_CHANNELS]
@@ -113,7 +112,6 @@ export function ChatShell() {
   const [isLoadingChat, setIsLoadingChat] = useState(true)
   const [hasLoadedChat, setHasLoadedChat] = useState(false)
   const [peerId, setPeerId] = useState('')
-  const [p2pStatus, setP2pStatus] = useState(P2P_STATUS.OFFLINE)
   const [connectedPeers, setConnectedPeers] = useState([])
   const [pendingFile, setPendingFile] = useState(null)
   const [fileUrls, setFileUrls] = useState({})
@@ -254,16 +252,10 @@ export function ChatShell() {
       const { peerId: id } = await initP2P()
       if (!cancelled) {
         setPeerId(id ?? '')
-        setP2pStatus(getStatus())
         setConnectedPeers(getConnectedPeers())
       }
     })()
 
-    const offStatus = onP2PEvent(P2P_EVENTS.STATUS_CHANGE, (s) => {
-      // eslint-disable-next-line no-console
-      console.log('[ChatShell] P2P status-change', s)
-      setP2pStatus(s)
-    })
     const offConnected = onP2PEvent(P2P_EVENTS.PEER_CONNECTED, (info) => {
       // eslint-disable-next-line no-console
       console.log('[ChatShell] P2P: connection established', info)
@@ -392,7 +384,6 @@ export function ChatShell() {
 
     return () => {
       cancelled = true
-      offStatus()
       offConnected()
       offDisconnected()
       offMessage()
@@ -448,6 +439,7 @@ export function ChatShell() {
 
     joinProjectHub(activeProject.id, user.id, user.email).then(() => {
       setOnlineMembers(getOnlineMembers())
+      setHubConnected(true)
     })
 
     const handleHubMessage = (e) => {
@@ -461,6 +453,7 @@ export function ChatShell() {
 
     return () => {
       leaveProjectHub()
+      setHubConnected(false)
       window.removeEventListener('hub:message', handleHubMessage)
     }
   }, [activeProject, user])
@@ -738,31 +731,24 @@ export function ChatShell() {
               <span
                 className={[
                   'inline-flex items-center gap-1 rounded-full border px-2 py-0.5',
-                  p2pStatus === P2P_STATUS.ONLINE
+                  hubConnected
                     ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'
-                    : p2pStatus === P2P_STATUS.CONNECTING
-                      ? 'border-amber-500/50 bg-amber-500/10 text-amber-300'
-                      : 'border-rose-500/50 bg-rose-500/10 text-rose-300',
+                    : 'border-amber-500/50 bg-amber-500/10 text-amber-300',
                 ].join(' ')}
               >
                 <span
                   className={[
                     'h-2 w-2 rounded-full',
-                    p2pStatus === P2P_STATUS.ONLINE
-                      ? 'bg-emerald-400'
-                      : p2pStatus === P2P_STATUS.CONNECTING
-                        ? 'bg-amber-400'
-                        : 'bg-rose-400',
+                    hubConnected ? 'bg-emerald-400' : 'bg-amber-400',
                   ].join(' ')}
                 />
-                <span className="capitalize">
-                  {p2pStatus === P2P_STATUS.ONLINE
-                    ? t('p2p_connected')
-                    : p2pStatus === P2P_STATUS.CONNECTING
-                      ? t('p2p_connecting')
-                      : t('p2p_disconnected')}
-                </span>
+                <span>{hubConnected ? 'Connected' : 'Connecting...'}</span>
               </span>
+              {onlineMembers.length > 0 && (
+                <span className="text-xs text-[rgb(var(--zc-muted2))]">
+                  {onlineMembers.length} online
+                </span>
+              )}
               {connectedPeers.length > 0 && (
                 <span className="text-[rgb(var(--zc-muted2))]">
                   {t('chat_peers_label')}:{' '}
@@ -775,14 +761,6 @@ export function ChatShell() {
           </div>
 
           <div className="flex items-center gap-2 sm:shrink-0">
-            {onlineMembers.length > 0 && (
-              <div className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-1 border border-emerald-500/30">
-                <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                <span className="text-xs text-emerald-300">
-                  {onlineMembers.length} online
-                </span>
-              </div>
-            )}
             <CallButton onClick={handleCallClick} />
           </div>
         </header>
