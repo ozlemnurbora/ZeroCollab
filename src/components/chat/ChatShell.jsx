@@ -29,7 +29,6 @@ import {
   getPeerInstance,
   initP2P,
   on as onP2PEvent,
-  placeCall,
   sendToAllPeers,
 } from '../../utils/p2pManager.js'
 import { CallButton } from '../call/CallButton.jsx'
@@ -122,38 +121,30 @@ export function ChatShell() {
   const [fileTransfers, setFileTransfers] = useState({})
   const [isCallOpen, setIsCallOpen] = useState(false)
   const [incomingGroupCall, setIncomingGroupCall] = useState(null)
-  const [callParticipantPeerIds, setCallParticipantPeerIds] = useState([])
-  const [incomingMediaCall, setIncomingMediaCall] = useState(null)
-  const [incomingCallFrom, setIncomingCallFrom] = useState('')
-  const [activeCallPeerId, setActiveCallPeerId] = useState('')
+  const [remoteStreams, setRemoteStreams] = useState(() => new Map())
   const [localStream, setLocalStream] = useState(null)
-  const [remoteStream, setRemoteStream] = useState(null)
   const [isMuted, setIsMuted] = useState(false)
   const [isCameraOff, setIsCameraOff] = useState(false)
   const [isSharingScreen, setIsSharingScreen] = useState(false)
   const incomingFileChunksRef = useRef(new Map())
   const transferMetaRef = useRef(new Map())
-  const activeCallRef = useRef(null)
-  const activeCallsRef = useRef(new Map())
+  const activeMediaCallsRef = useRef(new Map())
+  const callStreamsRef = useRef(new Map())
   const localStreamRef = useRef(null)
-  const activeCallPeerIdRef = useRef('')
-  const isCallOpenRef = useRef(false)
+  const isInCallRef = useRef(false)
+  const placeMeshCallRef = useRef(async () => {})
+  const wireMediaCallRef = useRef(() => {})
+  const teardownCallRef = useRef(() => {})
   const cameraTrackRef = useRef(null)
   const screenTrackRef = useRef(null)
-  const connectToCallParticipantRef = useRef(async () => {})
 
   const replaceOutgoingVideoTrack = (track) => {
-    for (const mc of activeCallsRef.current.values()) {
+    for (const mc of activeMediaCallsRef.current.values()) {
       const senders = mc?.peerConnection?.getSenders?.() ?? []
       const videoSender = senders.find((sender) => sender?.track?.kind === 'video')
       if (videoSender) {
         void videoSender.replaceTrack(track)
       }
-    }
-    const legacy = activeCallRef.current?.peerConnection?.getSenders?.() ?? []
-    const legacyVideo = legacy.find((sender) => sender?.track?.kind === 'video')
-    if (legacyVideo) {
-      void legacyVideo.replaceTrack(track)
     }
   }
 
@@ -165,51 +156,53 @@ export function ChatShell() {
     localStreamRef.current = localStream
   }, [localStream])
 
-  useEffect(() => {
-    activeCallPeerIdRef.current = activeCallPeerId
-  }, [activeCallPeerId])
-
-  useEffect(() => {
-    isCallOpenRef.current = isCallOpen
-  }, [isCallOpen])
-
-  const resetCallState = () => {
-    activeCallRef.current = null
-    activeCallsRef.current.clear()
-    screenTrackRef.current = null
-    setIsCallOpen(false)
-    setActiveCallPeerId('')
-    setRemoteStream(null)
-    setIsMuted(false)
-    setIsCameraOff(false)
-    setIsSharingScreen(false)
-    setCallParticipantPeerIds([])
+  const cleanupRemotePeer = (remotePeerId) => {
+    activeMediaCallsRef.current.delete(remotePeerId)
+    callStreamsRef.current.delete(remotePeerId)
+    setRemoteStreams((prev) => {
+      const next = new Map(prev)
+      next.delete(remotePeerId)
+      return next
+    })
   }
 
-  const teardownCall = ({ stopLocal = true, notifyPeer = false } = {}) => {
-    if (notifyPeer) {
-      sendToAllPeers({
-        type: 'call-ended',
-        payload: { to: activeCallPeerIdRef.current },
-      })
-    }
-    const meshCalls = [...activeCallsRef.current.values()]
-    activeCallsRef.current.clear()
-    for (const mc of meshCalls) {
+  const wireMediaCall = (mediaCall, remotePeerId) => {
+    if (!mediaCall || !remotePeerId) return
+    activeMediaCallsRef.current.set(remotePeerId, mediaCall)
+    mediaCall.on('stream', (rs) => {
+      callStreamsRef.current.set(remotePeerId, rs)
+      setRemoteStreams((prev) => new Map(prev).set(remotePeerId, rs))
+    })
+    mediaCall.on('close', () => {
+      cleanupRemotePeer(remotePeerId)
+    })
+    mediaCall.on('error', () => {
+      cleanupRemotePeer(remotePeerId)
+    })
+  }
+
+  const teardownCall = () => {
+    sendToAllPeers({ type: 'call-ended', payload: {} })
+    for (const mc of [...activeMediaCallsRef.current.values()]) {
       try {
         mc?.close?.()
       } catch {
         // ignore
       }
     }
-    activeCallRef.current = null
-    if (stopLocal) {
-      stopStream(localStreamRef.current)
-      setLocalStream(null)
-      localStreamRef.current = null
-      cameraTrackRef.current = null
-    }
-    resetCallState()
+    activeMediaCallsRef.current.clear()
+    callStreamsRef.current.clear()
+    isInCallRef.current = false
+    setIsCallOpen(false)
+    setRemoteStreams(new Map())
+    stopStream(localStreamRef.current)
+    setLocalStream(null)
+    localStreamRef.current = null
+    cameraTrackRef.current = null
+    screenTrackRef.current = null
+    setIsMuted(false)
+    setIsCameraOff(false)
+    setIsSharingScreen(false)
   }
 
   const startLocalStream = async () => {
@@ -224,75 +217,68 @@ export function ChatShell() {
     return stream
   }
 
-  const connectToCallParticipant = async (remotePeerId, stream) => {
-    if (activeCallsRef.current.has(remotePeerId)) return
-    if (remotePeerId === getPeerId()) return
-
+  const placeMeshCall = async (remotePeerId, stream) => {
+    if (!remotePeerId || remotePeerId === getPeerId()) return
+    if (activeMediaCallsRef.current.has(remotePeerId)) return
+    const peer = getPeerInstance()
+    if (!peer || !stream) return
     // eslint-disable-next-line no-console
-    console.log('[Call] connecting to participant:', remotePeerId)
+    console.log('[Call] mesh outbound to', remotePeerId)
     try {
-      const peerInst = getPeerInstance()
-      let mediaCall =
-        peerInst && typeof peerInst.call === 'function'
-          ? peerInst.call(remotePeerId, stream)
-          : null
-      if (!mediaCall) {
-        mediaCall = await placeCall(remotePeerId, stream)
-      }
+      const mediaCall = peer.call(remotePeerId, stream)
       if (!mediaCall) return
-
-      mediaCall.on('stream', (remoteStream) => {
-        setRemoteStream(remoteStream)
-        setActiveCallPeerId((prev) => prev || remotePeerId)
-      })
-      mediaCall.on('close', () => {
-        activeCallsRef.current.delete(remotePeerId)
-        setCallParticipantPeerIds((prev) => prev.filter((id) => id !== remotePeerId))
-      })
-      mediaCall.on('error', () => {
-        activeCallsRef.current.delete(remotePeerId)
-        setCallParticipantPeerIds((prev) => prev.filter((id) => id !== remotePeerId))
-      })
-
-      activeCallsRef.current.set(remotePeerId, mediaCall)
-      setCallParticipantPeerIds((prev) =>
-        prev.includes(remotePeerId) ? prev : [...prev, remotePeerId],
-      )
+      wireMediaCall(mediaCall, remotePeerId)
     } catch (err) {
       // eslint-disable-next-line no-console
-      console.error('[Call] failed to connect to participant:', remotePeerId, err)
+      console.error('[Call] mesh call failed:', remotePeerId, err)
     }
   }
 
-  connectToCallParticipantRef.current = connectToCallParticipant
+  placeMeshCallRef.current = placeMeshCall
+  wireMediaCallRef.current = wireMediaCall
+  teardownCallRef.current = teardownCall
 
-  const bindMediaCall = (mediaCall) => {
-    if (!mediaCall) return
-    const remotePeerId = mediaCall.peer ?? ''
-    activeCallRef.current = mediaCall
-    activeCallsRef.current.set(remotePeerId, mediaCall)
-    setActiveCallPeerId(remotePeerId)
-    setIsCallOpen(true)
-    mediaCall.on('stream', (s) => {
-      setRemoteStream(s)
-    })
-    mediaCall.on('close', () => {
-      activeCallsRef.current.delete(remotePeerId)
-      setCallParticipantPeerIds((prev) => prev.filter((id) => id !== remotePeerId))
-      if (activeCallsRef.current.size === 0) {
-        teardownCall({ stopLocal: true, notifyPeer: false })
+  const handleCallClick = async () => {
+    if (isInCallRef.current) return
+    try {
+      await startLocalStream()
+      isInCallRef.current = true
+      setIsCallOpen(true)
+      await broadcastCallInvite(activeProject?.id, me, getPeerId())
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[Call] start failed:', err)
+      isInCallRef.current = false
+    }
+  }
+
+  const handleAcceptCall = async () => {
+    if (!incomingGroupCall) return
+    try {
+      const stream = await startLocalStream()
+      isInCallRef.current = true
+      setIsCallOpen(true)
+      const callerId = incomingGroupCall.callerPeerId
+      setIncomingGroupCall(null)
+
+      const peer = getPeerInstance()
+      if (peer && stream) {
+        const mediaCall = peer.call(callerId, stream)
+        if (mediaCall) {
+          wireMediaCall(mediaCall, callerId)
+        }
       }
-    })
-    mediaCall.on('error', () => {
-      activeCallsRef.current.delete(remotePeerId)
-      setCallParticipantPeerIds((prev) => prev.filter((id) => id !== remotePeerId))
-      if (activeCallsRef.current.size === 0) {
-        teardownCall({ stopLocal: true, notifyPeer: false })
-      }
-    })
-    setCallParticipantPeerIds((prev) =>
-      prev.includes(remotePeerId) ? prev : [...prev, remotePeerId],
-    )
+
+      const myPeerId = getPeerId()
+      await broadcastCallResponse(true, myPeerId, callerId)
+      const roster = [
+        ...new Set([callerId, myPeerId, ...activeMediaCallsRef.current.keys()]),
+      ]
+      await broadcastCallParticipants(roster)
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[Call] accept failed:', err)
+    }
   }
 
   useEffect(() => {
@@ -434,22 +420,8 @@ export function ChatShell() {
           incomingFileChunksRef.current.delete(payload.id)
         }
       } else if (data.type === 'call-ended') {
-        const targetId = data?.payload?.to
-        const myId = getPeerId()
-        if (targetId && myId && targetId !== myId) return
-        const mc = activeCallsRef.current.get(from)
-        if (mc) {
-          try {
-            mc.close?.()
-          } catch {
-            // ignore
-          }
-          activeCallsRef.current.delete(from)
-          setCallParticipantPeerIds((prev) => prev.filter((id) => id !== from))
-        }
-        if (activeCallsRef.current.size === 0 && isCallOpenRef.current) {
-          teardownCall({ stopLocal: true, notifyPeer: false })
-        }
+        if (!isInCallRef.current) return
+        teardownCallRef.current()
       } else if (data.type === 'peer-introduce') {
         const newPeerId = data.payload?.peerId
         if (newPeerId && newPeerId !== getPeerId()) {
@@ -469,34 +441,17 @@ export function ChatShell() {
       }
     })
     const offIncomingCall = onP2PEvent(P2P_EVENTS.INCOMING_CALL, (mediaCall) => {
-      if (isCallOpenRef.current && localStreamRef.current) {
-        const stream = localStreamRef.current
+      if (isInCallRef.current && localStreamRef.current) {
         const remotePeerId = mediaCall?.peer
-        if (!remotePeerId || activeCallsRef.current.has(remotePeerId)) {
+        if (!remotePeerId || activeMediaCallsRef.current.has(remotePeerId)) {
           mediaCall?.close?.()
           return
         }
-        mediaCall.answer(stream)
-        activeCallsRef.current.set(remotePeerId, mediaCall)
-        mediaCall.on('stream', (remoteStream) => {
-          setRemoteStream(remoteStream)
-          setActiveCallPeerId((prev) => prev || remotePeerId)
-          setCallParticipantPeerIds((prev) =>
-            prev.includes(remotePeerId) ? prev : [...prev, remotePeerId],
-          )
-        })
-        mediaCall.on('close', () => {
-          activeCallsRef.current.delete(remotePeerId)
-          setCallParticipantPeerIds((prev) => prev.filter((id) => id !== remotePeerId))
-        })
-        mediaCall.on('error', () => {
-          activeCallsRef.current.delete(remotePeerId)
-          setCallParticipantPeerIds((prev) => prev.filter((id) => id !== remotePeerId))
-        })
+        mediaCall.answer(localStreamRef.current)
+        wireMediaCallRef.current(mediaCall, remotePeerId)
         return
       }
-      setIncomingMediaCall(mediaCall)
-      setIncomingCallFrom(mediaCall?.peer ?? '')
+      mediaCall?.close?.()
     })
 
     return () => {
@@ -505,13 +460,13 @@ export function ChatShell() {
       offDisconnected()
       offMessage()
       offIncomingCall()
-      teardownCall({ stopLocal: true, notifyPeer: false })
+      teardownCallRef.current()
     }
   }, [])
 
   useEffect(() => {
     const stopOnUnload = () => {
-      teardownCall({ stopLocal: true, notifyPeer: false })
+      teardownCallRef.current()
     }
     window.addEventListener('beforeunload', stopOnUnload)
     return () => {
@@ -581,7 +536,6 @@ export function ChatShell() {
       leaveProjectHub()
       setHubConnected(false)
       setIncomingGroupCall(null)
-      setCallParticipantPeerIds([])
       window.removeEventListener('hub:message', handleHubMessage)
       window.removeEventListener('hub:call-invite', handleCallInvite)
     }
@@ -591,20 +545,19 @@ export function ChatShell() {
     const handleCallResponse = async (e) => {
       const { accepted, responderPeerId } = e.detail ?? {}
       if (!accepted || responderPeerId === getPeerId()) return
-      if (!isCallOpenRef.current || !localStreamRef.current) return
-      await connectToCallParticipantRef.current(responderPeerId, localStreamRef.current)
+      if (!isInCallRef.current || !localStreamRef.current) return
+      await placeMeshCallRef.current(responderPeerId, localStreamRef.current)
     }
 
     const handleCallParticipants = async (e) => {
       const { participants } = e.detail ?? {}
       if (!Array.isArray(participants) || participants.length === 0) return
-      if (!isCallOpenRef.current || !localStreamRef.current) return
+      if (!isInCallRef.current || !localStreamRef.current) return
       const stream = localStreamRef.current
       const myId = getPeerId()
-      setCallParticipantPeerIds((prev) => [...new Set([...prev, ...participants])])
       for (const peerId of participants) {
         if (peerId && peerId !== myId) {
-          await connectToCallParticipantRef.current(peerId, stream)
+          await placeMeshCallRef.current(peerId, stream)
         }
       }
     }
@@ -774,35 +727,6 @@ export function ChatShell() {
     handleCancelFile()
   }
 
-  const handleCallClick = async () => {
-    try {
-      await startLocalStream()
-      setIsCallOpen(true)
-      const myPeerId = getPeerId()
-      setCallParticipantPeerIds([myPeerId])
-      await broadcastCallInvite(activeProject?.id, me, myPeerId)
-      await broadcastCallParticipants([myPeerId])
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[Call] failed to start:', err)
-    }
-  }
-
-  const handleAcceptIncomingCall = async () => {
-    if (!incomingMediaCall) return
-    const stream = await startLocalStream()
-    incomingMediaCall.answer(stream)
-    bindMediaCall(incomingMediaCall)
-    setIncomingMediaCall(null)
-    setIncomingCallFrom('')
-  }
-
-  const handleDeclineIncomingCall = () => {
-    incomingMediaCall?.close?.()
-    setIncomingMediaCall(null)
-    setIncomingCallFrom('')
-  }
-
   const handleToggleMute = () => {
     if (!localStream) return
     const nextMuted = !isMuted
@@ -952,27 +876,7 @@ export function ChatShell() {
           <div className="mt-3 flex gap-2">
             <button
               type="button"
-              onClick={async () => {
-                try {
-                  const stream = await startLocalStream()
-                  setIsCallOpen(true)
-                  const myPeerId = getPeerId()
-                  const callerId = incomingGroupCall.callerPeerId
-                  await connectToCallParticipant(callerId, stream)
-                  setCallParticipantPeerIds((prev) =>
-                    [...new Set([...prev, callerId, myPeerId])],
-                  )
-                  await broadcastCallResponse(true, myPeerId, callerId)
-                  const roster = [
-                    ...new Set([callerId, myPeerId, ...activeCallsRef.current.keys()]),
-                  ]
-                  await broadcastCallParticipants(roster)
-                  setIncomingGroupCall(null)
-                } catch (err) {
-                  // eslint-disable-next-line no-console
-                  console.error('[Call] accept failed:', err)
-                }
-              }}
+              onClick={() => void handleAcceptCall()}
               className="flex-1 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-400"
             >
               Accept
@@ -997,18 +901,22 @@ export function ChatShell() {
       <VideoCall
         isOpen={isCallOpen}
         localStream={localStream}
-        remoteStream={remoteStream}
-        remotePeerId={activeCallPeerId}
+        remoteStream={
+          remoteStreams.size > 0 ? [...remoteStreams.values()][0] : null
+        }
+        remotePeerId={
+          remoteStreams.size > 0 ? [...remoteStreams.keys()][0] : ''
+        }
         isMuted={isMuted}
         isCameraOff={isCameraOff}
         isSharingScreen={isSharingScreen}
         onToggleMute={handleToggleMute}
         onToggleCamera={handleToggleCamera}
         onToggleScreenShare={handleToggleScreenShare}
-        onEndCall={() => teardownCall({ stopLocal: true, notifyPeer: true })}
-        incomingCallFrom={incomingCallFrom}
-        onAcceptIncoming={handleAcceptIncomingCall}
-        onDeclineIncoming={handleDeclineIncomingCall}
+        onEndCall={() => teardownCall()}
+        incomingCallFrom=""
+        onAcceptIncoming={() => {}}
+        onDeclineIncoming={() => {}}
       />
     </div>
   )
