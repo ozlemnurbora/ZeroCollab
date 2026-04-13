@@ -153,6 +153,19 @@ export async function getAcceptedTeamInvitations(teamIds) {
   return data || []
 }
 
+export async function getTeamMembers(teamIds) {
+  if (!teamIds || teamIds.length === 0) return []
+
+  const { data, error } = await supabase
+    .from('team_invitations')
+    .select('team_id, invitee_email, inviter_email')
+    .in('team_id', teamIds)
+    .eq('status', 'accepted')
+
+  if (error) return []
+  return data || []
+}
+
 export function subscribeToTeamMemberChanges(teamIds, onMemberAccepted) {
   if (!teamIds || teamIds.length === 0) return () => {}
 

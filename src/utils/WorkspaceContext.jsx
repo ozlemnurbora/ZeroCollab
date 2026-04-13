@@ -6,6 +6,7 @@ import {
   setActiveProject,
 } from './workspaceStorage.js'
 import { getAcceptedTeamInvitations, subscribeToTeamMemberChanges } from './invitationManager.js'
+import { joinTeamSync, leaveTeamSync, broadcastTeamMembers } from './workspaceSync.js'
 
 const WorkspaceContext = createContext(null)
 
@@ -47,6 +48,13 @@ export function WorkspaceProvider({ children }) {
   const updateTeams = (updated) => {
     setTeams(updated)
     localStorage.setItem('zc-teams', JSON.stringify(updated))
+    void (async () => {
+      for (const team of updated) {
+        if (team.members && team.members.length > 0) {
+          await broadcastTeamMembers(team.id, team.members)
+        }
+      }
+    })()
   }
 
   const addMyselfToTeam = (teamId, userName) => {
@@ -64,6 +72,27 @@ export function WorkspaceProvider({ children }) {
       return updated
     })
   }
+
+  useEffect(() => {
+    void (async () => {
+      await joinTeamSync((teamId, members) => {
+        setTeams((prev) => {
+          const updated = prev.map((t) => {
+            if (t.id === teamId) {
+              const merged = [...new Set([...(t.members || []), ...members])]
+              return { ...t, members: merged }
+            }
+            return t
+          })
+          localStorage.setItem('zc-teams', JSON.stringify(updated))
+          return updated
+        })
+      })
+    })()
+    return () => {
+      void leaveTeamSync()
+    }
+  }, [])
 
   useEffect(() => {
     if (!teams || teams.length === 0) return
