@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 import { OfflineBanner } from '../components/pwa/OfflineBanner.jsx'
 import { useLanguage } from '../utils/LanguageContext.jsx'
@@ -92,12 +92,13 @@ export function SidebarLayout() {
   const addTeam = () => {
     const name = newTeamName.trim()
     if (!name) return
+    const creatorName = user?.email?.split('@')[0] || 'Unknown'
     const newTeam = {
       id: `team_${Date.now()}`,
       name,
       color: TEAM_COLORS[teams.length % TEAM_COLORS.length],
       createdAt: Date.now(),
-      members: [],
+      members: [creatorName],
       projectIds: [],
     }
     const updated = [...teams, newTeam]
@@ -105,6 +106,22 @@ export function SidebarLayout() {
     setNewTeamName('')
     setShowNewTeam(false)
   }
+
+  useEffect(() => {
+    if (!user || !teams || teams.length === 0) return
+    const userName = user.email?.split('@')[0]
+    if (!userName) return
+    let needsUpdate = false
+    const updated = teams.map((team) => {
+      const members = team.members || []
+      if (members.length === 0) {
+        needsUpdate = true
+        return { ...team, members: [userName] }
+      }
+      return team
+    })
+    if (needsUpdate) updateTeams(updated)
+  }, [user?.id])
 
   const deleteTeam = (id) => {
     const updated = teams.filter((t) => t.id !== id)

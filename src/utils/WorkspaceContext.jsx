@@ -49,6 +49,22 @@ export function WorkspaceProvider({ children }) {
     localStorage.setItem('zc-teams', JSON.stringify(updated))
   }
 
+  const addMyselfToTeam = (teamId, userName) => {
+    setTeams((prev) => {
+      const updated = prev.map((t) => {
+        if (t.id === teamId) {
+          const members = t.members || []
+          if (!members.includes(userName)) {
+            return { ...t, members: [...members, userName] }
+          }
+        }
+        return t
+      })
+      localStorage.setItem('zc-teams', JSON.stringify(updated))
+      return updated
+    })
+  }
+
   useEffect(() => {
     if (!teams || teams.length === 0) return
 
@@ -107,6 +123,7 @@ export function WorkspaceProvider({ children }) {
         selectTeam,
         updateProjects,
         updateTeams,
+        addMyselfToTeam,
       }}
     >
       {children}
