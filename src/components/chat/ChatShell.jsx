@@ -17,6 +17,8 @@ import {
   leaveProjectHub,
   broadcastMessage,
   getOnlineMembers,
+  broadcastCallInvite,
+  broadcastCallResponse,
 } from '../../utils/hubManager.js'
 import {
   P2P_EVENTS,
@@ -117,6 +119,8 @@ export function ChatShell() {
   const [fileUrls, setFileUrls] = useState({})
   const [fileTransfers, setFileTransfers] = useState({})
   const [isCallOpen, setIsCallOpen] = useState(false)
+  const [incomingGroupCall, setIncomingGroupCall] = useState(null)
+  const [groupCallParticipants, setGroupCallParticipants] = useState([])
   const [incomingMediaCall, setIncomingMediaCall] = useState(null)
   const [incomingCallFrom, setIncomingCallFrom] = useState('')
   const [activeCallPeerId, setActiveCallPeerId] = useState('')
@@ -132,6 +136,7 @@ export function ChatShell() {
   const activeCallPeerIdRef = useRef('')
   const cameraTrackRef = useRef(null)
   const screenTrackRef = useRef(null)
+  const bindMediaCallRef = useRef(() => {})
 
   const replaceOutgoingVideoTrack = (track) => {
     const senders = activeCallRef.current?.peerConnection?.getSenders?.() ?? []
@@ -162,6 +167,7 @@ export function ChatShell() {
     setIsMuted(false)
     setIsCameraOff(false)
     setIsSharingScreen(false)
+    setGroupCallParticipants([])
   }
 
   const teardownCall = ({ stopLocal = true, notifyPeer = false } = {}) => {
@@ -213,6 +219,8 @@ export function ChatShell() {
       teardownCall({ stopLocal: true, notifyPeer: false })
     })
   }
+
+  bindMediaCallRef.current = bindMediaCall
 
   useEffect(() => {
     if (!hasLoadedChat) return
@@ -449,12 +457,41 @@ export function ChatShell() {
         return [...prev, msg]
       })
     }
+
+    const handleCallInvite = (e) => {
+      const { callerEmail, callerPeerId, projectId } = e.detail ?? {}
+      if (!callerPeerId || callerPeerId === getPeerId()) return
+      if (projectId && activeProject?.id && projectId !== activeProject.id) return
+      setIncomingGroupCall({ callerEmail, callerPeerId })
+    }
+
+    const handleCallResponse = (e) => {
+      const { accepted, responderPeerId, callerPeerId } = e.detail ?? {}
+      if (!accepted || !responderPeerId || !callerPeerId) return
+      if (getPeerId() !== callerPeerId) return
+      if (responderPeerId === getPeerId()) return
+      const stream = localStreamRef.current
+      if (!stream) return
+      setGroupCallParticipants((prev) =>
+        prev.includes(responderPeerId) ? prev : [...prev, responderPeerId],
+      )
+      void placeCall(responderPeerId, stream).then((mediaCall) => {
+        if (mediaCall) bindMediaCallRef.current(mediaCall)
+      })
+    }
+
     window.addEventListener('hub:message', handleHubMessage)
+    window.addEventListener('hub:call-invite', handleCallInvite)
+    window.addEventListener('hub:call-response', handleCallResponse)
 
     return () => {
       leaveProjectHub()
       setHubConnected(false)
+      setIncomingGroupCall(null)
+      setGroupCallParticipants([])
       window.removeEventListener('hub:message', handleHubMessage)
+      window.removeEventListener('hub:call-invite', handleCallInvite)
+      window.removeEventListener('hub:call-response', handleCallResponse)
     }
   }, [activeProject, user])
 
@@ -615,23 +652,16 @@ export function ChatShell() {
   }
 
   const handleCallClick = async () => {
-    if (!connectedPeers.length) {
-      // eslint-disable-next-line no-alert
-      alert(t('chat_alert_no_peer'))
-      return
+    try {
+      await startLocalStream()
+      setIsCallOpen(true)
+      void broadcastCallInvite(activeProject?.id, me, getPeerId())
+      // eslint-disable-next-line no-console
+      console.log('[Call] sent group call invite to all members')
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('[Call] failed to start:', err)
     }
-    const targetPeerId = connectedPeers[0]
-    const stream = await startLocalStream()
-    const mediaCall = await placeCall(targetPeerId, stream)
-    if (!mediaCall) {
-      // eslint-disable-next-line no-alert
-      alert(t('chat_alert_call_fail'))
-      stopStream(stream)
-      setLocalStream(null)
-      localStreamRef.current = null
-      return
-    }
-    bindMediaCall(mediaCall)
   }
 
   const handleAcceptIncomingCall = async () => {
@@ -790,6 +820,55 @@ export function ChatShell() {
           placeholder={`${t('chat_message_placeholder')} ${activeId.startsWith('dm:') ? channelLabel(activeId) : '# ' + channelLabel(activeId)}`}
         />
       </section>
+      {incomingGroupCall && (
+        <div className="fixed bottom-4 right-4 z-50 rounded-xl border border-indigo-500/40 bg-[rgb(var(--zc-panel))] p-4 shadow-xl">
+          <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
+            📞 {incomingGroupCall.callerEmail} is calling...
+          </p>
+          <div className="mt-3 flex gap-2">
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const stream = await startLocalStream()
+                  setIsCallOpen(true)
+                  await broadcastCallResponse(
+                    true,
+                    getPeerId(),
+                    incomingGroupCall.callerPeerId,
+                  )
+                  const mediaCall = await placeCall(
+                    incomingGroupCall.callerPeerId,
+                    stream,
+                  )
+                  if (mediaCall) bindMediaCall(mediaCall)
+                  setIncomingGroupCall(null)
+                } catch (err) {
+                  // eslint-disable-next-line no-console
+                  console.error('[Call] accept failed:', err)
+                }
+              }}
+              className="flex-1 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-400"
+            >
+              Accept
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                await broadcastCallResponse(
+                  false,
+                  getPeerId(),
+                  incomingGroupCall.callerPeerId,
+                )
+                setIncomingGroupCall(null)
+              }}
+              className="flex-1 rounded-lg bg-rose-500 px-3 py-2 text-sm font-medium text-white hover:bg-rose-400"
+            >
+              Decline
+            </button>
+          </div>
+        </div>
+      )}
       <VideoCall
         isOpen={isCallOpen}
         localStream={localStream}

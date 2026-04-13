@@ -64,6 +64,16 @@ export async function joinProjectHub(projectId, userId, userEmail) {
     }
   })
 
+  activeChannel.on('broadcast', { event: 'call-invite' }, ({ payload }) => {
+    const event = new CustomEvent('hub:call-invite', { detail: payload })
+    window.dispatchEvent(event)
+  })
+
+  activeChannel.on('broadcast', { event: 'call-response' }, ({ payload }) => {
+    const event = new CustomEvent('hub:call-response', { detail: payload })
+    window.dispatchEvent(event)
+  })
+
   // Subscribe and track presence
   await activeChannel.subscribe(async (status) => {
     if (status === 'SUBSCRIBED') {
@@ -98,6 +108,36 @@ export async function broadcastMessage(message) {
       senderId: currentUserId,
       senderEmail: currentUserEmail,
       projectId: currentProjectId,
+    },
+  })
+}
+
+export async function broadcastCallInvite(projectId, callerEmail, callerPeerId) {
+  if (!activeChannel) return
+  await activeChannel.send({
+    type: 'broadcast',
+    event: 'call-invite',
+    payload: {
+      projectId,
+      callerEmail,
+      callerPeerId,
+      timestamp: Date.now(),
+    },
+  })
+  // eslint-disable-next-line no-console
+  console.log('[Hub] broadcast call invite')
+}
+
+export async function broadcastCallResponse(accepted, responderPeerId, callerPeerId) {
+  if (!activeChannel) return
+  await activeChannel.send({
+    type: 'broadcast',
+    event: 'call-response',
+    payload: {
+      accepted,
+      responderPeerId,
+      callerPeerId,
+      timestamp: Date.now(),
     },
   })
 }
