@@ -340,6 +340,7 @@ export function ChatShell() {
           const message = {
             id: meta.id,
             channelId: meta.channelId,
+            projectId: meta.projectId ?? null,
             sender: meta.sender ?? from,
             createdAt: meta.createdAt ?? Date.now(),
             kind: 'file',
@@ -465,8 +466,14 @@ export function ChatShell() {
   }, [activeProject, user])
 
   const activeMessages = useMemo(
-    () => messages.filter((m) => m.channelId === activeId),
-    [messages, activeId],
+    () =>
+      messages.filter(
+        (m) =>
+          m.channelId === activeId &&
+          (m.projectId === activeProject?.id ||
+            (!m.projectId && !activeProject)),
+      ),
+    [messages, activeId, activeProject],
   )
 
   const sendMessage = (text) => {
@@ -476,6 +483,7 @@ export function ChatShell() {
     const next = {
       id: createId(),
       channelId: activeId,
+      projectId: activeProject?.id || null,
       sender: me,
       text,
       createdAt: now,
@@ -522,6 +530,7 @@ export function ChatShell() {
     const id = createId()
     const now = Date.now()
     const channelId = activeId
+    const projectId = activeProject?.id || null
     const sender = me
     const maxSize = 50 * 1024 * 1024
     if (file.size > maxSize) {
@@ -536,6 +545,7 @@ export function ChatShell() {
     const message = {
       id,
       channelId,
+      projectId,
       sender,
       createdAt: now,
       kind: 'file',
@@ -566,6 +576,7 @@ export function ChatShell() {
       payload: {
         id,
         channelId,
+        projectId,
         sender,
         createdAt: now,
         name: file.name,
