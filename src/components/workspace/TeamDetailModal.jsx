@@ -26,7 +26,8 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
 
   if (!team) return null
 
-  const isOwner = !!user?.id && team.ownerId === user.id
+  const isOwner =
+    !!user?.id && (team.owner_id === user.id || team.ownerId === user.id)
 
   const removeMember = (member) => {
     setMembers((prev) => prev.filter((x) => x !== member))

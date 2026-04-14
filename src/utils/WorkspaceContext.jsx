@@ -1,34 +1,121 @@
-import { createContext, useContext, useEffect, useState } from 'react'
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from 'react'
 import { useAuth } from './AuthContext.jsx'
-import {
-  loadProjects,
-  saveProjects,
-  getActiveProject,
-  setActiveProject,
-} from './workspaceStorage.js'
 import { connectToProjectHub } from './appHub.js'
-import { getAcceptedTeamInvitations, subscribeToTeamMemberChanges } from './invitationManager.js'
-import {
-  joinTeamSync,
-  leaveTeamSync,
-  broadcastTeamMembers,
-  broadcastProjectToTeam,
-} from './workspaceSync.js'
 import { broadcastProjectDeleted } from './hubManager.js'
+import {
+  fetchMyProjects,
+  fetchMyTeams,
+  fetchProjectTeams,
+  fetchTeamMembers,
+  createProject,
+  deleteProject as dbDeleteProject,
+  leaveProject as dbLeaveProject,
+  updateProject as dbUpdateProject,
+  createTeam,
+  deleteTeam as dbDeleteTeam,
+  leaveTeam as dbLeaveTeam,
+  assignTeamToProject,
+  removeTeamFromProject,
+  subscribeToMyProjects,
+  subscribeToMyTeams,
+  updateTeamRecord,
+} from './workspaceDB.js'
 
 const WorkspaceContext = createContext(null)
 
+async function migrateLocalToSupabase(user) {
+  const key = `zc-workspace-db-migrated:${user.id}`
+  if (localStorage.getItem(key)) return
+
+  let localProjects = []
+  let localTeams = []
+  try {
+    localProjects = JSON.parse(localStorage.getItem('zc-projects') || '[]')
+  } catch {
+    localProjects = []
+  }
+  try {
+    localTeams = JSON.parse(localStorage.getItem('zc-teams') || '[]')
+  } catch {
+    localTeams = []
+  }
+
+  const remoteProjects = await fetchMyProjects(user.id)
+  const remoteProjectIds = new Set(remoteProjects.map((p) => p.id))
+
+  const remoteTeamsExisting = await fetchMyTeams(user.id)
+  const remoteTeamIds = new Set(remoteTeamsExisting.map((x) => x.id))
+
+  for (const t of localTeams) {
+    if (!t?.id || remoteTeamIds.has(t.id)) continue
+    const ownerOk = !t.ownerId || t.ownerId === user.id
+    if (!ownerOk) continue
+    try {
+      await createTeam(
+        {
+          id: t.id,
+          name: t.name || 'Team',
+          color: t.color || 'bg-pink-500',
+        },
+        user.id,
+        user.email,
+      )
+      remoteTeamIds.add(t.id)
+    } catch (e) {
+      console.warn('[WorkspaceContext] migrate team skipped:', t.id, e)
+    }
+  }
+
+  for (const p of localProjects) {
+    if (!p?.id || remoteProjectIds.has(p.id)) continue
+    const ownerOk =
+      !p.ownerId || p.ownerId === user.id || (!p.isShared && !p.ownerId)
+    if (!ownerOk) continue
+    try {
+      await createProject(
+        {
+          id: p.id,
+          name: p.name || 'Untitled',
+          color: p.color || 'bg-indigo-500',
+          description: p.description || '',
+        },
+        user.id,
+        user.email,
+      )
+      remoteProjectIds.add(p.id)
+      const teamIds = p.teamIds || []
+      for (const tid of teamIds) {
+        if (!remoteTeamIds.has(tid)) continue
+        try {
+          await assignTeamToProject(p.id, tid)
+        } catch (e) {
+          console.warn('[WorkspaceContext] migrate project_teams skipped:', e)
+        }
+      }
+    } catch (e) {
+      console.warn('[WorkspaceContext] migrate project skipped:', p.id, e)
+    }
+  }
+
+  localStorage.setItem(key, '1')
+}
+
 export function WorkspaceProvider({ children }) {
   const { user } = useAuth()
-  const [projects, setProjects] = useState(() => loadProjects())
-  const [activeProject, setActiveProjectState] = useState(() =>
-    getActiveProject(),
-  )
-  const [teams, setTeams] = useState(() => {
+  const [projects, setProjects] = useState([])
+  const [teams, setTeams] = useState([])
+  const [activeProject, setActiveProjectState] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem('zc-teams') || '[]')
+      return JSON.parse(localStorage.getItem('zc-active-project') || 'null')
     } catch {
-      return []
+      return null
     }
   })
   const [activeTeam, setActiveTeamState] = useState(() => {
@@ -38,10 +125,101 @@ export function WorkspaceProvider({ children }) {
       return null
     }
   })
+  const [isLoading, setIsLoading] = useState(true)
+
+  const projectsRef = useRef(projects)
+  const teamsRef = useRef(teams)
+  const activeProjectRef = useRef(activeProject)
+  const activeTeamRef = useRef(activeTeam)
+  projectsRef.current = projects
+  teamsRef.current = teams
+  activeProjectRef.current = activeProject
+  activeTeamRef.current = activeTeam
+
+  const loadProjects = useCallback(async () => {
+    if (!user) return
+    try {
+      const myProjects = await fetchMyProjects(user.id)
+      const projectsWithTeams = await Promise.all(
+        myProjects.map(async (p) => {
+          const teamIds = await fetchProjectTeams(p.id)
+          return { ...p, teamIds }
+        }),
+      )
+      setProjects(projectsWithTeams)
+      setActiveProjectState((prev) => {
+        if (!prev) return prev
+        const updated = projectsWithTeams.find((p) => p.id === prev.id)
+        if (updated) {
+          localStorage.setItem('zc-active-project', JSON.stringify(updated))
+          return updated
+        }
+        return null
+      })
+    } catch (err) {
+      console.error('[WorkspaceContext] loadProjects error:', err)
+    }
+  }, [user])
+
+  const loadTeams = useCallback(async () => {
+    if (!user) return
+    try {
+      const myTeams = await fetchMyTeams(user.id)
+      const teamsWithMembers = await Promise.all(
+        myTeams.map(async (t) => {
+          const members = await fetchTeamMembers(t.id)
+          return { ...t, members }
+        }),
+      )
+      setTeams(teamsWithMembers)
+    } catch (err) {
+      console.error('[WorkspaceContext] loadTeams error:', err)
+    }
+  }, [user])
+
+  useEffect(() => {
+    if (!user) {
+      setProjects([])
+      setTeams([])
+      setIsLoading(false)
+      return
+    }
+
+    setIsLoading(true)
+    ;(async () => {
+      await migrateLocalToSupabase(user)
+      await Promise.all([loadProjects(), loadTeams()])
+    })().finally(() => setIsLoading(false))
+
+    const unsubProjects = subscribeToMyProjects(user.id, () => {
+      void loadProjects()
+    })
+    const unsubTeams = subscribeToMyTeams(user.id, () => {
+      void loadTeams()
+    })
+
+    return () => {
+      unsubProjects()
+      unsubTeams()
+    }
+  }, [user?.id, loadProjects, loadTeams])
+
+  useEffect(() => {
+    if (!activeProject || !user) return
+    void connectToProjectHub(activeProject.id, user.id, user.email)
+  }, [activeProject?.id, user?.id])
+
+  useEffect(() => {
+    const handleProjectDeleted = () => {
+      void loadProjects()
+    }
+    window.addEventListener('hub:project-deleted', handleProjectDeleted)
+    return () => window.removeEventListener('hub:project-deleted', handleProjectDeleted)
+  }, [loadProjects])
 
   const selectProject = (project) => {
     setActiveProjectState(project)
-    setActiveProject(project)
+    localStorage.setItem('zc-active-project', JSON.stringify(project))
   }
 
   const selectTeam = (team) => {
@@ -49,193 +227,130 @@ export function WorkspaceProvider({ children }) {
     localStorage.setItem('zc-active-team', JSON.stringify(team))
   }
 
-  const updateProjects = (updated) => {
-    setProjects(updated)
-    saveProjects(updated)
-    void (async () => {
-      for (const project of updated) {
-        if (project.teamIds && project.teamIds.length > 0) {
-          await broadcastProjectToTeam(project)
-        }
-      }
-    })()
-  }
-
-  const updateTeams = (updated) => {
-    setTeams(updated)
-    localStorage.setItem('zc-teams', JSON.stringify(updated))
-    void (async () => {
-      for (const team of updated) {
-        if (team.members && team.members.length > 0) {
-          await broadcastTeamMembers(team.id, team.members)
-        }
-      }
-    })()
-  }
-
-  const deleteProjectFromWorkspace = (id) => {
-    void broadcastProjectDeleted(id)
-    window.dispatchEvent(
-      new CustomEvent('workspace:project-deleted', { detail: { projectId: id } }),
-    )
-    setProjects((prev) => {
-      const updated = prev.filter((p) => p.id !== id)
-      saveProjects(updated)
-      return updated
-    })
-    setActiveProjectState((prev) => {
-      if (prev?.id === id) {
-        queueMicrotask(() => setActiveProject(null))
-        return null
-      }
-      return prev
-    })
-  }
-
-  useEffect(() => {
-    const handleProjectDeleted = (e) => {
-      const { projectId } = e.detail || {}
-      if (!projectId) return
-      setProjects((prev) => {
-        const updated = prev.filter((p) => p.id !== projectId)
-        saveProjects(updated)
-        return updated
-      })
-      setActiveProjectState((prev) => {
-        if (prev?.id === projectId) {
-          queueMicrotask(() => setActiveProject(null))
-          return null
-        }
-        return prev
-      })
+  const addProject = async (name, color) => {
+    if (!user) return null
+    const newProject = {
+      id: `proj_${Date.now()}`,
+      name,
+      color: color || 'bg-indigo-500',
+      createdAt: Date.now(),
+      teamIds: [],
+      ownerId: user.id,
     }
-    window.addEventListener('hub:project-deleted', handleProjectDeleted)
-    return () => window.removeEventListener('hub:project-deleted', handleProjectDeleted)
-  }, [])
-
-  const addMyselfToTeam = (teamId, userName) => {
-    setTeams((prev) => {
-      const updated = prev.map((t) => {
-        if (t.id === teamId) {
-          const members = t.members || []
-          if (!members.includes(userName)) {
-            return { ...t, members: [...members, userName] }
-          }
-        }
-        return t
-      })
-      localStorage.setItem('zc-teams', JSON.stringify(updated))
-      return updated
-    })
+    await createProject(newProject, user.id, user.email)
+    await loadProjects()
+    return newProject
   }
 
-  useEffect(() => {
-    void (async () => {
-      await joinTeamSync(
-        (teamId, members) => {
-          setTeams((prev) => {
-            const updated = prev.map((t) => {
-              if (t.id === teamId) {
-                const merged = [...new Set([...(t.members || []), ...members])]
-                return { ...t, members: merged }
-              }
-              return t
-            })
-            localStorage.setItem('zc-teams', JSON.stringify(updated))
-            return updated
-          })
-        },
-        (project) => {
-          const acceptedProjects = JSON.parse(
-            localStorage.getItem('zc-accepted-projects') || '[]',
-          )
-          setProjects((prev) => {
-            const alreadyHave = prev.find((p) => p.id === project.id)
-            if (!acceptedProjects.includes(project.id) && !alreadyHave) {
-              return prev
-            }
-            if (alreadyHave) {
-              const updated = prev.map((p) => (p.id === project.id ? project : p))
-              saveProjects(updated)
-              return updated
-            }
-            const updated = [...prev, { ...project, isShared: true }]
-            saveProjects(updated)
-            return updated
-          })
-        },
-      )
-    })()
-    return () => {
-      void leaveTeamSync()
+  const removeProject = async (projectId) => {
+    if (!user) return
+    const project = projectsRef.current.find((p) => p.id === projectId)
+    if (!project) return
+
+    void broadcastProjectDeleted(projectId)
+
+    if (project.owner_id === user.id || project.ownerId === user.id) {
+      await dbDeleteProject(projectId, user.id)
+    } else {
+      await dbLeaveProject(projectId, user.id)
     }
-  }, [])
 
-  useEffect(() => {
-    if (!teams || teams.length === 0) return
+    const remaining = projectsRef.current.filter((p) => p.id !== projectId)
+    if (activeProjectRef.current?.id === projectId) {
+      selectProject(remaining[0] || null)
+    }
+    await loadProjects()
+  }
 
-    const teamIds = teams.map(t => t.id)
+  const updateProjects = async (updatedList) => {
+    if (!user) return
+    const prevById = new Map(projectsRef.current.map((p) => [p.id, p]))
+    for (const project of updatedList) {
+      const prev = prevById.get(project.id)
+      const isOwner = project.owner_id === user.id || project.ownerId === user.id
+      if (
+        prev &&
+        isOwner &&
+        (prev.name !== project.name ||
+          prev.description !== project.description ||
+          prev.color !== project.color)
+      ) {
+        await dbUpdateProject(project, user.id)
+      }
+      if (project.teamIds) {
+        const currentTeamIds = await fetchProjectTeams(project.id)
+        const toAdd = project.teamIds.filter((id) => !currentTeamIds.includes(id))
+        const toRemove = currentTeamIds.filter((id) => !project.teamIds.includes(id))
+        for (const teamId of toAdd) await assignTeamToProject(project.id, teamId)
+        for (const teamId of toRemove)
+          await removeTeamFromProject(project.id, teamId)
+      }
+    }
+    await loadProjects()
+  }
 
-    getAcceptedTeamInvitations(teamIds).then(accepted => {
-      if (accepted.length === 0) return
+  const addTeam = async (name, color) => {
+    if (!user) return null
+    const newTeam = {
+      id: `team_${Date.now()}`,
+      name,
+      color: color || 'bg-pink-500',
+      createdAt: Date.now(),
+      members: [user.email.split('@')[0]],
+      ownerId: user.id,
+    }
+    await createTeam(newTeam, user.id, user.email)
+    await loadTeams()
+    return newTeam
+  }
 
-      setTeams(prev => {
-        let updated = [...prev]
-        accepted.forEach(inv => {
-          const memberName = inv.invitee_email.split('@')[0]
-          updated = updated.map(t => {
-            if (t.id === inv.team_id) {
-              const members = t.members || []
-              if (!members.includes(memberName)) {
-                return { ...t, members: [...members, memberName] }
-              }
-            }
-            return t
-          })
-        })
-        localStorage.setItem('zc-teams', JSON.stringify(updated))
-        return updated
-      })
-    })
+  const removeTeam = async (teamId) => {
+    if (!user) return
+    const team = teamsRef.current.find((t) => t.id === teamId)
+    if (!team) return
 
-    const unsubscribe = subscribeToTeamMemberChanges(teamIds, (inv) => {
-      const memberName = inv.invitee_email.split('@')[0]
-      setTeams(prev => {
-        const updated = prev.map(t => {
-          if (t.id === inv.team_id) {
-            const members = t.members || []
-            if (!members.includes(memberName)) {
-              return { ...t, members: [...members, memberName] }
-            }
-          }
-          return t
-        })
-        localStorage.setItem('zc-teams', JSON.stringify(updated))
-        return updated
-      })
-    })
+    if (team.owner_id === user.id || team.ownerId === user.id) {
+      await dbDeleteTeam(teamId, user.id)
+    } else {
+      await dbLeaveTeam(teamId, user.id)
+    }
+    if (activeTeamRef.current?.id === teamId) {
+      selectTeam(null)
+    }
+    await loadTeams()
+  }
 
-    return () => unsubscribe()
-  }, [teams.length])
-
-  useEffect(() => {
-    if (!activeProject || !user) return
-    void connectToProjectHub(activeProject.id, user.id, user.email)
-  }, [activeProject?.id, user?.id])
+  const updateTeams = async (updatedList) => {
+    if (!user) return
+    const prevById = new Map(teamsRef.current.map((t) => [t.id, t]))
+    for (const t of updatedList) {
+      const prev = prevById.get(t.id)
+      const isOwner = t.owner_id === user.id || t.ownerId === user.id
+      if (prev && isOwner && prev.name !== t.name) {
+        await updateTeamRecord(t.id, { name: t.name }, user.id)
+      }
+    }
+    await loadTeams()
+  }
 
   return (
     <WorkspaceContext.Provider
       value={{
         projects,
-        activeProject,
         teams,
+        activeProject,
         activeTeam,
+        isLoading,
         selectProject,
         selectTeam,
+        addProject,
+        addTeam,
+        removeProject,
+        removeTeam,
         updateProjects,
         updateTeams,
-        addMyselfToTeam,
-        deleteProject: deleteProjectFromWorkspace,
+        reloadProjects: loadProjects,
+        reloadTeams: loadTeams,
       }}
     >
       {children}
@@ -245,7 +360,6 @@ export function WorkspaceProvider({ children }) {
 
 export function useWorkspace() {
   const ctx = useContext(WorkspaceContext)
-  if (!ctx)
-    throw new Error('useWorkspace must be used within WorkspaceProvider')
+  if (!ctx) throw new Error('useWorkspace must be used within WorkspaceProvider')
   return ctx
 }

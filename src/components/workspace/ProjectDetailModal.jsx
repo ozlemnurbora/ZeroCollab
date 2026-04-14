@@ -40,8 +40,11 @@ export function ProjectDetailModal({
 
   const isOwner =
     !!user?.id &&
-    (project.ownerId === user.id ||
-      (project.ownerId == null && !project.isShared))
+    (project.owner_id === user.id ||
+      project.ownerId === user.id ||
+      (project.ownerId == null &&
+        project.owner_id == null &&
+        !project.isShared))
 
   const toggleTeam = (teamId) => {
     setSelectedTeamIds((prev) =>

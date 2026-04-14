@@ -9,10 +9,11 @@ import {
   subscribeToInvitations,
   subscribeToTeamInvitations,
 } from '../../utils/invitationManager.js'
+import { joinProjectAsMember, joinTeamAsMember } from '../../utils/workspaceDB.js'
 
 export function InvitationsPanel() {
   const { user } = useAuth()
-  const { projects, updateProjects, updateTeams } = useWorkspace()
+  const { reloadProjects, reloadTeams } = useWorkspace()
   const [invitations, setInvitations] = useState([])
   const [teamInvitations, setTeamInvitations] = useState([])
   const [loading, setLoading] = useState(true)
@@ -52,25 +53,17 @@ export function InvitationsPanel() {
         localStorage.setItem('zc-accepted-projects', JSON.stringify(acceptedProjects))
       }
 
-      // Add project to local workspace
-      const newProject = {
-        id: invitation.project_id,
-        name: invitation.project_name,
-        color: 'bg-indigo-500',
-        createdAt: Date.now(),
-        members: [],
-        teamIds: [],
-        isShared: true,
-        ownerId: invitation.inviter_id || null,
-        invitedBy: invitation.inviter_email,
+      try {
+        await joinProjectAsMember(
+          invitation.project_id,
+          user.id,
+          user.email,
+          'member',
+        )
+      } catch (e) {
+        console.warn('[Invite] join project (may already be a member):', e)
       }
-      
-      const currentProjects = JSON.parse(localStorage.getItem('zc-projects') || '[]')
-      if (!currentProjects.find(p => p.id === invitation.project_id)) {
-        const updated = [...currentProjects, newProject]
-        localStorage.setItem('zc-projects', JSON.stringify(updated))
-        updateProjects(updated)
-      }
+      await reloadProjects()
 
       setInvitations(prev => prev.filter(i => i.id !== invitation.id))
     } catch (err) {
@@ -91,39 +84,12 @@ export function InvitationsPanel() {
     try {
       await respondToTeamInvitation(invitation.id, 'accepted')
 
-      const currentTeams = JSON.parse(localStorage.getItem('zc-teams') || '[]')
-      const userName = user.email.split('@')[0]
-
-      let updatedTeams
-      const existingTeam = currentTeams.find(t => t.id === invitation.team_id)
-
-      if (existingTeam) {
-        updatedTeams = currentTeams.map(t => {
-          if (t.id === invitation.team_id) {
-            const members = t.members || []
-            const withMembers = !members.includes(userName)
-              ? { ...t, members: [...members, userName] }
-              : t
-            return withMembers.ownerId
-              ? withMembers
-              : { ...withMembers, ownerId: invitation.inviter_id || null }
-          }
-          return t
-        })
-      } else {
-        const newTeam = {
-          id: invitation.team_id,
-          name: invitation.team_name,
-          color: 'bg-indigo-500',
-          createdAt: Date.now(),
-          members: [userName],
-          projectIds: [],
-          ownerId: invitation.inviter_id || null,
-        }
-        updatedTeams = [...currentTeams, newTeam]
+      try {
+        await joinTeamAsMember(invitation.team_id, user.id, user.email)
+      } catch (e) {
+        console.warn('[TeamInvite] join team (may already be a member):', e)
       }
-
-      updateTeams(updatedTeams)
+      await reloadTeams()
 
       setTeamInvitations(prev => prev.filter(i => i.id !== invitation.id))
     } catch (err) {
