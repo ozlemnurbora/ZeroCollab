@@ -4,7 +4,7 @@ import { DayTasksModal } from '../components/calendar/DayTasksModal.jsx'
 import { AddTaskModal } from '../components/kanban/AddTaskModal.jsx'
 import { TaskDetailModal } from '../components/kanban/TaskDetailModal.jsx'
 import { loadTasks, saveTasks } from '../components/kanban/taskStorage.js'
-import { loadMeetings } from '../utils/meetingStorage.js'
+import { deleteMeeting, loadMeetings, saveMeeting } from '../utils/meetingStorage.js'
 import {
   addDaysCalendar,
   parseISODateLocal,
@@ -112,6 +112,25 @@ export function CalendarPage() {
 
   useEffect(() => {
     loadMeetings().then((data) => setMeetings(Array.isArray(data) ? data : []))
+  }, [])
+
+  useEffect(() => {
+    const handleMeetingSync = async (e) => {
+      const { meeting, meetingId, action } = e.detail
+      if (action === 'upsert' && meeting) {
+        await saveMeeting(meeting)
+        setMeetings((prev) => {
+          const exists = prev.find((m) => m.id === meeting.id)
+          if (exists) return prev.map((m) => (m.id === meeting.id ? meeting : m))
+          return [...prev, meeting]
+        })
+      } else if (action === 'delete' && meetingId) {
+        await deleteMeeting(meetingId)
+        setMeetings((prev) => prev.filter((m) => m.id !== meetingId))
+      }
+    }
+    window.addEventListener('hub:meeting-sync', handleMeetingSync)
+    return () => window.removeEventListener('hub:meeting-sync', handleMeetingSync)
   }, [])
 
   useEffect(() => {

@@ -79,6 +79,11 @@ export async function joinProjectHub(projectId, userId, userEmail) {
     window.dispatchEvent(event)
   })
 
+  activeChannel.on('broadcast', { event: 'meeting-sync' }, ({ payload }) => {
+    const event = new CustomEvent('hub:meeting-sync', { detail: payload })
+    window.dispatchEvent(event)
+  })
+
   // Subscribe and track presence
   await activeChannel.subscribe(async (status) => {
     if (status === 'SUBSCRIBED') {
@@ -159,6 +164,26 @@ export async function broadcastCallParticipants(participants) {
     event: 'call-participants',
     payload: { participants, timestamp: Date.now() },
   })
+}
+
+export async function broadcastMeeting(meeting) {
+  if (!activeChannel) return
+  await activeChannel.send({
+    type: 'broadcast',
+    event: 'meeting-sync',
+    payload: { meeting, action: 'upsert' },
+  })
+  console.log('[Hub] broadcast meeting:', meeting.id)
+}
+
+export async function broadcastMeetingDelete(meetingId) {
+  if (!activeChannel) return
+  await activeChannel.send({
+    type: 'broadcast',
+    event: 'meeting-sync',
+    payload: { meetingId, action: 'delete' },
+  })
+  console.log('[Hub] broadcast meeting delete:', meetingId)
 }
 
 export function getOnlineMembers() {
