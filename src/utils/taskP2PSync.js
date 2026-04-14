@@ -13,32 +13,13 @@ export function tasksForP2PBroadcast(tasks, activeProject) {
 
 export function mergeTasksFromSync(localTasks, incomingTasks, activeProject) {
   const local = Array.isArray(localTasks) ? localTasks : []
-  if (!Array.isArray(incomingTasks)) return local
-
-  const personalTasks = local.filter((t) => t && t.calendarType !== 'general')
-  const localGeneral = local.filter((t) => t && t.calendarType === 'general')
-
-  const incomingFiltered = incomingTasks.filter((t) =>
-    matchesProjectForSync(t, activeProject),
-  )
-
-  if (!activeProject?.id) {
-    const byId = new Map()
-    for (const t of localGeneral) byId.set(t.id, t)
-    for (const t of incomingFiltered) byId.set(t.id, t)
-    return [...personalTasks, ...byId.values()]
-  }
-
-  const otherProjectGeneral = localGeneral.filter(
-    (t) => t.projectId && t.projectId !== activeProject.id,
-  )
-  const sameProjectGeneral = localGeneral.filter(
-    (t) => !t.projectId || t.projectId === activeProject.id,
-  )
-
-  const byId = new Map()
-  for (const t of sameProjectGeneral) byId.set(t.id, t)
-  for (const t of incomingFiltered) byId.set(t.id, t)
-
-  return [...personalTasks, ...byId.values(), ...otherProjectGeneral]
+  const incoming = Array.isArray(incomingTasks) ? incomingTasks : []
+  const personalTasks = local.filter((t) => t?.calendarType === 'personal')
+  const incomingGeneral = incoming
+    .filter((t) => t?.calendarType === 'general' || !t?.calendarType)
+    .filter(
+      (t) =>
+        !activeProject?.id || !t?.projectId || t.projectId === activeProject.id,
+    )
+  return [...personalTasks, ...incomingGeneral]
 }

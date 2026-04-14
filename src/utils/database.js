@@ -9,13 +9,14 @@ import {
 } from '../components/settings/settingsConstants.js'
 
 const DB_NAME = 'zerocollab-db'
-const DB_VERSION = 1
+const DB_VERSION = 2
 
 const STORES = {
   tasks: 'tasks',
   messages: 'messages',
   evaluations: 'evaluations',
   settings: 'settings',
+  meetings: 'meetings',
 }
 
 // Keys stored inside the "settings" object store
@@ -122,6 +123,9 @@ export async function getDatabase() {
         }
         if (!db.objectStoreNames.contains(STORES.settings)) {
           db.createObjectStore(STORES.settings, { keyPath: 'key' })
+        }
+        if (!db.objectStoreNames.contains(STORES.meetings)) {
+          db.createObjectStore(STORES.meetings, { keyPath: 'id' })
         }
       },
     })

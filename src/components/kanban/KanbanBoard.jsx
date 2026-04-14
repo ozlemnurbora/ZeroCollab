@@ -17,7 +17,7 @@ function createId() {
   return `task_${Date.now()}_${Math.random().toString(16).slice(2)}`
 }
 
-export function KanbanBoard() {
+export function KanbanBoard({ headerActions = null }) {
   const { t } = useLanguage()
   const { activeProject, activeTeam } = useWorkspace()
   const [tasks, setTasks] = useState([])
@@ -110,7 +110,11 @@ export function KanbanBoard() {
       setSyncNotice(true)
       window.clearTimeout(hideTimer)
       hideTimer = window.setTimeout(() => setSyncNotice(false), 3200)
-      setTasks((prev) => mergeTasksFromSync(prev, data.tasks, activeProject))
+      setTasks((prev) => {
+        const next = mergeTasksFromSync(prev, data.tasks, activeProject)
+        void saveTasks(next)
+        return next
+      })
     })
     const unsubPeer = on(P2P_EVENTS.PEER_CONNECTED, () => {
       // eslint-disable-next-line no-console
@@ -199,6 +203,7 @@ export function KanbanBoard() {
     setTasks((prev) => {
       const next = prev.filter((t) => t.id !== taskId)
       broadcastTasks(next)
+      void saveTasks(next)
       return next
     })
   }
@@ -235,6 +240,7 @@ export function KanbanBoard() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {headerActions}
           <Button onClick={() => setIsAddOpen(true)}>{t('kanban_add_task')}</Button>
         </div>
       </div>

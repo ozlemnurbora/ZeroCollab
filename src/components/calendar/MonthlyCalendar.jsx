@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { DayCell } from './DayCell.jsx'
 import {
   addDaysCalendar,
@@ -13,7 +14,29 @@ import { statusColorClasses } from './taskIndicators.js'
 import { Button } from '../ui/Button.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 
-function CalendarTaskRow({ task, statusLabel }) {
+function CalendarTaskRow({ task, statusLabel, onJoin }) {
+  if (task.isMeeting) {
+    return (
+      <li className="rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-1.5">
+        <p className="truncate text-xs font-medium text-violet-300">📅 {task.title}</p>
+        <p className="mt-1 text-[10px] text-[rgb(var(--zc-muted2))]">
+          {task.time} • {task.duration} min
+        </p>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onJoin?.()
+          }}
+          className="mt-1.5 w-full rounded-md bg-violet-500 px-2 py-1 text-[10px] font-medium text-white hover:bg-violet-400"
+        >
+          Join
+        </button>
+      </li>
+    )
+  }
+
   return (
     <li className="flex items-center justify-between gap-2 py-1.5 text-left">
       <span className="min-w-0 truncate text-xs font-medium text-[rgb(var(--zc-text))]">
@@ -39,11 +62,13 @@ export function MonthlyCalendar({
   selectedISODate,
   onSelectISODate,
   tasksByISODate,
+  meetingsByISODate,
   onNavigatePrev,
   onNavigateNext,
   onGoToday,
 }) {
   const { t, locale } = useLanguage()
+  const navigate = useNavigate()
   const grid = getMonthGrid(viewDate)
   const today = new Date()
 
@@ -99,6 +124,8 @@ export function MonthlyCalendar({
   }, [weekStart])
 
   const dayTasks = tasksByISODate?.get(toISODate(safeFocus)) ?? []
+  const dayMeetings = meetingsByISODate?.get(toISODate(safeFocus)) ?? []
+  const dayItems = [...dayMeetings, ...dayTasks]
 
   return (
     <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
@@ -139,6 +166,8 @@ export function MonthlyCalendar({
             const inCurrentMonth = date.getMonth() === viewDate.getMonth()
             const iso = toISODate(date)
             const tasks = tasksByISODate?.get(iso) ?? []
+            const meetings = meetingsByISODate?.get(iso) ?? []
+            const items = [...meetings, ...tasks]
             const selected = selectedISODate
               ? isoDateMatchesLocalDate(selectedISODate, date)
               : false
@@ -148,7 +177,7 @@ export function MonthlyCalendar({
                 key={iso}
                 date={date}
                 inCurrentMonth={inCurrentMonth}
-                tasks={tasks}
+                tasks={items}
                 selected={selected}
                 onSelect={(nextISO) => {
                   onSelectISODate?.(nextISO)
@@ -167,6 +196,8 @@ export function MonthlyCalendar({
           {weekDays.map((date, i) => {
             const iso = toISODate(date)
             const tasks = tasksByISODate?.get(iso) ?? []
+            const meetings = meetingsByISODate?.get(iso) ?? []
+            const items = [...meetings, ...tasks]
             const selected = iso === selectedISODate
             const wday = t(dayKeys[i])
 
@@ -195,8 +226,13 @@ export function MonthlyCalendar({
                     {date.getDate()}
                   </span>
                   <ul className="mt-2 max-h-64 space-y-0 overflow-y-auto">
-                    {tasks.map((task) => (
-                      <CalendarTaskRow key={task.id} task={task} statusLabel={statusLabel} />
+                    {items.map((task) => (
+                      <CalendarTaskRow
+                        key={`${task.id}_${task.occurrenceDate || iso || ''}`}
+                        task={task}
+                        statusLabel={statusLabel}
+                        onJoin={() => navigate('/chat')}
+                      />
                     ))}
                   </ul>
                 </button>
@@ -219,9 +255,14 @@ export function MonthlyCalendar({
               {new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(safeFocus)}
             </p>
             <ul className="mt-8 divide-y divide-[rgb(var(--zc-border))] rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.2)] px-3">
-              {dayTasks.length ? (
-                dayTasks.map((task) => (
-                  <CalendarTaskRow key={task.id} task={task} statusLabel={statusLabel} />
+              {dayItems.length ? (
+                dayItems.map((task) => (
+                  <CalendarTaskRow
+                    key={`${task.id}_${task.occurrenceDate || toISODate(safeFocus) || ''}`}
+                    task={task}
+                    statusLabel={statusLabel}
+                    onJoin={() => navigate('/chat')}
+                  />
                 ))
               ) : (
                 <li className="py-8 text-center text-sm text-[rgb(var(--zc-muted2))]">

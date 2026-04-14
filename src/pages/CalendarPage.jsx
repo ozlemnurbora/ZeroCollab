@@ -4,6 +4,7 @@ import { DayTasksModal } from '../components/calendar/DayTasksModal.jsx'
 import { AddTaskModal } from '../components/kanban/AddTaskModal.jsx'
 import { TaskDetailModal } from '../components/kanban/TaskDetailModal.jsx'
 import { loadTasks, saveTasks } from '../components/kanban/taskStorage.js'
+import { loadMeetings } from '../utils/meetingStorage.js'
 import {
   addDaysCalendar,
   parseISODateLocal,
@@ -34,6 +35,7 @@ export function CalendarPage() {
   const { t } = useLanguage()
   const { activeProject, activeTeam } = useWorkspace()
   const [tasks, setTasks] = useState([])
+  const [meetings, setMeetings] = useState([])
   const [activeCalendar, setActiveCalendar] = useState('general')
   const [activeView, setActiveView] = useState('month')
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
@@ -109,6 +111,10 @@ export function CalendarPage() {
   }, [])
 
   useEffect(() => {
+    loadMeetings().then((data) => setMeetings(Array.isArray(data) ? data : []))
+  }, [])
+
+  useEffect(() => {
     let hideTimer
     let peerBroadcastTimer
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
@@ -124,7 +130,11 @@ export function CalendarPage() {
       setSyncNotice(true)
       window.clearTimeout(hideTimer)
       hideTimer = window.setTimeout(() => setSyncNotice(false), 3200)
-      setTasks((prev) => mergeTasksFromSync(prev, data.tasks, activeProject))
+      setTasks((prev) => {
+        const next = mergeTasksFromSync(prev, data.tasks, activeProject)
+        void saveTasks(next)
+        return next
+      })
     })
     const unsubPeer = on(P2P_EVENTS.PEER_CONNECTED, () => {
       window.clearTimeout(peerBroadcastTimer)
@@ -216,6 +226,39 @@ export function CalendarPage() {
     return map
   }, [filteredTasks])
 
+  const meetingsByISODate = useMemo(() => {
+    const map = new Map()
+    for (const meeting of meetings) {
+      if (!meeting.date) continue
+
+      const addMeeting = (iso) => {
+        const list = map.get(iso) ?? []
+        list.push({ ...meeting, isMeeting: true })
+        map.set(iso, list)
+      }
+
+      addMeeting(meeting.date)
+
+      if (meeting.recurring !== 'none') {
+        const futureLimit = new Date()
+        futureLimit.setMonth(futureLimit.getMonth() + 6)
+        let current = new Date(meeting.date + 'T00:00:00')
+
+        for (let i = 0; i < 52; i++) {
+          if (meeting.recurring === 'daily') current.setDate(current.getDate() + 1)
+          else if (meeting.recurring === 'weekly') current.setDate(current.getDate() + 7)
+          else if (meeting.recurring === 'monthly') current.setMonth(current.getMonth() + 1)
+          if (current > futureLimit) break
+          const y = current.getFullYear()
+          const m = String(current.getMonth() + 1).padStart(2, '0')
+          const d = String(current.getDate()).padStart(2, '0')
+          addMeeting(`${y}-${m}-${d}`)
+        }
+      }
+    }
+    return map
+  }, [meetings])
+
   const selectedTasks = tasksByISODate.get(selectedISODate) ?? []
 
   const handleSelectISODate = useCallback((iso) => {
@@ -290,6 +333,7 @@ export function CalendarPage() {
     setTasks((prev) => {
       const next = prev.filter((t) => t.id !== taskId)
       broadcastTasks(next)
+      void saveTasks(next)
       return next
     })
   }
@@ -473,6 +517,7 @@ export function CalendarPage() {
               selectedISODate={selectedISODate}
               onSelectISODate={handleSelectISODate}
               tasksByISODate={tasksByISODate}
+              meetingsByISODate={meetingsByISODate}
               onNavigatePrev={onNavigatePrev}
               onNavigateNext={onNavigateNext}
               onGoToday={onGoToday}
@@ -486,6 +531,7 @@ export function CalendarPage() {
         onClose={() => setIsDayOpen(false)}
         isoDate={selectedISODate}
         tasks={selectedTasks}
+        meetings={meetingsByISODate.get(selectedISODate) ?? []}
         onAdd={() => setIsAddOpen(true)}
         onTaskClick={(task) => {
           setSelectedTask(task)

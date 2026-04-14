@@ -54,11 +54,13 @@ export function DayCell({
           <span
             className={[
               'block w-full overflow-hidden text-ellipsis whitespace-nowrap rounded px-1 py-px text-left text-[9px] font-medium leading-none',
-              taskBadgeClasses(primary.status),
+              primary.isMeeting
+                ? 'bg-violet-500/20 text-violet-200 ring-1 ring-violet-500/40'
+                : taskBadgeClasses(primary.status),
             ].join(' ')}
             title={primary.title}
           >
-            {shortTitle(primary.title)}
+            {primary.isMeeting ? `📅 ${shortTitle(primary.title)}` : shortTitle(primary.title)}
           </span>
         ) : null}
         {moreCount > 0 ? (
