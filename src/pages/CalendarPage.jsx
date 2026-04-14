@@ -249,7 +249,30 @@ export function CalendarPage() {
 
   const meetingsByISODate = useMemo(() => {
     const map = new Map()
-    for (const meeting of meetings) {
+
+    const filteredMeetings = meetings.filter((meeting) => {
+      if (
+        !activeProject ||
+        !meeting.projectId ||
+        meeting.projectId === activeProject.id ||
+        !meeting.projectId
+      ) {
+        if (activeCalendar === 'general')
+          return meeting.calendarType === 'general'
+        if (activeCalendar === 'personal')
+          return (
+            meeting.calendarType === 'personal' ||
+            meeting.calendarType !== 'general'
+          )
+        return (
+          meeting.calendarId === activeCalendar ||
+          meeting.calendarType === activeCalendar
+        )
+      }
+      return false
+    })
+
+    for (const meeting of filteredMeetings) {
       if (!meeting.date) continue
 
       const addMeeting = (iso) => {
@@ -263,22 +286,22 @@ export function CalendarPage() {
       if (meeting.recurring !== 'none') {
         const futureLimit = new Date()
         futureLimit.setMonth(futureLimit.getMonth() + 6)
-        let current = new Date(meeting.date + 'T00:00:00')
+        let cur = new Date(meeting.date + 'T00:00:00')
 
         for (let i = 0; i < 52; i++) {
-          if (meeting.recurring === 'daily') current.setDate(current.getDate() + 1)
-          else if (meeting.recurring === 'weekly') current.setDate(current.getDate() + 7)
-          else if (meeting.recurring === 'monthly') current.setMonth(current.getMonth() + 1)
-          if (current > futureLimit) break
-          const y = current.getFullYear()
-          const m = String(current.getMonth() + 1).padStart(2, '0')
-          const d = String(current.getDate()).padStart(2, '0')
+          if (meeting.recurring === 'daily') cur.setDate(cur.getDate() + 1)
+          else if (meeting.recurring === 'weekly') cur.setDate(cur.getDate() + 7)
+          else if (meeting.recurring === 'monthly') cur.setMonth(cur.getMonth() + 1)
+          if (cur > futureLimit) break
+          const y = cur.getFullYear()
+          const m = String(cur.getMonth() + 1).padStart(2, '0')
+          const d = String(cur.getDate()).padStart(2, '0')
           addMeeting(`${y}-${m}-${d}`)
         }
       }
     }
     return map
-  }, [meetings])
+  }, [meetings, activeCalendar, activeProject])
 
   const selectedTasks = tasksByISODate.get(selectedISODate) ?? []
 
