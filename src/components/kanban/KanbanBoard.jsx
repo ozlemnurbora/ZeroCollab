@@ -7,7 +7,8 @@ import { KanbanColumn } from './KanbanColumn.jsx'
 import { TaskDetailModal } from './TaskDetailModal.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
-import { broadcastTaskSync } from '../../utils/hubManager.js'
+import { loadMeetings } from '../../utils/meetingStorage.js'
+import { broadcastMeetingUpdate, broadcastTaskSync } from '../../utils/hubManager.js'
 import { on, sendToAllPeers, P2P_EVENTS } from '../../utils/p2pManager.js'
 import { mergeTasksFromSync, tasksForP2PBroadcast } from '../../utils/taskP2PSync.js'
 import { checkTaskReminders, startReminderChecker } from '../../utils/taskReminder.js'
@@ -143,13 +144,32 @@ export function KanbanBoard({ headerActions = null }) {
   }, [])
 
   useEffect(() => {
-    const handlePeerJoined = () => {
+    const handlePeerJoined = async () => {
       if (!hasLoadedTasks) return
-      console.log('[KanbanBoard] peer joined, broadcasting tasks')
-      setTimeout(() => {
+      console.log('[KanbanBoard] peer joined, broadcasting tasks and meetings')
+      setTimeout(async () => {
         broadcastTasks(tasksRef.current)
-        void broadcastTaskSync(tasksRef.current, activeProject?.id)
-      }, 800)
+        await broadcastTaskSync(tasksRef.current, activeProject?.id)
+
+        try {
+          const allMeetings = await loadMeetings()
+          const projectMeetings = allMeetings.filter(
+            (meeting) =>
+              !activeProject?.id ||
+              !meeting.projectId ||
+              meeting.projectId === activeProject.id,
+          )
+          console.log(
+            '[KanbanBoard] broadcasting meetings to new peer:',
+            projectMeetings.length,
+          )
+          projectMeetings.forEach((meeting) => {
+            void broadcastMeetingUpdate(meeting, 'upsert', activeProject?.id)
+          })
+        } catch (err) {
+          console.error('[KanbanBoard] meeting broadcast error:', err)
+        }
+      }, 1000)
     }
     window.addEventListener('hub:peer-joined', handlePeerJoined)
     return () => window.removeEventListener('hub:peer-joined', handlePeerJoined)

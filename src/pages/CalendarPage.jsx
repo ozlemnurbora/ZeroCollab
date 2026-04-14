@@ -115,23 +115,25 @@ export function CalendarPage() {
   }, [])
 
   useEffect(() => {
-    const handleMeetingSync = async (e) => {
-      const { meeting, meetingId, action } = e.detail
-      if (action === 'upsert' && meeting) {
+    const handleMeetingUpdate = async (e) => {
+      const { meeting, meetingId, meetingAction, projectId } = e.detail || {}
+      if (activeProject?.id && projectId && projectId !== activeProject.id) return
+
+      if (meetingAction === 'upsert' && meeting) {
         await saveMeeting(meeting)
         setMeetings((prev) => {
           const exists = prev.find((m) => m.id === meeting.id)
           if (exists) return prev.map((m) => (m.id === meeting.id ? meeting : m))
           return [...prev, meeting]
         })
-      } else if (action === 'delete' && meetingId) {
+      } else if (meetingAction === 'delete' && meetingId) {
         await deleteMeeting(meetingId)
         setMeetings((prev) => prev.filter((m) => m.id !== meetingId))
       }
     }
-    window.addEventListener('hub:meeting-sync', handleMeetingSync)
-    return () => window.removeEventListener('hub:meeting-sync', handleMeetingSync)
-  }, [])
+    window.addEventListener('hub:meeting-update', handleMeetingUpdate)
+    return () => window.removeEventListener('hub:meeting-update', handleMeetingUpdate)
+  }, [activeProject])
 
   useEffect(() => {
     let hideTimer

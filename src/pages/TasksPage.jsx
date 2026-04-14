@@ -10,10 +10,7 @@ import {
   loadMeetings,
   saveMeeting,
 } from '../utils/meetingStorage.js'
-import {
-  broadcastMeeting,
-  broadcastMeetingDelete,
-} from '../utils/hubManager.js'
+import { broadcastMeetingUpdate } from '../utils/hubManager.js'
 
 export function TasksPage() {
   const { t } = useLanguage()
@@ -30,23 +27,26 @@ export function TasksPage() {
   }, [])
 
   useEffect(() => {
-    const handleMeetingSync = async (e) => {
-      const { meeting, meetingId, action } = e.detail
-      if (action === 'upsert' && meeting) {
+    const handleMeetingUpdate = async (e) => {
+      const { meeting, meetingId, meetingAction, projectId } = e.detail || {}
+      console.log('[TasksPage] hub:meeting-update received:', meetingAction, meeting?.id)
+      if (activeProject?.id && projectId && projectId !== activeProject.id) return
+
+      if (meetingAction === 'upsert' && meeting) {
         await saveMeeting(meeting)
         setMeetings((prev) => {
           const exists = prev.find((m) => m.id === meeting.id)
           if (exists) return prev.map((m) => (m.id === meeting.id ? meeting : m))
           return [...prev, meeting]
         })
-      } else if (action === 'delete' && meetingId) {
+      } else if (meetingAction === 'delete' && meetingId) {
         await deleteMeeting(meetingId)
         setMeetings((prev) => prev.filter((m) => m.id !== meetingId))
       }
     }
-    window.addEventListener('hub:meeting-sync', handleMeetingSync)
-    return () => window.removeEventListener('hub:meeting-sync', handleMeetingSync)
-  }, [])
+    window.addEventListener('hub:meeting-update', handleMeetingUpdate)
+    return () => window.removeEventListener('hub:meeting-update', handleMeetingUpdate)
+  }, [activeProject])
 
   return (
     <section>
@@ -127,7 +127,11 @@ export function TasksPage() {
                         setMeetings((prev) =>
                           prev.filter((entry) => entry.id !== meeting.id),
                         )
-                        void broadcastMeetingDelete(meeting.id)
+                        void broadcastMeetingUpdate(
+                          { id: meeting.id },
+                          'delete',
+                          activeProject?.id,
+                        )
                       }}
                       className="shrink-0 text-xs text-rose-400 opacity-0 group-hover:opacity-100 hover:text-rose-300"
                     >
@@ -167,7 +171,7 @@ export function TasksPage() {
             console.log('[Meeting] prev meetings:', prev)
             return [...prev, newMeeting]
           })
-          void broadcastMeeting(newMeeting)
+          void broadcastMeetingUpdate(newMeeting, 'upsert', activeProject?.id)
         }}
       />
 
@@ -179,13 +183,13 @@ export function TasksPage() {
           await saveMeeting(updated)
           setMeetings((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
           setSelectedMeeting(null)
-          void broadcastMeeting(updated)
+          void broadcastMeetingUpdate(updated, 'upsert', activeProject?.id)
         }}
         onDelete={async (id) => {
           await deleteMeeting(id)
           setMeetings((prev) => prev.filter((m) => m.id !== id))
           setSelectedMeeting(null)
-          void broadcastMeetingDelete(id)
+          void broadcastMeetingUpdate({ id }, 'delete', activeProject?.id)
         }}
       />
     </section>
