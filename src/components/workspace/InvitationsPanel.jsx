@@ -9,7 +9,8 @@ import {
   subscribeToInvitations,
   subscribeToTeamInvitations,
 } from '../../utils/invitationManager.js'
-import { joinProjectAsMember, joinTeamAsMember } from '../../utils/workspaceDB.js'
+import { supabase } from '../../utils/supabase.js'
+import { joinProjectAsMember } from '../../utils/workspaceDB.js'
 
 export function InvitationsPanel() {
   const { user } = useAuth()
@@ -84,14 +85,47 @@ export function InvitationsPanel() {
     try {
       await respondToTeamInvitation(invitation.id, 'accepted')
 
-      try {
-        await joinTeamAsMember(invitation.team_id, user.id, user.email)
-      } catch (e) {
-        console.warn('[TeamInvite] join team (may already be a member):', e)
-      }
-      await reloadTeams()
+      const { error } = await supabase.from('team_members').upsert(
+        {
+          team_id: invitation.team_id,
+          user_id: user.id,
+          user_email: user.email,
+          display_name: user.email.split('@')[0],
+        },
+        { onConflict: 'team_id,user_id' },
+      )
 
-      setTeamInvitations(prev => prev.filter(i => i.id !== invitation.id))
+      if (error)
+        console.error('[InvitationsPanel] team member insert error:', error)
+
+      const { data: projectTeams } = await supabase
+        .from('project_teams')
+        .select('project_id')
+        .eq('team_id', invitation.team_id)
+
+      if (projectTeams && projectTeams.length > 0) {
+        for (const pt of projectTeams) {
+          const { error: pmError } = await supabase.from('project_members').upsert(
+            {
+              project_id: pt.project_id,
+              user_id: user.id,
+              user_email: user.email,
+              role: 'member',
+            },
+            { onConflict: 'project_id,user_id' },
+          )
+
+          if (pmError)
+            console.error(
+              '[InvitationsPanel] project member insert error:',
+              pmError,
+            )
+        }
+      }
+
+      setTeamInvitations((prev) => prev.filter((i) => i.id !== invitation.id))
+
+      await Promise.all([reloadProjects(), reloadTeams()])
     } catch (err) {
       console.error('[TeamInvite] accept error:', err)
     }
