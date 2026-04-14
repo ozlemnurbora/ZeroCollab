@@ -7,8 +7,7 @@ import {
   useRef,
 } from 'react'
 import { useAuth } from './AuthContext.jsx'
-import { connectToProjectHub } from './appHub.js'
-import { broadcastProjectDeleted } from './hubManager.js'
+import { connectToProjectHub, disconnectFromProjectHub } from './appHub.js'
 import {
   fetchMyProjects,
   fetchMyTeams,
@@ -205,7 +204,10 @@ export function WorkspaceProvider({ children }) {
   }, [user?.id, loadProjects, loadTeams])
 
   useEffect(() => {
-    if (!activeProject || !user) return
+    if (!activeProject || !user) {
+      void disconnectFromProjectHub()
+      return
+    }
     void connectToProjectHub(activeProject.id, user.id, user.email)
   }, [activeProject?.id, user?.id])
 
@@ -247,18 +249,17 @@ export function WorkspaceProvider({ children }) {
     const project = projectsRef.current.find((p) => p.id === projectId)
     if (!project) return
 
-    void broadcastProjectDeleted(projectId)
-
     if (project.owner_id === user.id || project.ownerId === user.id) {
       await dbDeleteProject(projectId, user.id)
     } else {
       await dbLeaveProject(projectId, user.id)
     }
 
-    const remaining = projectsRef.current.filter((p) => p.id !== projectId)
     if (activeProjectRef.current?.id === projectId) {
-      selectProject(remaining[0] || null)
+      await disconnectFromProjectHub()
+      selectProject(null)
     }
+
     await loadProjects()
   }
 
@@ -318,6 +319,7 @@ export function WorkspaceProvider({ children }) {
       selectTeam(null)
     }
     await loadTeams()
+    await loadProjects()
   }
 
   const updateTeams = async (updatedList) => {

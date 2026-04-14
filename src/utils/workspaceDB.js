@@ -347,17 +347,19 @@ export function subscribeToMyProjects(userId, onUpdate) {
         filter: `user_id=eq.${userId}`,
       },
       () => {
+        console.log('[WorkspaceDB] project_members changed, reloading projects')
         onUpdate()
       },
     )
     .on(
       'postgres_changes',
       {
-        event: '*',
+        event: 'DELETE',
         schema: 'public',
         table: 'projects',
       },
       () => {
+        console.log('[WorkspaceDB] project deleted, reloading projects')
         onUpdate()
       },
     )
@@ -380,6 +382,7 @@ export function subscribeToMyTeams(userId, onUpdate) {
         filter: `user_id=eq.${userId}`,
       },
       () => {
+        console.log('[WorkspaceDB] team_members changed, reloading teams')
         onUpdate()
       },
     )
