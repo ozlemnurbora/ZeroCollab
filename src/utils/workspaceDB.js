@@ -103,6 +103,31 @@ export async function assignTeamToProject(projectId, teamId) {
     .upsert({ project_id: projectId, team_id: teamId })
 
   if (error) throw error
+
+  const { data: members, error: membersError } = await supabase
+    .from('team_members')
+    .select('user_id, user_email, display_name')
+    .eq('team_id', teamId)
+
+  if (membersError || !members) return
+
+  for (const member of members) {
+    if (!member.user_id) continue
+    const { error: pmError } = await supabase.from('project_members').upsert(
+      {
+        project_id: projectId,
+        user_id: member.user_id,
+        user_email: member.user_email,
+        role: 'member',
+      },
+      { onConflict: 'project_id,user_id' },
+    )
+
+    if (pmError)
+      console.error('[WorkspaceDB] failed to add member to project:', pmError)
+  }
+
+  console.log('[WorkspaceDB] assigned team to project and added members')
 }
 
 export async function removeTeamFromProject(projectId, teamId) {
@@ -113,6 +138,41 @@ export async function removeTeamFromProject(projectId, teamId) {
     .eq('team_id', teamId)
 
   if (error) throw error
+
+  const { data: remainingTeams } = await supabase
+    .from('project_teams')
+    .select('team_id')
+    .eq('project_id', projectId)
+
+  const remainingTeamIds = (remainingTeams || []).map((r) => r.team_id)
+
+  const { data: removedMembers } = await supabase
+    .from('team_members')
+    .select('user_id')
+    .eq('team_id', teamId)
+
+  if (!removedMembers) return
+
+  for (const member of removedMembers) {
+    if (!member.user_id) continue
+
+    if (remainingTeamIds.length > 0) {
+      const { data: stillInTeam } = await supabase
+        .from('team_members')
+        .select('user_id')
+        .eq('user_id', member.user_id)
+        .in('team_id', remainingTeamIds)
+
+      if (stillInTeam && stillInTeam.length > 0) continue
+    }
+
+    await supabase
+      .from('project_members')
+      .delete()
+      .eq('project_id', projectId)
+      .eq('user_id', member.user_id)
+      .neq('role', 'owner')
+  }
 }
 
 export async function fetchProjectTeams(projectId) {
