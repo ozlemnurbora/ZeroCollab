@@ -251,6 +251,13 @@ export async function deleteTeam(teamId, userId) {
 }
 
 export async function leaveTeam(teamId, userId) {
+  const { data: projectTeams } = await supabase
+    .from('project_teams')
+    .select('project_id')
+    .eq('team_id', teamId)
+
+  const projectIds = (projectTeams || []).map((pt) => pt.project_id)
+
   const { error } = await supabase
     .from('team_members')
     .delete()
@@ -258,6 +265,38 @@ export async function leaveTeam(teamId, userId) {
     .eq('user_id', userId)
 
   if (error) throw error
+
+  for (const projectId of projectIds) {
+    const { data: otherTeams } = await supabase
+      .from('project_teams')
+      .select('team_id')
+      .eq('project_id', projectId)
+      .neq('team_id', teamId)
+
+    const otherTeamIds = (otherTeams || []).map((t) => t.team_id)
+
+    let stillInProject = false
+    if (otherTeamIds.length > 0) {
+      const { data: stillInTeam } = await supabase
+        .from('team_members')
+        .select('user_id')
+        .eq('user_id', userId)
+        .in('team_id', otherTeamIds)
+
+      if (stillInTeam && stillInTeam.length > 0) stillInProject = true
+    }
+
+    if (!stillInProject) {
+      await supabase
+        .from('project_members')
+        .delete()
+        .eq('project_id', projectId)
+        .eq('user_id', userId)
+        .neq('role', 'owner')
+    }
+  }
+
+  console.log('[WorkspaceDB] left team and removed from related projects')
 }
 
 export async function joinTeamAsMember(teamId, userId, userEmail) {
