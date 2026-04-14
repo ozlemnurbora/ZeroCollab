@@ -1,10 +1,12 @@
 import { createContext, useContext, useEffect, useState } from 'react'
+import { useAuth } from './AuthContext.jsx'
 import {
   loadProjects,
   saveProjects,
   getActiveProject,
   setActiveProject,
 } from './workspaceStorage.js'
+import { connectToProjectHub } from './appHub.js'
 import { getAcceptedTeamInvitations, subscribeToTeamMemberChanges } from './invitationManager.js'
 import {
   joinTeamSync,
@@ -16,6 +18,7 @@ import {
 const WorkspaceContext = createContext(null)
 
 export function WorkspaceProvider({ children }) {
+  const { user } = useAuth()
   const [projects, setProjects] = useState(() => loadProjects())
   const [activeProject, setActiveProjectState] = useState(() =>
     getActiveProject(),
@@ -166,6 +169,11 @@ export function WorkspaceProvider({ children }) {
 
     return () => unsubscribe()
   }, [teams.length])
+
+  useEffect(() => {
+    if (!activeProject || !user) return
+    void connectToProjectHub(activeProject.id, user.id, user.email)
+  }, [activeProject?.id, user?.id])
 
   return (
     <WorkspaceContext.Provider

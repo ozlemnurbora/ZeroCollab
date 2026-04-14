@@ -51,6 +51,9 @@ export async function joinProjectHub(projectId, userId, userEmail) {
       if (remotePeerId && remoteUserId !== userId) {
         console.log('[Hub] New peer joined:', remotePeerId)
         connectToPeer(remotePeerId).catch((err) => console.error('[Hub] Connect failed:', err))
+        window.dispatchEvent(new CustomEvent('hub:peer-joined', {
+          detail: { peerId: remotePeerId },
+        }))
       }
     })
   })
@@ -184,6 +187,21 @@ export async function broadcastMeetingDelete(meetingId) {
     payload: { meetingId, action: 'delete' },
   })
   console.log('[Hub] broadcast meeting delete:', meetingId)
+}
+
+export async function broadcastTaskSync(tasks, projectId) {
+  if (!activeChannel) return
+  await activeChannel.send({
+    type: 'broadcast',
+    event: 'message',
+    payload: {
+      action: 'task-sync',
+      tasks,
+      projectId,
+      senderId: currentUserId,
+    },
+  })
+  console.log('[Hub] broadcast task sync:', tasks.length)
 }
 
 export function getOnlineMembers() {

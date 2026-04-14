@@ -13,8 +13,6 @@ import { loadSettings } from '../settings/settingsStorage.js'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import { useAuth } from '../../utils/AuthContext.jsx'
 import {
-  joinProjectHub,
-  leaveProjectHub,
   broadcastMessage,
   getOnlineMembers,
   broadcastCallInvite,
@@ -45,7 +43,6 @@ export function ChatShell() {
   const { user } = useAuth()
   const { activeProject, teams } = useWorkspace()
   const [onlineMembers, setOnlineMembers] = useState([])
-  const [hubConnected, setHubConnected] = useState(false)
 
   const dynamicChannels = useMemo(() => {
     const channels = [...DEFAULT_CHANNELS]
@@ -519,19 +516,9 @@ export function ChatShell() {
   }, [allConversations, activeId])
 
   useEffect(() => {
-    console.log('[Hub] useEffect triggered, activeProject:', activeProject?.id, 'user:', user?.id)
-    if (!activeProject || !user) {
-      console.log('[Hub] skipping - no project or user')
-      return
-    }
-
-    joinProjectHub(activeProject.id, user.id, user.email).then(() => {
-      setOnlineMembers(getOnlineMembers())
-      setHubConnected(true)
-    })
-
     const handleHubMessage = (e) => {
       const msg = e.detail
+      if (!msg || msg.action === 'task-sync') return
       setMessages((prev) => {
         if (prev.find((m) => m.id === msg.id)) return prev
         return [...prev, msg]
@@ -554,13 +541,20 @@ export function ChatShell() {
     window.addEventListener('hub:call-invite', handleCallInvite)
 
     return () => {
-      leaveProjectHub()
-      setHubConnected(false)
       setIncomingGroupCall(null)
       window.removeEventListener('hub:message', handleHubMessage)
       window.removeEventListener('hub:call-invite', handleCallInvite)
     }
-  }, [activeProject, user])
+  }, [activeProject])
+
+  useEffect(() => {
+    const updateOnlineMembers = () => {
+      setOnlineMembers(getOnlineMembers())
+    }
+    updateOnlineMembers()
+    window.addEventListener('hub:peer-joined', updateOnlineMembers)
+    return () => window.removeEventListener('hub:peer-joined', updateOnlineMembers)
+  }, [])
 
   useEffect(() => {
     const handleHubCallResponse = async (e) => {
@@ -831,22 +825,6 @@ export function ChatShell() {
                 <span className="font-mono text-[rgb(var(--zc-text))]">
                   {peerId || t('chat_peer_initializing')}
                 </span>
-              </span>
-              <span
-                className={[
-                  'inline-flex items-center gap-1 rounded-full border px-2 py-0.5',
-                  hubConnected
-                    ? 'border-emerald-500/50 bg-emerald-500/10 text-emerald-300'
-                    : 'border-amber-500/50 bg-amber-500/10 text-amber-300',
-                ].join(' ')}
-              >
-                <span
-                  className={[
-                    'h-2 w-2 rounded-full',
-                    hubConnected ? 'bg-emerald-400' : 'bg-amber-400',
-                  ].join(' ')}
-                />
-                <span>{hubConnected ? 'Connected' : 'Connecting...'}</span>
               </span>
               {onlineMembers.length > 0 && (
                 <span className="text-xs text-[rgb(var(--zc-muted2))]">

@@ -7,6 +7,7 @@ import { KanbanColumn } from './KanbanColumn.jsx'
 import { TaskDetailModal } from './TaskDetailModal.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
+import { broadcastTaskSync } from '../../utils/hubManager.js'
 import { on, sendToAllPeers, P2P_EVENTS } from '../../utils/p2pManager.js'
 import { mergeTasksFromSync, tasksForP2PBroadcast } from '../../utils/taskP2PSync.js'
 import { checkTaskReminders, startReminderChecker } from '../../utils/taskReminder.js'
@@ -140,6 +141,36 @@ export function KanbanBoard({ headerActions = null }) {
     window.addEventListener('dragend', onDragEnd)
     return () => window.removeEventListener('dragend', onDragEnd)
   }, [])
+
+  useEffect(() => {
+    const handlePeerJoined = () => {
+      if (!hasLoadedTasks) return
+      console.log('[KanbanBoard] peer joined, broadcasting tasks')
+      setTimeout(() => {
+        broadcastTasks(tasksRef.current)
+        void broadcastTaskSync(tasksRef.current, activeProject?.id)
+      }, 800)
+    }
+    window.addEventListener('hub:peer-joined', handlePeerJoined)
+    return () => window.removeEventListener('hub:peer-joined', handlePeerJoined)
+  }, [hasLoadedTasks, activeProject, broadcastTasks])
+
+  useEffect(() => {
+    const handleHubMessage = (e) => {
+      const { action, tasks: incomingTasks, projectId } = e.detail || {}
+      if (action !== 'task-sync') return
+      if (activeProject?.id && projectId && projectId !== activeProject.id) return
+      if (Array.isArray(incomingTasks)) {
+        setTasks((prev) => {
+          const next = mergeTasksFromSync(prev, incomingTasks, activeProject)
+          void saveTasks(next)
+          return next
+        })
+      }
+    }
+    window.addEventListener('hub:message', handleHubMessage)
+    return () => window.removeEventListener('hub:message', handleHubMessage)
+  }, [activeProject])
 
   const filteredTasks = useMemo(() => {
     if (!activeProject) return tasks

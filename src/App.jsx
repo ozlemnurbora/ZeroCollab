@@ -96,11 +96,11 @@ function App() {
 
   return (
     <LanguageProvider>
-      <WorkspaceProvider>
-        <AuthProvider>
+      <AuthProvider>
+        <WorkspaceProvider>
           <AppRoutes />
-        </AuthProvider>
-      </WorkspaceProvider>
+        </WorkspaceProvider>
+      </AuthProvider>
     </LanguageProvider>
   )
 }
