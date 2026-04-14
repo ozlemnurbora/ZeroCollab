@@ -14,6 +14,7 @@ import {
   broadcastTeamMembers,
   broadcastProjectToTeam,
 } from './workspaceSync.js'
+import { broadcastProjectDeleted } from './hubManager.js'
 
 const WorkspaceContext = createContext(null)
 
@@ -72,6 +73,46 @@ export function WorkspaceProvider({ children }) {
     })()
   }
 
+  const deleteProjectFromWorkspace = (id) => {
+    void broadcastProjectDeleted(id)
+    window.dispatchEvent(
+      new CustomEvent('workspace:project-deleted', { detail: { projectId: id } }),
+    )
+    setProjects((prev) => {
+      const updated = prev.filter((p) => p.id !== id)
+      saveProjects(updated)
+      return updated
+    })
+    setActiveProjectState((prev) => {
+      if (prev?.id === id) {
+        queueMicrotask(() => setActiveProject(null))
+        return null
+      }
+      return prev
+    })
+  }
+
+  useEffect(() => {
+    const handleProjectDeleted = (e) => {
+      const { projectId } = e.detail || {}
+      if (!projectId) return
+      setProjects((prev) => {
+        const updated = prev.filter((p) => p.id !== projectId)
+        saveProjects(updated)
+        return updated
+      })
+      setActiveProjectState((prev) => {
+        if (prev?.id === projectId) {
+          queueMicrotask(() => setActiveProject(null))
+          return null
+        }
+        return prev
+      })
+    }
+    window.addEventListener('hub:project-deleted', handleProjectDeleted)
+    return () => window.removeEventListener('hub:project-deleted', handleProjectDeleted)
+  }, [])
+
   const addMyselfToTeam = (teamId, userName) => {
     setTeams((prev) => {
       const updated = prev.map((t) => {
@@ -105,8 +146,15 @@ export function WorkspaceProvider({ children }) {
           })
         },
         (project) => {
+          const acceptedProjects = JSON.parse(
+            localStorage.getItem('zc-accepted-projects') || '[]',
+          )
           setProjects((prev) => {
-            if (prev.find((p) => p.id === project.id)) {
+            const alreadyHave = prev.find((p) => p.id === project.id)
+            if (!acceptedProjects.includes(project.id) && !alreadyHave) {
+              return prev
+            }
+            if (alreadyHave) {
               const updated = prev.map((p) => (p.id === project.id ? project : p))
               saveProjects(updated)
               return updated
@@ -187,6 +235,7 @@ export function WorkspaceProvider({ children }) {
         updateProjects,
         updateTeams,
         addMyselfToTeam,
+        deleteProject: deleteProjectFromWorkspace,
       }}
     >
       {children}

@@ -43,7 +43,15 @@ export function InvitationsPanel() {
   const handleAccept = async (invitation) => {
     try {
       await respondToInvitation(invitation.id, 'accepted')
-      
+
+      const acceptedProjects = JSON.parse(
+        localStorage.getItem('zc-accepted-projects') || '[]',
+      )
+      if (!acceptedProjects.includes(invitation.project_id)) {
+        acceptedProjects.push(invitation.project_id)
+        localStorage.setItem('zc-accepted-projects', JSON.stringify(acceptedProjects))
+      }
+
       // Add project to local workspace
       const newProject = {
         id: invitation.project_id,
@@ -53,6 +61,7 @@ export function InvitationsPanel() {
         members: [],
         teamIds: [],
         isShared: true,
+        ownerId: invitation.inviter_id || null,
         invitedBy: invitation.inviter_email,
       }
       
@@ -92,9 +101,12 @@ export function InvitationsPanel() {
         updatedTeams = currentTeams.map(t => {
           if (t.id === invitation.team_id) {
             const members = t.members || []
-            if (!members.includes(userName)) {
-              return { ...t, members: [...members, userName] }
-            }
+            const withMembers = !members.includes(userName)
+              ? { ...t, members: [...members, userName] }
+              : t
+            return withMembers.ownerId
+              ? withMembers
+              : { ...withMembers, ownerId: invitation.inviter_id || null }
           }
           return t
         })
@@ -106,6 +118,7 @@ export function InvitationsPanel() {
           createdAt: Date.now(),
           members: [userName],
           projectIds: [],
+          ownerId: invitation.inviter_id || null,
         }
         updatedTeams = [...currentTeams, newTeam]
       }

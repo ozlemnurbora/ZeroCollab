@@ -12,6 +12,7 @@ export function ProjectDetailModal({
   teams,
   onUpdate,
   onDelete,
+  onLeave,
 }) {
   const { selectProject } = useWorkspace()
   const { user } = useAuth()
@@ -36,6 +37,11 @@ export function ProjectDetailModal({
   }, [open])
 
   if (!project) return null
+
+  const isOwner =
+    !!user?.id &&
+    (project.ownerId === user.id ||
+      (project.ownerId == null && !project.isShared))
 
   const toggleTeam = (teamId) => {
     setSelectedTeamIds((prev) =>
@@ -75,15 +81,27 @@ export function ProjectDetailModal({
       title={isEditing ? 'Edit Project' : project.name}
       footer={
         <div className="flex items-center justify-between gap-2">
-          <Button
-            variant="danger"
-            onClick={() => {
-              onDelete?.(project.id)
-              onClose?.()
-            }}
-          >
-            Delete Project
-          </Button>
+          {isOwner ? (
+            <Button
+              variant="danger"
+              onClick={() => {
+                onDelete?.(project.id)
+                onClose?.()
+              }}
+            >
+              Delete Project
+            </Button>
+          ) : (
+            <Button
+              variant="danger"
+              onClick={() => {
+                onLeave?.(project.id)
+                onClose?.()
+              }}
+            >
+              Leave Project
+            </Button>
+          )}
           <div className="flex flex-wrap items-center justify-end gap-2">
             {isEditing ? (
               <>

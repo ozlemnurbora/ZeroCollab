@@ -93,6 +93,11 @@ export async function joinProjectHub(projectId, userId, userEmail) {
     window.dispatchEvent(event)
   })
 
+  activeChannel.on('broadcast', { event: 'project-deleted' }, ({ payload }) => {
+    const event = new CustomEvent('hub:project-deleted', { detail: payload })
+    window.dispatchEvent(event)
+  })
+
   // Subscribe and track presence
   await activeChannel.subscribe(async (status) => {
     if (status === 'SUBSCRIBED') {
@@ -115,6 +120,16 @@ export async function leaveProjectHub() {
     await supabase.removeChannel(activeChannel)
     activeChannel = null
   }
+}
+
+export async function broadcastProjectDeleted(projectId) {
+  if (!activeChannel) return
+  await activeChannel.send({
+    type: 'broadcast',
+    event: 'project-deleted',
+    payload: { projectId },
+  })
+  console.log('[Hub] broadcast project deleted:', projectId)
 }
 
 export async function broadcastMessage(message) {

@@ -20,6 +20,7 @@ export function SidebarLayout() {
     selectTeam,
     updateProjects,
     updateTeams,
+    deleteProject,
   } = useWorkspace()
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
@@ -47,6 +48,7 @@ export function SidebarLayout() {
       color: PROJECT_COLORS[projects.length % PROJECT_COLORS.length],
       createdAt: Date.now(),
       members: [],
+      ownerId: user?.id || null,
       description: '',
       teamIds: [],
     }
@@ -57,10 +59,24 @@ export function SidebarLayout() {
     setShowNewProject(false)
   }
 
-  const deleteProject = (id) => {
+  const removeProjectFromList = (id) => {
+    if (selectedProject?.id === id) setSelectedProject(null)
+  }
+
+  const handleDeleteProject = (id) => {
+    const updated = projects.filter((p) => p.id !== id)
+    deleteProject(id)
+    removeProjectFromList(id)
+    if (activeProject?.id === id) {
+      const next = updated[0] || null
+      selectProject(next)
+    }
+  }
+
+  const leaveProject = (id) => {
     const updated = projects.filter((p) => p.id !== id)
     updateProjects(updated)
-    if (selectedProject?.id === id) setSelectedProject(null)
+    removeProjectFromList(id)
     if (activeProject?.id === id) {
       const next = updated[0] || null
       selectProject(next)
@@ -100,6 +116,7 @@ export function SidebarLayout() {
       createdAt: Date.now(),
       members: [creatorName],
       projectIds: [],
+      ownerId: user?.id || null,
     }
     const updated = [...teams, newTeam]
     updateTeams(updated)
@@ -123,7 +140,37 @@ export function SidebarLayout() {
     if (needsUpdate) updateTeams(updated)
   }, [user?.id])
 
+  useEffect(() => {
+    if (!user) return
+    let needsUpdate = false
+    const updatedProjects = projects.map((p) => {
+      if (!p.ownerId && !p.isShared) {
+        needsUpdate = true
+        return { ...p, ownerId: user.id }
+      }
+      return p
+    })
+    if (needsUpdate) updateProjects(updatedProjects)
+
+    let teamsNeedUpdate = false
+    const updatedTeams = teams.map((t) => {
+      if (!t.ownerId) {
+        teamsNeedUpdate = true
+        return { ...t, ownerId: user.id }
+      }
+      return t
+    })
+    if (teamsNeedUpdate) updateTeams(updatedTeams)
+  }, [user?.id])
+
   const deleteTeam = (id) => {
+    const updated = teams.filter((t) => t.id !== id)
+    updateTeams(updated)
+    if (selectedTeam?.id === id) setSelectedTeam(null)
+    if (activeTeam?.id === id) selectTeam(null)
+  }
+
+  const leaveTeam = (id) => {
     const updated = teams.filter((t) => t.id !== id)
     updateTeams(updated)
     if (selectedTeam?.id === id) setSelectedTeam(null)
@@ -148,6 +195,12 @@ export function SidebarLayout() {
     ],
     [t],
   )
+
+  const isProjectOwner = (project) => {
+    if (!user?.id) return false
+    if (project.ownerId != null) return project.ownerId === user.id
+    return !project.isShared
+  }
 
   const linkBaseClasses =
     'flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors'
@@ -268,6 +321,31 @@ export function SidebarLayout() {
                         ) : null}
                       </div>
                     </button>
+                    {isProjectOwner(project) ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleDeleteProject(project.id)
+                        }}
+                        className="hidden group-hover:flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs text-rose-400 hover:bg-rose-500/10"
+                        title="Delete project"
+                      >
+                        ✕
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          leaveProject(project.id)
+                        }}
+                        className="hidden group-hover:flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs text-amber-400 hover:bg-amber-500/10"
+                        title="Leave project"
+                      >
+                        →
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setSelectedProject(project)}
@@ -366,6 +444,25 @@ export function SidebarLayout() {
                         {team.members?.length || 0} members
                       </span>
                     </div>
+                    {team.ownerId === user?.id ? (
+                      <button
+                        type="button"
+                        onClick={() => deleteTeam(team.id)}
+                        className="hidden group-hover:flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs text-rose-400 hover:bg-rose-500/10"
+                        title="Delete team"
+                      >
+                        ✕
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => leaveTeam(team.id)}
+                        className="hidden group-hover:flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs text-amber-400 hover:bg-amber-500/10"
+                        title="Leave team"
+                      >
+                        →
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setSelectedTeam(team)}
@@ -453,7 +550,8 @@ export function SidebarLayout() {
         project={selectedProject}
         teams={teams}
         onUpdate={updateProject}
-        onDelete={deleteProject}
+        onDelete={handleDeleteProject}
+        onLeave={leaveProject}
       />
 
       <TeamDetailModal
@@ -462,6 +560,7 @@ export function SidebarLayout() {
         team={selectedTeam}
         onUpdate={updateTeam}
         onDelete={deleteTeam}
+        onLeave={leaveTeam}
       />
 
       <div className="flex-1 flex flex-col">

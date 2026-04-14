@@ -5,7 +5,7 @@ import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import { useAuth } from '../../utils/AuthContext.jsx'
 import { sendTeamInvitation } from '../../utils/invitationManager.js'
 
-export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete }) {
+export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLeave }) {
   const { selectTeam } = useWorkspace()
   const { user } = useAuth()
   const [name, setName] = useState(team?.name || '')
@@ -25,6 +25,8 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete }) {
   }, [open])
 
   if (!team) return null
+
+  const isOwner = !!user?.id && team.ownerId === user.id
 
   const removeMember = (member) => {
     setMembers((prev) => prev.filter((x) => x !== member))
@@ -64,15 +66,27 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete }) {
       title={isEditing ? 'Edit Team' : team.name}
       footer={
         <div className="flex items-center justify-between gap-2">
-          <Button
-            variant="danger"
-            onClick={() => {
-              onDelete?.(team.id)
-              onClose?.()
-            }}
-          >
-            Delete Team
-          </Button>
+          {isOwner ? (
+            <Button
+              variant="danger"
+              onClick={() => {
+                onDelete?.(team.id)
+                onClose?.()
+              }}
+            >
+              Delete Team
+            </Button>
+          ) : (
+            <Button
+              variant="danger"
+              onClick={() => {
+                onLeave?.(team.id)
+                onClose?.()
+              }}
+            >
+              Leave Team
+            </Button>
+          )}
           <div className="flex flex-wrap items-center justify-end gap-2">
             {isEditing ? (
               <>
