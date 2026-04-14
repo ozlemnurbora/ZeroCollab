@@ -146,13 +146,27 @@ export function WorkspaceProvider({ children }) {
         }),
       )
       setProjects(projectsWithTeams)
+
       setActiveProjectState((prev) => {
-        if (!prev) return prev
-        const updated = projectsWithTeams.find((p) => p.id === prev.id)
-        if (updated) {
-          localStorage.setItem('zc-active-project', JSON.stringify(updated))
-          return updated
+        if (!prev) {
+          if (projectsWithTeams.length > 0) {
+            const first = projectsWithTeams[0]
+            localStorage.setItem('zc-active-project', JSON.stringify(first))
+            return first
+          }
+          return null
         }
+        const stillExists = projectsWithTeams.find((p) => p.id === prev.id)
+        if (stillExists) {
+          localStorage.setItem('zc-active-project', JSON.stringify(stillExists))
+          return stillExists
+        }
+        if (projectsWithTeams.length > 0) {
+          const first = projectsWithTeams[0]
+          localStorage.setItem('zc-active-project', JSON.stringify(first))
+          return first
+        }
+        localStorage.removeItem('zc-active-project')
         return null
       })
     } catch (err) {
@@ -221,7 +235,11 @@ export function WorkspaceProvider({ children }) {
 
   const selectProject = (project) => {
     setActiveProjectState(project)
-    localStorage.setItem('zc-active-project', JSON.stringify(project))
+    if (project == null) {
+      localStorage.removeItem('zc-active-project')
+    } else {
+      localStorage.setItem('zc-active-project', JSON.stringify(project))
+    }
   }
 
   const selectTeam = (team) => {
@@ -246,7 +264,7 @@ export function WorkspaceProvider({ children }) {
 
   const removeProject = async (projectId) => {
     if (!user) return
-    const project = projectsRef.current.find((p) => p.id === projectId)
+    const project = projects.find((p) => p.id === projectId)
     if (!project) return
 
     if (project.owner_id === user.id || project.ownerId === user.id) {
@@ -255,9 +273,14 @@ export function WorkspaceProvider({ children }) {
       await dbLeaveProject(projectId, user.id)
     }
 
-    if (activeProjectRef.current?.id === projectId) {
+    if (activeProject?.id === projectId) {
       await disconnectFromProjectHub()
-      selectProject(null)
+      const remaining = projects.filter((p) => p.id !== projectId)
+      if (remaining.length > 0) {
+        selectProject(remaining[0])
+      } else {
+        selectProject(null)
+      }
     }
 
     await loadProjects()
