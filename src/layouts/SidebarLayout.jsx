@@ -7,6 +7,7 @@ import { useAuth } from '../utils/AuthContext.jsx'
 import { ProjectDetailModal } from '../components/workspace/ProjectDetailModal.jsx'
 import { TeamDetailModal } from '../components/workspace/TeamDetailModal.jsx'
 import { InvitationsPanel } from '../components/workspace/InvitationsPanel.jsx'
+import { MiniMeetingDock } from '../components/meetings/MiniMeetingDock.jsx'
 
 export function SidebarLayout() {
   const { t } = useLanguage()
@@ -503,6 +504,7 @@ export function SidebarLayout() {
           </div>
         </main>
       </div>
+      <MiniMeetingDock />
     </div>
   )
 }

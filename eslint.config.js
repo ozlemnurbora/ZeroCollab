@@ -28,7 +28,7 @@ export default defineConfig([
         'error',
         {
           allowConstantExport: true,
-          allowExportNames: ['useAuth', 'useLanguage', 'useWorkspace'],
+          allowExportNames: ['useAuth', 'useLanguage', 'useWorkspace', 'useMeetingSession'],
         },
       ],
     },

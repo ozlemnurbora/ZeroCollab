@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { LanguageProvider } from './utils/LanguageContext.jsx'
 import { WorkspaceProvider } from './utils/WorkspaceContext.jsx'
 import { AuthProvider, useAuth } from './utils/AuthContext.jsx'
+import { MeetingSessionProvider } from './utils/MeetingSessionContext.jsx'
 import { connectToPeer, initP2P } from './utils/p2pManager.js'
 import { requestNotificationPermission } from './utils/taskReminder.js'
 import { SidebarLayout } from './layouts/SidebarLayout.jsx'
@@ -100,7 +101,9 @@ function App() {
     <LanguageProvider>
       <AuthProvider>
         <WorkspaceProvider>
-          <AppRoutes />
+          <MeetingSessionProvider>
+            <AppRoutes />
+          </MeetingSessionProvider>
         </WorkspaceProvider>
       </AuthProvider>
     </LanguageProvider>
