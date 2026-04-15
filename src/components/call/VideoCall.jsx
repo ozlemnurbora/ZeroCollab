@@ -28,8 +28,13 @@ export function VideoCall({
   }, [localStream])
 
   useEffect(() => {
-    if (remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream ?? null
+    const el = remoteVideoRef.current
+    if (!el) return
+    el.srcObject = remoteStream ?? null
+    if (remoteStream) {
+      void el.play?.().catch(() => {
+        // Autoplay may require a gesture; stream attachment still works.
+      })
     }
   }, [remoteStream])
 
@@ -86,6 +91,7 @@ export function VideoCall({
                 ref={remoteVideoRef}
                 autoPlay
                 playsInline
+                muted={false}
                 className="h-full w-full bg-black object-cover"
               />
               {!remoteStream && (

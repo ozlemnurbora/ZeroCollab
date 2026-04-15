@@ -15,6 +15,8 @@ import { getMeetingLifecycle } from './meetingLifecycle.js'
 
 const MAX_ROOM_P2P_PARTICIPANTS = 6
 const DEFAULT_STATUS = 'idle'
+/** Prevent duplicate listeners / duplicate tiles for the same PeerJS MediaConnection */
+const MEDIA_CALL_BOUND = '__zcMeetingMediaBound'
 
 const MeetingSessionContext = createContext(null)
 
@@ -141,7 +143,44 @@ export function MeetingSessionProvider({ children }) {
     const userKey = getUserKey(normalizedIdentity, peerId)
 
     setParticipantRegistry((prev) => {
-      const existing = prev[userKey] || createParticipant(userKey, normalizedIdentity, options)
+      let next = { ...prev }
+      const prevKeyForPeer = peerId ? participantByPeerRef.current.get(peerId) : null
+
+      // Same peer session upgraded identity (e.g. peer:… → email:…): merge into one canonical row
+      if (peerId && prevKeyForPeer && prevKeyForPeer !== userKey) {
+        const stale = next[prevKeyForPeer]
+        if (stale) {
+          const mergedBase = next[userKey] || createParticipant(userKey, normalizedIdentity, options)
+          const sessions = new Set([
+            ...(stale.peerSessions || []),
+            ...(mergedBase.peerSessions || []),
+            peerId,
+          ])
+          next[userKey] = {
+            ...mergedBase,
+            ...stale,
+            userKey,
+            userId: normalizedIdentity.userId || stale.userId || mergedBase.userId || '',
+            email: normalizedIdentity.email || stale.email || mergedBase.email || '',
+            username: normalizedIdentity.username || stale.username || mergedBase.username || '',
+            displayName:
+              normalizedIdentity.displayName ||
+              stale.displayName ||
+              mergedBase.displayName ||
+              '',
+            peerSessions: Array.from(sessions),
+            isLocal: Boolean(stale.isLocal || mergedBase.isLocal || options.isLocal),
+            activeInRoom: true,
+            lastSeenAt: Date.now(),
+          }
+          delete next[prevKeyForPeer]
+          for (const p of stale.peerSessions || []) {
+            if (p) participantByPeerRef.current.set(p, userKey)
+          }
+        }
+      }
+
+      const existing = next[userKey] || createParticipant(userKey, normalizedIdentity, options)
       const mergedPeerSessions = new Set(existing.peerSessions || [])
       if (peerId) mergedPeerSessions.add(peerId)
       const nextEntry = {
@@ -164,7 +203,7 @@ export function MeetingSessionProvider({ children }) {
       if (peerId) {
         participantByPeerRef.current.set(peerId, userKey)
       }
-      return { ...prev, [userKey]: nextEntry }
+      return { ...next, [userKey]: nextEntry }
     })
   }, [])
 
@@ -181,7 +220,6 @@ export function MeetingSessionProvider({ children }) {
       if (!userKey || !prev[userKey]) return prev
       const nextEntry = { ...prev[userKey] }
       nextEntry.peerSessions = (nextEntry.peerSessions || []).filter((id) => id !== peerId)
-      nextEntry.hasActiveStream = nextEntry.peerSessions.some((id) => remoteStreams.has(id))
       nextEntry.lastSeenAt = Date.now()
       participantByPeerRef.current.delete(peerId)
 
@@ -192,7 +230,7 @@ export function MeetingSessionProvider({ children }) {
       }
       return { ...prev, [userKey]: nextEntry }
     })
-  }, [remoteStreams])
+  }, [])
 
   const replaceOutgoingVideoTrack = useCallback((track) => {
     for (const mediaCall of activeCallsRef.current.values()) {
@@ -206,7 +244,19 @@ export function MeetingSessionProvider({ children }) {
 
   const wireMediaCall = useCallback((mediaCall, peerId) => {
     if (!mediaCall || !peerId) return
+    if (mediaCall[MEDIA_CALL_BOUND]) return
+    mediaCall[MEDIA_CALL_BOUND] = true
+
+    const existingMc = activeCallsRef.current.get(peerId)
+    if (existingMc && existingMc !== mediaCall) {
+      try {
+        existingMc.close()
+      } catch {
+        // ignore
+      }
+    }
     activeCallsRef.current.set(peerId, mediaCall)
+
     mediaCall.on('stream', (stream) => {
       setRemoteStreams((prev) => new Map(prev).set(peerId, stream))
       upsertParticipant({}, { peerId, hasActiveStream: true, activeInRoom: true })
@@ -220,6 +270,10 @@ export function MeetingSessionProvider({ children }) {
     if (!meeting || !peerId || !localStreamRef.current) return
     if (activeCallsRef.current.has(peerId)) return
     if (activeCallsRef.current.size >= MAX_ROOM_P2P_PARTICIPANTS - 1) return
+    // Glare avoidance: only the lexicographically smaller peer initiates outbound media;
+    // the other answers a single incoming call. Prevents duplicate calls/streams per pair.
+    const localId = getPeerId()
+    if (localId && peerId && localId.localeCompare(peerId) >= 0) return
     const peer = getPeerInstance()
     if (!peer) return
     let mediaCall
@@ -474,6 +528,10 @@ export function MeetingSessionProvider({ children }) {
       }
       if (metadata.callType !== 'room' || metadata.roomId !== meeting.roomId) return
       const peerId = mediaCall.peer
+      if (activeCallsRef.current.has(peerId)) {
+        mediaCall?.close?.()
+        return
+      }
       mediaCall.answer(localStreamRef.current)
       wireMediaCall(mediaCall, peerId)
     })
@@ -615,11 +673,16 @@ export function MeetingSessionProvider({ children }) {
           email: entry.email || '',
         }
       })
-    return items.sort((a, b) => {
+    const sorted = items.sort((a, b) => {
       if (a.isLocal) return -1
       if (b.isLocal) return 1
       return a.label.localeCompare(b.label)
     })
+    const byUserKey = new Map()
+    for (const row of sorted) {
+      if (!byUserKey.has(row.userKey)) byUserKey.set(row.userKey, row)
+    }
+    return Array.from(byUserKey.values())
   }, [activeMeeting, localIdentity, localStream, participantRegistry, remoteStreams])
 
   const remoteParticipantStreams = useMemo(() => {

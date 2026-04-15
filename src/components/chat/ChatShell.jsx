@@ -63,6 +63,8 @@ function onlineUserKey(presence) {
   return peerId ? `peer:${peerId}` : ''
 }
 
+const DIRECT_MEDIA_BOUND = '__zcDirectMediaBound'
+
 export function ChatShell() {
   const navigate = useNavigate()
   const { t } = useLanguage()
@@ -279,6 +281,17 @@ export function ChatShell() {
 
   const wireMediaCall = (mediaCall, remotePeerId) => {
     if (!mediaCall || !remotePeerId) return
+    if (mediaCall[DIRECT_MEDIA_BOUND]) return
+    mediaCall[DIRECT_MEDIA_BOUND] = true
+
+    const existing = activeMediaCallsRef.current.get(remotePeerId)
+    if (existing && existing !== mediaCall) {
+      try {
+        existing.close()
+      } catch {
+        // ignore
+      }
+    }
     activeMediaCallsRef.current.set(remotePeerId, mediaCall)
     mediaCall.on('stream', (rs) => {
       callStreamsRef.current.set(remotePeerId, rs)
@@ -314,8 +327,8 @@ export function ChatShell() {
     setRemoteStreams(new Map())
     setRemoteStream(null)
     stopStream(localStreamRef.current)
-    setLocalStream(null)
     localStreamRef.current = null
+    setLocalStream(null)
     cameraTrackRef.current = null
     screenTrackRef.current = null
     setIsMuted(false)
@@ -335,6 +348,8 @@ export function ChatShell() {
       audio: true,
     })
     cameraTrackRef.current = stream.getVideoTracks()[0] ?? null
+    // Keep ref in sync immediately — effects run too late for answer()/peer.call() in the same tick.
+    localStreamRef.current = stream
     setLocalStream(stream)
     setIsMuted(false)
     setIsCameraOff(false)
@@ -354,6 +369,10 @@ export function ChatShell() {
     }
     try {
       await startLocalStream()
+      if (!localStreamRef.current) {
+        setCallPhase('idle')
+        return
+      }
       const myId = getPeerId()
       isInCallRef.current = true
       setIsCallOpen(true)
@@ -371,6 +390,7 @@ export function ChatShell() {
     } catch (err) {
       console.error('[Call] start failed:', err)
       isInCallRef.current = false
+      setIsCallOpen(false)
       setCallPhase('idle')
     }
   }
@@ -386,7 +406,7 @@ export function ChatShell() {
       setCallPhase('connecting')
       participantPeerIdsRef.current = [myPeerId, invite.callerPeerId]
       setIncomingGroupCall(null)
-      if (!stream) return
+      if (!stream || !localStreamRef.current) return
 
       await broadcastCallResponse(true, myPeerId, invite.callerPeerId, {
         callType: 'direct',
@@ -394,6 +414,7 @@ export function ChatShell() {
       })
     } catch (err) {
       console.error('[Call] accept failed:', err)
+      teardownCallRef.current({ broadcast: false })
     }
   }
 
@@ -407,6 +428,23 @@ export function ChatShell() {
     }, 1000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    if (!isCallOpen || remoteStream || callPhase !== 'connecting') return undefined
+    const started = Date.now()
+    const timer = window.setInterval(() => {
+      if (!isInCallRef.current) {
+        window.clearInterval(timer)
+        return
+      }
+      if (Date.now() - started < 30000) return
+      window.clearInterval(timer)
+      alert('Could not receive remote video. The call will end.')
+      setCallPhase('failed')
+      teardownCallRef.current({ broadcast: true })
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [isCallOpen, remoteStream, callPhase])
 
   useEffect(() => {
     if (!hasLoadedChat) return
@@ -631,17 +669,27 @@ export function ChatShell() {
       if (mediaCall?.metadata?.callType && mediaCall.metadata.callType !== 'direct') {
         return
       }
-      if (isInCallRef.current && localStreamRef.current) {
-        const remotePeerId = mediaCall?.peer
-        if (!remotePeerId || activeMediaCallsRef.current.has(remotePeerId)) {
-          mediaCall?.close?.()
-          return
-        }
-        mediaCall.answer(localStreamRef.current)
-        wireMediaCallRef.current(mediaCall, remotePeerId)
+      const remotePeerId = mediaCall?.peer
+      if (!remotePeerId) {
+        mediaCall?.close?.()
         return
       }
-      mediaCall?.close?.()
+      if (!isInCallRef.current || !localStreamRef.current) {
+        mediaCall?.close?.()
+        return
+      }
+      if (activeMediaCallsRef.current.has(remotePeerId)) {
+        mediaCall?.close?.()
+        return
+      }
+      try {
+        mediaCall.answer(localStreamRef.current)
+      } catch (err) {
+        console.error('[Call] answer failed:', err)
+        mediaCall?.close?.()
+        return
+      }
+      wireMediaCallRef.current(mediaCall, remotePeerId)
     })
 
     return () => {
@@ -827,7 +875,8 @@ export function ChatShell() {
         teardownCallRef.current({ broadcast: false })
         return
       }
-      if (!localStreamRef.current) return
+      const outboundStream = localStreamRef.current
+      if (!outboundStream) return
 
       if (!participantPeerIdsRef.current.includes(responderPeerId)) {
         participantPeerIdsRef.current = [...participantPeerIdsRef.current, responderPeerId]
@@ -841,11 +890,13 @@ export function ChatShell() {
 
       let mediaCall
       try {
-        mediaCall = peerInstance.call(responderPeerId, localStreamRef.current, {
+        mediaCall = peerInstance.call(responderPeerId, outboundStream, {
           metadata: { callType: 'direct' },
         })
       } catch (err) {
         console.error('[Call] outbound to joiner failed:', responderPeerId, err)
+        alert('Could not start the call. Check your connection and try again.')
+        teardownCallRef.current({ broadcast: true })
         return
       }
       if (!mediaCall) return
