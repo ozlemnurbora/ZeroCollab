@@ -9,7 +9,9 @@ import {
   initP2P,
   on as onP2PEvent,
   sendToAllPeers,
+  sendToPeer,
 } from './p2pManager.js'
+import { getMeetingLifecycle } from './meetingLifecycle.js'
 
 const MAX_ROOM_P2P_PARTICIPANTS = 6
 const DEFAULT_STATUS = 'idle'
@@ -23,19 +25,50 @@ function shortenPeerId(peerId) {
   return `${id.slice(0, 6)}...${id.slice(-4)}`
 }
 
+function normalizeEmail(email) {
+  const v = String(email || '').trim().toLowerCase()
+  return v || ''
+}
+
 function usernameFromEmail(email) {
-  const local = String(email || '').trim().split('@')[0]
+  const local = normalizeEmail(email).split('@')[0]
   return local || ''
 }
 
-function profileDisplayName(profile) {
-  if (!profile) return ''
+function getUserKey(identity = {}, peerId = '') {
+  const userId = String(identity.userId || '').trim()
+  if (userId) return `uid:${userId}`
+  const email = normalizeEmail(identity.email)
+  if (email) return `email:${email}`
+  const username = String(identity.username || '').trim().toLowerCase()
+  if (username) return `uname:${username}`
+  return `peer:${peerId || 'unknown'}`
+}
+
+function displayNameFromIdentity(identity = {}, fallbackPeerId = '') {
   return (
-    profile.displayName ||
-    profile.username ||
-    profile.email ||
-    shortenPeerId(profile.peerId)
+    identity.displayName ||
+    identity.username ||
+    identity.email ||
+    shortenPeerId(fallbackPeerId)
   )
+}
+
+function createParticipant(userKey, identity = {}, options = {}) {
+  const now = Date.now()
+  return {
+    userKey,
+    userId: identity.userId || '',
+    email: normalizeEmail(identity.email),
+    username: identity.username || '',
+    displayName: identity.displayName || '',
+    peerSessions: options.peerId ? [options.peerId] : [],
+    hasActiveStream: Boolean(options.hasActiveStream),
+    isLocal: Boolean(options.isLocal),
+    joinedAt: options.joinedAt || now,
+    lastSeenAt: now,
+    activeInRoom: true,
+  }
 }
 
 export function MeetingSessionProvider({ children }) {
@@ -50,18 +83,23 @@ export function MeetingSessionProvider({ children }) {
   const [isCameraOff, setIsCameraOff] = useState(false)
   const [isSharingScreen, setIsSharingScreen] = useState(false)
   const [roomMessages, setRoomMessages] = useState([])
-  const [participantProfiles, setParticipantProfiles] = useState({})
+  const [participantRegistry, setParticipantRegistry] = useState({})
   const [localIdentity, setLocalIdentity] = useState({
+    userId: user?.id || '',
     displayName: '',
     username: usernameFromEmail(user?.email),
-    email: user?.email || '',
+    email: normalizeEmail(user?.email),
   })
+
   const activeCallsRef = useRef(new Map())
   const localStreamRef = useRef(null)
   const activeMeetingRef = useRef(null)
   const inSessionRef = useRef(false)
   const screenTrackRef = useRef(null)
   const cameraTrackRef = useRef(null)
+  const roomMessagesRef = useRef([])
+  const roomMessageIdsRef = useRef(new Set())
+  const participantByPeerRef = useRef(new Map())
 
   useEffect(() => {
     localStreamRef.current = localStream
@@ -72,55 +110,93 @@ export function MeetingSessionProvider({ children }) {
   }, [activeMeeting])
 
   useEffect(() => {
+    roomMessagesRef.current = roomMessages
+  }, [roomMessages])
+
+  useEffect(() => {
     let cancelled = false
     void loadSettings().then((settings) => {
       if (cancelled) return
       const displayName = settings?.profile?.displayName?.trim?.() || ''
       setLocalIdentity({
+        userId: user?.id || '',
         displayName,
         username: usernameFromEmail(user?.email),
-        email: user?.email || '',
+        email: normalizeEmail(user?.email),
       })
     })
     return () => {
       cancelled = true
     }
-  }, [user?.email])
+  }, [user?.email, user?.id])
 
-  const registerParticipantProfile = useCallback((peerId, incomingProfile = {}) => {
-    if (!peerId) return
-    setParticipantProfiles((prev) => {
-      const current = prev[peerId] || {}
-      const next = {
-        ...current,
-        peerId,
-        displayName: incomingProfile.displayName || current.displayName || '',
-        username: incomingProfile.username || current.username || '',
-        email: incomingProfile.email || current.email || '',
+  const upsertParticipant = useCallback((identity = {}, options = {}) => {
+    const peerId = options.peerId || ''
+    const normalizedIdentity = {
+      userId: identity.userId || '',
+      email: normalizeEmail(identity.email),
+      username: identity.username || '',
+      displayName: identity.displayName || '',
+    }
+    const userKey = getUserKey(normalizedIdentity, peerId)
+
+    setParticipantRegistry((prev) => {
+      const existing = prev[userKey] || createParticipant(userKey, normalizedIdentity, options)
+      const mergedPeerSessions = new Set(existing.peerSessions || [])
+      if (peerId) mergedPeerSessions.add(peerId)
+      const nextEntry = {
+        ...existing,
+        userId: normalizedIdentity.userId || existing.userId || '',
+        email: normalizedIdentity.email || existing.email || '',
+        username: normalizedIdentity.username || existing.username || '',
+        displayName: normalizedIdentity.displayName || existing.displayName || '',
+        peerSessions: Array.from(mergedPeerSessions),
+        hasActiveStream:
+          options.hasActiveStream !== undefined
+            ? options.hasActiveStream
+            : existing.hasActiveStream,
+        activeInRoom:
+          options.activeInRoom !== undefined ? options.activeInRoom : true,
+        isLocal: existing.isLocal || Boolean(options.isLocal),
+        joinedAt: existing.joinedAt || options.joinedAt || Date.now(),
+        lastSeenAt: Date.now(),
       }
-      if (
-        next.displayName === current.displayName &&
-        next.username === current.username &&
-        next.email === current.email
-      ) {
-        return prev
+      if (peerId) {
+        participantByPeerRef.current.set(peerId, userKey)
       }
-      return { ...prev, [peerId]: next }
+      return { ...prev, [userKey]: nextEntry }
     })
   }, [])
 
-  const removeParticipant = useCallback((peerId) => {
+  const removePeerSession = useCallback((peerId) => {
+    if (!peerId) return
     activeCallsRef.current.delete(peerId)
     setRemoteStreams((prev) => {
       const next = new Map(prev)
       next.delete(peerId)
       return next
     })
-  }, [])
+    setParticipantRegistry((prev) => {
+      const userKey = participantByPeerRef.current.get(peerId)
+      if (!userKey || !prev[userKey]) return prev
+      const nextEntry = { ...prev[userKey] }
+      nextEntry.peerSessions = (nextEntry.peerSessions || []).filter((id) => id !== peerId)
+      nextEntry.hasActiveStream = nextEntry.peerSessions.some((id) => remoteStreams.has(id))
+      nextEntry.lastSeenAt = Date.now()
+      participantByPeerRef.current.delete(peerId)
+
+      if (!nextEntry.isLocal && nextEntry.peerSessions.length === 0) {
+        const rest = { ...prev }
+        delete rest[userKey]
+        return rest
+      }
+      return { ...prev, [userKey]: nextEntry }
+    })
+  }, [remoteStreams])
 
   const replaceOutgoingVideoTrack = useCallback((track) => {
-    for (const mc of activeCallsRef.current.values()) {
-      const senders = mc?.peerConnection?.getSenders?.() ?? []
+    for (const mediaCall of activeCallsRef.current.values()) {
+      const senders = mediaCall?.peerConnection?.getSenders?.() ?? []
       const videoSender = senders.find((sender) => sender?.track?.kind === 'video')
       if (videoSender) {
         void videoSender.replaceTrack(track)
@@ -133,10 +209,11 @@ export function MeetingSessionProvider({ children }) {
     activeCallsRef.current.set(peerId, mediaCall)
     mediaCall.on('stream', (stream) => {
       setRemoteStreams((prev) => new Map(prev).set(peerId, stream))
+      upsertParticipant({}, { peerId, hasActiveStream: true, activeInRoom: true })
     })
-    mediaCall.on('close', () => removeParticipant(peerId))
-    mediaCall.on('error', () => removeParticipant(peerId))
-  }, [removeParticipant])
+    mediaCall.on('close', () => removePeerSession(peerId))
+    mediaCall.on('error', () => removePeerSession(peerId))
+  }, [removePeerSession, upsertParticipant])
 
   const placeRoomCall = useCallback((peerId) => {
     const meeting = activeMeetingRef.current
@@ -157,9 +234,27 @@ export function MeetingSessionProvider({ children }) {
     } catch {
       return
     }
-    if (!mediaCall) return
-    wireMediaCall(mediaCall, peerId)
+    if (mediaCall) {
+      wireMediaCall(mediaCall, peerId)
+    }
   }, [wireMediaCall])
+
+  const appendRoomMessage = useCallback((message) => {
+    const id = String(message?.id || '')
+    if (!id) return false
+    if (roomMessageIdsRef.current.has(id)) return false
+    roomMessageIdsRef.current.add(id)
+    setRoomMessages((prev) => [...prev, message])
+    return true
+  }, [])
+
+  const relayRoomMessage = useCallback((payload, excludePeerIds = []) => {
+    const blocked = new Set([...(excludePeerIds || []), getPeerId()])
+    for (const peerId of getConnectedPeers()) {
+      if (!peerId || blocked.has(peerId)) continue
+      sendToPeer(peerId, payload)
+    }
+  }, [])
 
   const clearSessionState = useCallback(() => {
     setSessionStatus(DEFAULT_STATUS)
@@ -170,22 +265,29 @@ export function MeetingSessionProvider({ children }) {
     setIsMuted(false)
     setIsCameraOff(false)
     setIsSharingScreen(false)
+    setParticipantRegistry({})
+    participantByPeerRef.current.clear()
+    roomMessageIdsRef.current.clear()
   }, [])
 
   const leaveMeeting = useCallback((options = {}) => {
     const { reason = 'user-left' } = options
-    if (inSessionRef.current && activeMeetingRef.current) {
+    const meeting = activeMeetingRef.current
+    if (inSessionRef.current && meeting) {
       sendToAllPeers({
         type: 'room-leave',
-        roomId: activeMeetingRef.current.roomId,
-        meetingId: activeMeetingRef.current.meetingId,
+        roomId: meeting.roomId,
+        meetingId: meeting.meetingId,
         peerId: getPeerId(),
+        userId: localIdentity.userId,
+        userEmail: localIdentity.email,
         reason,
       })
     }
-    for (const call of activeCallsRef.current.values()) {
+
+    for (const mediaCall of activeCallsRef.current.values()) {
       try {
-        call.close()
+        mediaCall.close()
       } catch {
         // ignore
       }
@@ -198,11 +300,18 @@ export function MeetingSessionProvider({ children }) {
     screenTrackRef.current = null
     cameraTrackRef.current = null
     clearSessionState()
-  }, [clearSessionState])
+  }, [clearSessionState, localIdentity.email, localIdentity.userId])
 
   const joinMeetingSession = useCallback(async (meeting) => {
     if (!meeting?.id) {
       setError('Meeting metadata is missing.')
+      return false
+    }
+
+    const lifecycle = getMeetingLifecycle(meeting)
+    if (!lifecycle.canJoin) {
+      setSessionStatus('ended')
+      setError('This meeting has already ended.')
       return false
     }
 
@@ -211,7 +320,6 @@ export function MeetingSessionProvider({ children }) {
       setError('')
       return true
     }
-
     if (inSessionRef.current && activeMeetingRef.current?.meetingId !== meeting.id) {
       leaveMeeting({ reason: 'switch-meeting' })
     }
@@ -240,10 +348,24 @@ export function MeetingSessionProvider({ children }) {
       title: meeting.title || 'Meeting',
       projectId: meeting.projectId || null,
       transport: 'p2p-small-room',
+      date: meeting.date,
+      time: meeting.time,
+      duration: Number(meeting.duration || 60),
+      startAt: lifecycle.startAt,
+      endAt: lifecycle.endAt,
     }
     setActiveMeeting(nextMeeting)
     inSessionRef.current = true
     setSessionStatus('live')
+
+    const localPeerId = getPeerId()
+    upsertParticipant(localIdentity, {
+      peerId: localPeerId,
+      isLocal: true,
+      hasActiveStream: true,
+      activeInRoom: true,
+      joinedAt: Date.now(),
+    })
 
     const peers = getConnectedPeers().slice(0, MAX_ROOM_P2P_PARTICIPANTS - 1)
     peers.forEach((peerId) => placeRoomCall(peerId))
@@ -252,15 +374,17 @@ export function MeetingSessionProvider({ children }) {
       type: 'room-join',
       roomId: nextMeeting.roomId,
       meetingId: nextMeeting.meetingId,
-      peerId: getPeerId(),
+      peerId: localPeerId,
+      userId: localIdentity.userId,
       senderProfile: {
         displayName: localIdentity.displayName || '',
         username: localIdentity.username || '',
         email: localIdentity.email || '',
       },
+      joinedAt: Date.now(),
     })
     return true
-  }, [leaveMeeting, localIdentity.displayName, localIdentity.email, localIdentity.username, placeRoomCall])
+  }, [leaveMeeting, localIdentity, placeRoomCall, upsertParticipant])
 
   const toggleMute = useCallback(() => {
     if (!localStreamRef.current) return
@@ -310,22 +434,27 @@ export function MeetingSessionProvider({ children }) {
 
   const sendRoomChatMessage = useCallback((text) => {
     const messageText = String(text || '').trim()
-    if (!messageText || !activeMeetingRef.current) return
-    const msg = {
+    const meeting = activeMeetingRef.current
+    if (!messageText || !meeting) return
+    const message = {
       id: `m_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+      roomId: meeting.roomId,
+      meetingId: meeting.meetingId,
       peerId: getPeerId(),
-      senderName: localIdentity.displayName || localIdentity.username || localIdentity.email || shortenPeerId(getPeerId()),
+      userId: localIdentity.userId || '',
+      userKey: getUserKey(localIdentity, getPeerId()),
+      senderName: displayNameFromIdentity(localIdentity, getPeerId()),
       text: messageText,
       createdAt: Date.now(),
     }
-    setRoomMessages((prev) => [...prev, msg])
+    appendRoomMessage(message)
     sendToAllPeers({
       type: 'room-chat',
-      roomId: activeMeetingRef.current.roomId,
-      meetingId: activeMeetingRef.current.meetingId,
-      message: msg,
+      roomId: meeting.roomId,
+      meetingId: meeting.meetingId,
+      message,
     })
-  }, [localIdentity.displayName, localIdentity.email, localIdentity.username])
+  }, [appendRoomMessage, localIdentity])
 
   useEffect(() => {
     const offConnected = onP2PEvent(P2P_EVENTS.PEER_CONNECTED, ({ peerId }) => {
@@ -334,9 +463,7 @@ export function MeetingSessionProvider({ children }) {
       }
     })
     const offDisconnected = onP2PEvent(P2P_EVENTS.PEER_DISCONNECTED, ({ peerId }) => {
-      if (peerId) {
-        removeParticipant(peerId)
-      }
+      if (peerId) removePeerSession(peerId)
     })
     const offIncomingCall = onP2PEvent(P2P_EVENTS.INCOMING_CALL, (mediaCall) => {
       const metadata = mediaCall?.metadata || {}
@@ -345,9 +472,7 @@ export function MeetingSessionProvider({ children }) {
         mediaCall?.close?.()
         return
       }
-      if (metadata.callType !== 'room' || metadata.roomId !== meeting.roomId) {
-        return
-      }
+      if (metadata.callType !== 'room' || metadata.roomId !== meeting.roomId) return
       const peerId = mediaCall.peer
       mediaCall.answer(localStreamRef.current)
       wireMediaCall(mediaCall, peerId)
@@ -355,50 +480,96 @@ export function MeetingSessionProvider({ children }) {
     const offMessage = onP2PEvent(P2P_EVENTS.MESSAGE, ({ from, data }) => {
       const meeting = activeMeetingRef.current
       if (!meeting || !data || data.roomId !== meeting.roomId) return
+
       if (data.type === 'room-join') {
         const senderProfile = data.senderProfile || {}
-        registerParticipantProfile(from, {
-          displayName: senderProfile.displayName,
-          username: senderProfile.username,
-          email: senderProfile.email,
-        })
+        upsertParticipant(
+          {
+            userId: data.userId || '',
+            email: senderProfile.email || '',
+            username: senderProfile.username || usernameFromEmail(senderProfile.email),
+            displayName: senderProfile.displayName || '',
+          },
+          { peerId: from, activeInRoom: true, joinedAt: data.joinedAt || Date.now() },
+        )
         if (inSessionRef.current) {
           placeRoomCall(from)
         }
+        sendToPeer(from, {
+          type: 'room-presence',
+          roomId: meeting.roomId,
+          meetingId: meeting.meetingId,
+          peerId: getPeerId(),
+          userId: localIdentity.userId,
+          senderProfile: {
+            displayName: localIdentity.displayName || '',
+            username: localIdentity.username || '',
+            email: localIdentity.email || '',
+          },
+          joinedAt: Date.now(),
+        })
+        if (roomMessagesRef.current.length > 0) {
+          sendToPeer(from, {
+            type: 'room-chat-sync',
+            roomId: meeting.roomId,
+            meetingId: meeting.meetingId,
+            messages: roomMessagesRef.current.slice(-100),
+          })
+        }
+      } else if (data.type === 'room-presence') {
+        const senderProfile = data.senderProfile || {}
+        upsertParticipant(
+          {
+            userId: data.userId || '',
+            email: senderProfile.email || '',
+            username: senderProfile.username || usernameFromEmail(senderProfile.email),
+            displayName: senderProfile.displayName || '',
+          },
+          { peerId: from, activeInRoom: true, joinedAt: data.joinedAt || Date.now() },
+        )
       } else if (data.type === 'room-chat' && data.message) {
         const incoming = data.message
-        setRoomMessages((prev) => {
-          if (prev.some((m) => m.id === incoming.id)) return prev
-          return [...prev, incoming]
-        })
+        const inserted = appendRoomMessage(incoming)
+        if (inserted) {
+          relayRoomMessage(
+            {
+              type: 'room-chat',
+              roomId: meeting.roomId,
+              meetingId: meeting.meetingId,
+              message: incoming,
+            },
+            [from],
+          )
+        }
+      } else if (data.type === 'room-chat-sync' && Array.isArray(data.messages)) {
+        for (const message of data.messages) {
+          appendRoomMessage(message)
+        }
       } else if (data.type === 'room-leave') {
-        removeParticipant(from)
+        removePeerSession(from)
       }
     })
-
-    const onPresenceSync = (event) => {
-      const state = event.detail || {}
-      Object.values(state).forEach((presences) => {
-        ;(presences || []).forEach((presence) => {
-          if (!presence?.peerId) return
-          registerParticipantProfile(presence.peerId, {
-            displayName: presence.displayName || '',
-            username: usernameFromEmail(presence.userEmail),
-            email: presence.userEmail || '',
-          })
-        })
-      })
-    }
-    window.addEventListener('hub:presence-sync', onPresenceSync)
 
     return () => {
       offConnected()
       offDisconnected()
       offIncomingCall()
       offMessage()
-      window.removeEventListener('hub:presence-sync', onPresenceSync)
     }
-  }, [placeRoomCall, registerParticipantProfile, removeParticipant, wireMediaCall])
+  }, [appendRoomMessage, localIdentity, placeRoomCall, relayRoomMessage, removePeerSession, upsertParticipant, wireMediaCall])
+
+  useEffect(() => {
+    if (!activeMeeting?.endAt || !inSessionRef.current) return undefined
+    const timer = window.setInterval(() => {
+      if (!inSessionRef.current || !activeMeetingRef.current?.endAt) return
+      if (Date.now() >= activeMeetingRef.current.endAt) {
+        setSessionStatus('ended')
+        setError('Meeting duration has ended.')
+        leaveMeeting({ reason: 'meeting-expired' })
+      }
+    }, 15000)
+    return () => window.clearInterval(timer)
+  }, [activeMeeting?.endAt, leaveMeeting])
 
   useEffect(() => {
     const handleBeforeUnload = () => {
@@ -410,32 +581,56 @@ export function MeetingSessionProvider({ children }) {
     }
   }, [leaveMeeting])
 
-  const participantList = useMemo(() => {
+  const participants = useMemo(() => {
     const localPeerId = getPeerId()
-    const ids = new Set([
-      ...(localPeerId ? [localPeerId] : []),
-      ...remoteStreams.keys(),
-      ...Object.keys(participantProfiles),
-    ])
-    const participants = Array.from(ids).map((peerId) => {
-      const profile =
-        peerId === localPeerId
-          ? {
-              peerId,
-              displayName: localIdentity.displayName,
-              username: localIdentity.username,
-              email: localIdentity.email,
-            }
-          : participantProfiles[peerId]
-      return {
-        peerId,
-        label: profileDisplayName({ ...profile, peerId }),
-        isLocal: peerId === localPeerId,
-        hasStream: peerId === localPeerId ? !!localStream : remoteStreams.has(peerId),
+    const registry = { ...participantRegistry }
+    const localKey = getUserKey(localIdentity, localPeerId)
+    if (localPeerId) {
+      registry[localKey] = {
+        ...(registry[localKey] || createParticipant(localKey, localIdentity, { isLocal: true })),
+        userId: localIdentity.userId || registry[localKey]?.userId || '',
+        email: localIdentity.email || registry[localKey]?.email || '',
+        username: localIdentity.username || registry[localKey]?.username || '',
+        displayName: localIdentity.displayName || registry[localKey]?.displayName || '',
+        peerSessions: Array.from(
+          new Set([...(registry[localKey]?.peerSessions || []), localPeerId]),
+        ),
+        isLocal: true,
+        activeInRoom: Boolean(activeMeeting),
+        hasActiveStream: Boolean(localStream),
       }
+    }
+
+    const items = Object.values(registry)
+      .filter((entry) => entry.activeInRoom)
+      .map((entry) => {
+        const peerWithStream = (entry.peerSessions || []).find((peerId) => remoteStreams.has(peerId))
+        return {
+          userKey: entry.userKey,
+          peerId: entry.isLocal ? localPeerId : (peerWithStream || entry.peerSessions[0] || ''),
+          label: displayNameFromIdentity(entry, entry.peerSessions[0] || ''),
+          isLocal: entry.isLocal,
+          hasStream: entry.isLocal ? Boolean(localStream) : Boolean(peerWithStream),
+          userId: entry.userId || '',
+          email: entry.email || '',
+        }
+      })
+    return items.sort((a, b) => {
+      if (a.isLocal) return -1
+      if (b.isLocal) return 1
+      return a.label.localeCompare(b.label)
     })
+  }, [activeMeeting, localIdentity, localStream, participantRegistry, remoteStreams])
+
+  const remoteParticipantStreams = useMemo(() => {
     return participants
-  }, [localIdentity.displayName, localIdentity.email, localIdentity.username, localStream, participantProfiles, remoteStreams])
+      .filter((entry) => !entry.isLocal)
+      .map((entry) => ({
+        ...entry,
+        stream: entry.peerId ? remoteStreams.get(entry.peerId) ?? null : null,
+      }))
+      .filter((entry) => Boolean(entry.stream))
+  }, [participants, remoteStreams])
 
   const value = useMemo(
     () => ({
@@ -446,12 +641,13 @@ export function MeetingSessionProvider({ children }) {
       setIsMeetingPageOpen,
       localStream,
       remoteStreams,
+      remoteParticipantStreams,
       isMuted,
       isCameraOff,
       isSharingScreen,
       roomMessages,
-      participants: participantList,
-      participantCount: participantList.length,
+      participants,
+      participantCount: participants.length,
       joinMeetingSession,
       leaveMeeting,
       toggleMute,
@@ -470,14 +666,15 @@ export function MeetingSessionProvider({ children }) {
       joinMeetingSession,
       leaveMeeting,
       localStream,
-      participantList,
+      participants,
+      remoteParticipantStreams,
       remoteStreams,
       roomMessages,
+      sendRoomChatMessage,
       sessionStatus,
       toggleCamera,
       toggleMute,
       toggleScreenShare,
-      sendRoomChatMessage,
     ],
   )
 

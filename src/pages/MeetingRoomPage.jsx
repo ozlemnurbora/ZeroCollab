@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { loadMeetings } from '../utils/meetingStorage.js'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useMeetingSession } from '../utils/MeetingSessionContext.jsx'
+import { getMeetingLifecycle } from '../utils/meetingLifecycle.js'
 
 function VideoTile({ stream, label, muted = false }) {
   const ref = useRef(null)
@@ -37,7 +38,7 @@ export function MeetingRoomPage() {
     sessionStatus,
     error: sessionError,
     localStream,
-    remoteStreams,
+    remoteParticipantStreams,
     isMuted,
     isCameraOff,
     isSharingScreen,
@@ -89,6 +90,8 @@ export function MeetingRoomPage() {
 
   const isAuthorizedMeeting = !meeting?.projectId || memberProjectIds.includes(meeting.projectId)
   const isLive = !!activeMeeting && activeMeeting.meetingId === meetingId && sessionStatus !== 'idle'
+  const lifecycle = getMeetingLifecycle(meeting)
+  const isEndedMeeting = lifecycle.status === 'ended'
 
   const sendMessage = () => {
     const text = roomChatInput.trim()
@@ -139,9 +142,14 @@ export function MeetingRoomPage() {
           <p className="text-xs text-[rgb(var(--zc-subtle))]">
             {meeting?.date} {meeting?.time} • mode: p2p-small-room (max {maxRoomParticipants})
           </p>
+          {meeting ? (
+            <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+              Status: {lifecycle.status}
+            </p>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!isLive ? (
+          {!isLive && !isEndedMeeting ? (
             <button
               type="button"
               onClick={() => void joinMeetingSession(meeting)}
@@ -149,6 +157,11 @@ export function MeetingRoomPage() {
             >
               Join Meeting
             </button>
+          ) : null}
+          {isEndedMeeting ? (
+            <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              Meeting has ended
+            </span>
           ) : null}
           <button
             type="button"
@@ -174,9 +187,8 @@ export function MeetingRoomPage() {
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <VideoTile stream={localStream} label="You" muted />
-            {[...remoteStreams.entries()].map(([peerId, stream]) => {
-              const participant = participants.find((entry) => entry.peerId === peerId)
-              return <VideoTile key={peerId} stream={stream} label={participant?.label || peerId} />
+            {remoteParticipantStreams.map((entry) => {
+              return <VideoTile key={entry.userKey} stream={entry.stream} label={entry.label} />
             })}
             {sessionError ? (
               <div className="rounded-xl border border-rose-500/50 bg-rose-500/10 p-3 text-xs text-rose-200">

@@ -50,6 +50,19 @@ function dmIdFromEmail(email) {
   return `dm:${local.replace(/\s+/g, '_')}`
 }
 
+function normalizeEmail(email) {
+  return String(email || '').trim().toLowerCase()
+}
+
+function onlineUserKey(presence) {
+  const userId = String(presence?.userId || '').trim()
+  if (userId) return `uid:${userId}`
+  const email = normalizeEmail(presence?.userEmail)
+  if (email) return `email:${email}`
+  const peerId = String(presence?.peerId || '').trim()
+  return peerId ? `peer:${peerId}` : ''
+}
+
 export function ChatShell() {
   const navigate = useNavigate()
   const { t } = useLanguage()
@@ -120,10 +133,24 @@ export function ChatShell() {
   }, [user, t])
   const [activeId, setActiveId] = useState('general')
   const isDirectConversation = activeId.startsWith('dm:')
+  const uniqueOnlineUsers = useMemo(() => {
+    const byUser = new Map()
+    for (const presence of onlineMembers) {
+      const key = onlineUserKey(presence)
+      if (!key || !presence?.peerId) continue
+      const prev = byUser.get(key)
+      const nextTs = Date.parse(presence.joinedAt || '') || 0
+      const prevTs = Date.parse(prev?.joinedAt || '') || 0
+      if (!prev || nextTs >= prevTs) {
+        byUser.set(key, presence)
+      }
+    }
+    return Array.from(byUser.values())
+  }, [onlineMembers])
   const activeDmPresence = useMemo(() => {
     if (!isDirectConversation) return null
     return (
-      onlineMembers.find((presence) => {
+      uniqueOnlineUsers.find((presence) => {
         const presenceDmId = dmIdFromEmail(presence?.userEmail || '')
         return (
           presenceDmId === activeId &&
@@ -132,14 +159,12 @@ export function ChatShell() {
         )
       }) ?? null
     )
-  }, [activeId, isDirectConversation, onlineMembers])
+  }, [activeId, isDirectConversation, uniqueOnlineUsers])
   const directTargetPeerId = activeDmPresence?.peerId ?? ''
   const [messages, setMessages] = useState([])
   const [myAvatarColor, setMyAvatarColor] = useState(null)
   const [isLoadingChat, setIsLoadingChat] = useState(true)
   const [hasLoadedChat, setHasLoadedChat] = useState(false)
-  const [peerId, setPeerId] = useState('')
-  const [connectedPeers, setConnectedPeers] = useState([])
   const [pendingFile, setPendingFile] = useState(null)
   const [fileUrls, setFileUrls] = useState({})
   const [fileTransfers, setFileTransfers] = useState({})
@@ -151,6 +176,7 @@ export function ChatShell() {
   const [isMuted, setIsMuted] = useState(false)
   const [isCameraOff, setIsCameraOff] = useState(false)
   const [isSharingScreen, setIsSharingScreen] = useState(false)
+  const [callPhase, setCallPhase] = useState('idle')
   const incomingFileChunksRef = useRef(new Map())
   const transferMetaRef = useRef(new Map())
   const incomingTransfersRef = useRef(new Map())
@@ -168,6 +194,11 @@ export function ChatShell() {
   const cameraTrackRef = useRef(null)
   const screenTrackRef = useRef(null)
   const seenInviteRef = useRef(new Set())
+  const outgoingCallRef = useRef({
+    targetPeerId: '',
+    inviteSentAt: 0,
+    responded: false,
+  })
 
   useEffect(() => {
     mountedRef.current = true
@@ -253,6 +284,7 @@ export function ChatShell() {
       callStreamsRef.current.set(remotePeerId, rs)
       setRemoteStreams((prev) => new Map(prev).set(remotePeerId, rs))
       setRemoteStream(rs)
+      setCallPhase('connected')
     })
     mediaCall.on('close', () => {
       cleanupRemotePeer(remotePeerId)
@@ -289,6 +321,12 @@ export function ChatShell() {
     setIsMuted(false)
     setIsCameraOff(false)
     setIsSharingScreen(false)
+    setCallPhase('idle')
+    outgoingCallRef.current = {
+      targetPeerId: '',
+      inviteSentAt: 0,
+      responded: false,
+    }
   }
 
   const startLocalStream = async () => {
@@ -319,7 +357,13 @@ export function ChatShell() {
       const myId = getPeerId()
       isInCallRef.current = true
       setIsCallOpen(true)
+      setCallPhase('inviting')
       participantPeerIdsRef.current = [myId, directTargetPeerId]
+      outgoingCallRef.current = {
+        targetPeerId: directTargetPeerId,
+        inviteSentAt: Date.now(),
+        responded: false,
+      }
       await broadcastCallInvite(activeProject?.id, me, myId, [myId], {
         callType: 'direct',
         targetPeerId: directTargetPeerId,
@@ -327,6 +371,7 @@ export function ChatShell() {
     } catch (err) {
       console.error('[Call] start failed:', err)
       isInCallRef.current = false
+      setCallPhase('idle')
     }
   }
 
@@ -338,33 +383,30 @@ export function ChatShell() {
       const myPeerId = getPeerId()
       isInCallRef.current = true
       setIsCallOpen(true)
+      setCallPhase('connecting')
       participantPeerIdsRef.current = [myPeerId, invite.callerPeerId]
       setIncomingGroupCall(null)
-
-      const peerInstance = getPeerInstance()
-      if (!peerInstance || !stream) return
-
-      let mediaCall
-      try {
-        mediaCall = peerInstance.call(invite.callerPeerId, stream, {
-          metadata: { callType: 'direct' },
-        })
-      } catch (err) {
-        console.error('[Call] peer.call failed:', invite.callerPeerId, err)
-        return
-      }
-      if (mediaCall) {
-        wireMediaCall(mediaCall, invite.callerPeerId)
-      }
+      if (!stream) return
 
       await broadcastCallResponse(true, myPeerId, invite.callerPeerId, {
         callType: 'direct',
-        targetPeerId: invite.callerPeerId,
+        targetPeerId: myPeerId,
       })
     } catch (err) {
       console.error('[Call] accept failed:', err)
     }
   }
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const outgoing = outgoingCallRef.current
+      if (!isInCallRef.current || !outgoing.targetPeerId || outgoing.responded) return
+      if (Date.now() - outgoing.inviteSentAt < 20000) return
+      alert('Call timed out. Please try again.')
+      teardownCallRef.current({ broadcast: true })
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     if (!hasLoadedChat) return
@@ -401,16 +443,12 @@ export function ChatShell() {
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const { peerId: id } = await initP2P()
-      if (!cancelled) {
-        setPeerId(id ?? '')
-        setConnectedPeers(getConnectedPeers())
-      }
+      await initP2P()
+      if (cancelled) return
     })()
 
     const offConnected = onP2PEvent(P2P_EVENTS.PEER_CONNECTED, (info) => {
       console.log('[ChatShell] P2P: connection established', info)
-      setConnectedPeers(getConnectedPeers())
       const allPeers = getConnectedPeers()
       if (allPeers.length > 1) {
         sendToAllPeers({
@@ -421,7 +459,6 @@ export function ChatShell() {
     })
     const offDisconnected = onP2PEvent(P2P_EVENTS.PEER_DISCONNECTED, (info) => {
       console.log('[ChatShell] P2P: connection closed', info)
-      setConnectedPeers(getConnectedPeers())
     })
     const offMessage = onP2PEvent(P2P_EVENTS.MESSAGE, ({ from, data }) => {
       console.log('[ChatShell] P2P: received message...', { from, data })
@@ -572,10 +609,6 @@ export function ChatShell() {
           status: 'cancelled',
           speedLabel: '',
         })
-      } else if (data.type === 'peer-disconnect') {
-        if (from) {
-          setConnectedPeers(getConnectedPeers())
-        }
       } else if (data.type === 'call-ended') {
         if (!isInCallRef.current) return
         teardownCallRef.current({ broadcast: false })
@@ -583,15 +616,13 @@ export function ChatShell() {
         const newPeerId = data.payload?.peerId
         if (newPeerId && newPeerId !== getPeerId()) {
           console.log('[ChatShell] auto-connecting to introduced peer:', newPeerId)
-          void connectToPeer(newPeerId).then(() => {
-            setConnectedPeers(getConnectedPeers())
-          })
+          void connectToPeer(newPeerId)
         }
       } else if (data.type === 'peer-list') {
         const peers = data.payload?.peers ?? []
         for (const remoteId of peers) {
           if (remoteId && remoteId !== getPeerId()) {
-            void connectToPeer(remoteId).then(() => setConnectedPeers(getConnectedPeers()))
+            void connectToPeer(remoteId)
           }
         }
       }
@@ -732,25 +763,40 @@ export function ChatShell() {
       setIncomingGroupCall({ callerEmail, callerPeerId, existingParticipants: existing })
     }
 
-    const handlePeerLeft = () => {
-      setConnectedPeers(getConnectedPeers())
-    }
-
     window.addEventListener('hub:message', handleHubMessage)
     window.addEventListener('hub:call-invite', handleCallInvite)
-    window.addEventListener('hub:peer-left', handlePeerLeft)
 
     return () => {
       setIncomingGroupCall(null)
       window.removeEventListener('hub:message', handleHubMessage)
       window.removeEventListener('hub:call-invite', handleCallInvite)
-      window.removeEventListener('hub:peer-left', handlePeerLeft)
     }
   }, [activeProject])
 
   useEffect(() => {
     const updateOnlineMembers = () => {
-      setOnlineMembers(getOnlineMembers())
+      const raw = getOnlineMembers()
+      const byUser = new Map()
+      for (const presence of raw) {
+        const key = onlineUserKey(presence)
+        if (!key || !presence?.peerId) continue
+        const prev = byUser.get(key)
+        const nextTs = Date.parse(presence.joinedAt || '') || 0
+        const prevTs = Date.parse(prev?.joinedAt || '') || 0
+        if (!prev || nextTs >= prevTs) {
+          byUser.set(key, presence)
+        }
+      }
+
+      const allowedDmIds = new Set(dmList.map((dm) => dm.id))
+      const selfDmId = dmIdFromEmail(user?.email || '')
+      if (selfDmId) allowedDmIds.add(selfDmId)
+      const filtered = Array.from(byUser.values()).filter((presence) => {
+        if (!activeProject) return true
+        const dmId = dmIdFromEmail(presence?.userEmail || '')
+        return allowedDmIds.has(dmId)
+      })
+      setOnlineMembers(filtered)
     }
     updateOnlineMembers()
     window.addEventListener('hub:peer-joined', updateOnlineMembers)
@@ -761,21 +807,33 @@ export function ChatShell() {
       window.removeEventListener('hub:peer-left', updateOnlineMembers)
       window.removeEventListener('hub:presence-sync', updateOnlineMembers)
     }
-  }, [])
+  }, [activeProject, dmList, user?.email])
 
   useEffect(() => {
     const handleHubCallResponse = async (e) => {
       const { accepted, responderPeerId, callerPeerId, callType, targetPeerId } = e.detail ?? {}
       if (callType && callType !== 'direct') return
       if (callerPeerId && callerPeerId !== getPeerId()) return
-      if (targetPeerId && targetPeerId !== getPeerId()) return
-      if (!accepted || responderPeerId === getPeerId()) return
-      if (!isInCallRef.current || !localStreamRef.current) return
+      if (!responderPeerId || responderPeerId === getPeerId()) return
+      if (!isInCallRef.current) return
+      if (targetPeerId && targetPeerId !== responderPeerId) return
+
+      outgoingCallRef.current = {
+        ...outgoingCallRef.current,
+        responded: true,
+      }
+      if (!accepted) {
+        alert('Call was declined.')
+        teardownCallRef.current({ broadcast: false })
+        return
+      }
+      if (!localStreamRef.current) return
 
       if (!participantPeerIdsRef.current.includes(responderPeerId)) {
         participantPeerIdsRef.current = [...participantPeerIdsRef.current, responderPeerId]
       }
       if (activeMediaCallsRef.current.has(responderPeerId)) return
+      setCallPhase('connecting')
 
       console.log('[Call] new participant joined, calling them:', responderPeerId)
       const peerInstance = getPeerInstance()
@@ -1038,24 +1096,22 @@ export function ChatShell() {
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.6)] px-2 py-0.5 text-[rgb(var(--zc-muted2))]">
-                {t('chat_peer_id')}:{' '}
-                <span className="font-mono text-[rgb(var(--zc-text))]">
-                  {peerId || t('chat_peer_initializing')}
-                </span>
+                {uniqueOnlineUsers.length} online
               </span>
-              {onlineMembers.length > 0 && (
-                <span className="text-xs text-[rgb(var(--zc-muted2))]">
-                  {onlineMembers.length} online
-                </span>
-              )}
-              {connectedPeers.length > 0 && (
+              {isDirectConversation ? (
                 <span className="text-[rgb(var(--zc-muted2))]">
-                  {t('chat_peers_label')}:{' '}
-                  <span className="font-mono">
-                    {connectedPeers.join(', ')}
-                  </span>
+                  Select a direct message to start a one-to-one call.
+                </span>
+              ) : (
+                <span className="text-[rgb(var(--zc-muted2))]">
+                  Direct calling is only available in private conversations. Use meetings for group calls.
                 </span>
               )}
+              {callPhase !== 'idle' ? (
+                <span className="rounded border border-indigo-500/40 bg-indigo-500/10 px-2 py-0.5 text-[rgb(var(--zc-muted2))]">
+                  Call status: {callPhase}
+                </span>
+              ) : null}
             </div>
           </div>
 
@@ -1121,7 +1177,7 @@ export function ChatShell() {
                   incomingGroupCall.callerPeerId,
                   {
                     callType: 'direct',
-                    targetPeerId: incomingGroupCall.callerPeerId,
+                    targetPeerId: getPeerId(),
                   },
                 )
                 setIncomingGroupCall(null)
