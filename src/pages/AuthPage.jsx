@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useId, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../utils/AuthContext.jsx'
 import { useLanguage } from '../utils/LanguageContext.jsx'
@@ -68,8 +68,10 @@ function SignUpFormFields({
   setShowConfirmPassword,
   onSubmit,
 }) {
-  const passwordName = useMemo(() => `password-${Math.random()}`, [])
-  const confirmName = useMemo(() => `password-confirm-${Math.random()}`, [])
+  const passwordFieldId = useId()
+  const confirmFieldId = useId()
+  const passwordName = `password-${passwordFieldId}`
+  const confirmName = `password-confirm-${confirmFieldId}`
 
   const passErrors = validatePassword(signUpPassword)
   const passwordsMatch =

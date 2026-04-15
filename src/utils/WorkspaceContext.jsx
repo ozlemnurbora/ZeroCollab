@@ -130,10 +130,13 @@ export function WorkspaceProvider({ children }) {
   const teamsRef = useRef(teams)
   const activeProjectRef = useRef(activeProject)
   const activeTeamRef = useRef(activeTeam)
-  projectsRef.current = projects
-  teamsRef.current = teams
-  activeProjectRef.current = activeProject
-  activeTeamRef.current = activeTeam
+
+  useEffect(() => {
+    projectsRef.current = projects
+    teamsRef.current = teams
+    activeProjectRef.current = activeProject
+    activeTeamRef.current = activeTeam
+  }, [projects, teams, activeProject, activeTeam])
 
   const loadProjects = useCallback(async () => {
     if (!user) return
@@ -192,17 +195,26 @@ export function WorkspaceProvider({ children }) {
 
   useEffect(() => {
     if (!user) {
-      setProjects([])
-      setTeams([])
-      setIsLoading(false)
-      return
+      const resetTimer = window.setTimeout(() => {
+        setProjects([])
+        setTeams([])
+        setIsLoading(false)
+      }, 0)
+      return () => window.clearTimeout(resetTimer)
     }
 
-    setIsLoading(true)
+    let cancelled = false
+    const loadingTimer = window.setTimeout(() => {
+      setIsLoading(true)
+    }, 0)
     ;(async () => {
       await migrateLocalToSupabase(user)
       await Promise.all([loadProjects(), loadTeams()])
-    })().finally(() => setIsLoading(false))
+    })().finally(() => {
+      if (!cancelled) {
+        setIsLoading(false)
+      }
+    })
 
     const unsubProjects = subscribeToMyProjects(user.id, () => {
       void loadProjects()
@@ -212,10 +224,25 @@ export function WorkspaceProvider({ children }) {
     })
 
     return () => {
+      cancelled = true
+      window.clearTimeout(loadingTimer)
       unsubProjects()
       unsubTeams()
     }
-  }, [user?.id, loadProjects, loadTeams])
+  }, [user, loadProjects, loadTeams])
+
+  useEffect(() => {
+    if (!user) {
+      localStorage.removeItem('zc-active-project')
+      localStorage.removeItem('zc-active-team')
+      const resetActiveTimer = window.setTimeout(() => {
+        setActiveProjectState(null)
+        setActiveTeamState(null)
+      }, 0)
+      return () => window.clearTimeout(resetActiveTimer)
+    }
+    return undefined
+  }, [user])
 
   useEffect(() => {
     if (!activeProject || !user) {
@@ -223,7 +250,7 @@ export function WorkspaceProvider({ children }) {
       return
     }
     void connectToProjectHub(activeProject.id, user.id, user.email)
-  }, [activeProject?.id, user?.id])
+  }, [activeProject, user])
 
   useEffect(() => {
     const handleProjectDeleted = () => {

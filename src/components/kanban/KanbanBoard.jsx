@@ -26,7 +26,7 @@ export function KanbanBoard({ headerActions = null }) {
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
   const [hasLoadedTasks, setHasLoadedTasks] = useState(false)
   const [isAddOpen, setIsAddOpen] = useState(false)
-  const [selectedTask, setSelectedTask] = useState(null)
+  const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [detailInitialEdit, setDetailInitialEdit] = useState(false)
   const [draggingTaskId, setDraggingTaskId] = useState(null)
   const [dropTargetColumnId, setDropTargetColumnId] = useState(null)
@@ -48,11 +48,10 @@ export function KanbanBoard({ headerActions = null }) {
     tasksRef.current = tasks
   }, [tasks])
 
-  useEffect(() => {
-    if (!selectedTask) return
-    const latest = tasks.find((t) => t.id === selectedTask.id)
-    if (latest) setSelectedTask(latest)
-  }, [tasks, selectedTask])
+  const selectedTask = useMemo(
+    () => tasks.find((task) => task.id === selectedTaskId) ?? null,
+    [tasks, selectedTaskId],
+  )
 
   const broadcastTasks = useCallback(
     (updatedTasks) => {
@@ -98,7 +97,6 @@ export function KanbanBoard({ headerActions = null }) {
     let hideTimer
     let peerBroadcastTimer
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
-      // eslint-disable-next-line no-console
       console.log('[KanbanBoard] message received', data)
       if (data?.type !== 'TASK_SYNC') return
       const incomingGeneralTasks = (data.tasks ?? []).filter((t) =>
@@ -119,7 +117,6 @@ export function KanbanBoard({ headerActions = null }) {
       })
     })
     const unsubPeer = on(P2P_EVENTS.PEER_CONNECTED, () => {
-      // eslint-disable-next-line no-console
       console.log('[KanbanBoard] peer connected, broadcasting tasks')
       window.clearTimeout(peerBroadcastTimer)
       peerBroadcastTimer = window.setTimeout(() => {
@@ -310,14 +307,14 @@ export function KanbanBoard({ headerActions = null }) {
               onDropTask={moveTask}
               onDeleteTask={(id) => {
                 deleteTask(id)
-                if (selectedTask?.id === id) setSelectedTask(null)
+                if (selectedTaskId === id) setSelectedTaskId(null)
               }}
               onClickTask={(task) => {
-                setSelectedTask(task)
+                setSelectedTaskId(task.id)
                 setDetailInitialEdit(false)
               }}
               onEditTask={(task) => {
-                setSelectedTask(task)
+                setSelectedTaskId(task.id)
                 setDetailInitialEdit(true)
               }}
               draggingTaskId={draggingTaskId}
@@ -331,6 +328,7 @@ export function KanbanBoard({ headerActions = null }) {
       </div>
 
       <AddTaskModal
+        key={`add-task-${isAddOpen ? 'open' : 'closed'}-${activeProject?.id ?? 'none'}-${activeTeam?.id ?? 'none'}`}
         open={isAddOpen}
         onClose={() => setIsAddOpen(false)}
         onCreate={createTask}
@@ -340,13 +338,14 @@ export function KanbanBoard({ headerActions = null }) {
       />
 
       <TaskDetailModal
+        key={`task-detail-${selectedTaskId ?? 'none'}-${detailInitialEdit ? 'edit' : 'view'}`}
         open={!!selectedTask}
-        onClose={() => setSelectedTask(null)}
+        onClose={() => setSelectedTaskId(null)}
         task={selectedTask}
         onUpdate={updateTask}
         onDelete={(id) => {
           deleteTask(id)
-          setSelectedTask(null)
+          setSelectedTaskId(null)
         }}
         customCalendars={customCalendars}
         initialEdit={detailInitialEdit}

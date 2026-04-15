@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Button } from '../ui/Button.jsx'
 import { Modal } from '../ui/Modal.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
@@ -14,6 +14,19 @@ const initialForm = {
   teamId: '',
 }
 
+function createInitialForm(initialValues, activeProject, activeTeam) {
+  const calId = initialValues?.calendarId || initialValues?.calendarType
+  const calendarId = calId || initialForm.calendarId
+  return {
+    ...initialForm,
+    ...(initialValues ?? {}),
+    assignee: initialValues?.assignee ?? initialForm.assignee,
+    calendarId,
+    projectId: activeProject?.id || '',
+    teamId: activeTeam?.id || '',
+  }
+}
+
 export function AddTaskModal({
   open,
   onClose,
@@ -24,23 +37,10 @@ export function AddTaskModal({
   activeTeam,
 }) {
   const { t } = useLanguage()
-  const [form, setForm] = useState(initialForm)
+  const [form, setForm] = useState(() =>
+    createInitialForm(initialValues, activeProject, activeTeam),
+  )
   const [touched, setTouched] = useState(false)
-
-  useEffect(() => {
-    if (!open) return
-    const calId = initialValues?.calendarId || initialValues?.calendarType
-    const calendarId = calId || initialForm.calendarId
-    setForm({
-      ...initialForm,
-      ...(initialValues ?? {}),
-      assignee: initialValues?.assignee ?? initialForm.assignee,
-      calendarId,
-      projectId: activeProject?.id || '',
-      teamId: activeTeam?.id || '',
-    })
-    setTouched(false)
-  }, [open, initialValues, activeProject, activeTeam])
 
   const errors = useMemo(() => {
     const next = {}

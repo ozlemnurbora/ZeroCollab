@@ -21,7 +21,7 @@ export function usePwaInstallPrompt() {
     const handler = (e) => {
       e.preventDefault()
       setDeferredPrompt(e)
-      // eslint-disable-next-line no-console
+       
       console.log('PWA: install prompt available')
     }
     window.addEventListener('beforeinstallprompt', handler)
@@ -34,11 +34,11 @@ export function usePwaInstallPrompt() {
 
   const promptInstall = async () => {
     if (!deferredPrompt) return { outcome: 'dismissed' }
-    // eslint-disable-next-line no-console
+     
     console.log('PWA: prompting install')
     await deferredPrompt.prompt()
     const choice = await deferredPrompt.userChoice
-    // eslint-disable-next-line no-console
+     
     console.log('PWA: install choice', choice)
     setDeferredPrompt(null)
     return choice

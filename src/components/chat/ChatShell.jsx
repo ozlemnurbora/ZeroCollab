@@ -27,6 +27,7 @@ import {
   initP2P,
   on as onP2PEvent,
   sendToAllPeers,
+  sendToPeer,
 } from '../../utils/p2pManager.js'
 import { CallButton } from '../call/CallButton.jsx'
 import { VideoCall } from '../call/VideoCall.jsx'
@@ -36,6 +37,10 @@ function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
     return crypto.randomUUID()
   return `msg_${Date.now()}_${Math.random().toString(16).slice(2)}`
+}
+
+function createTransferId(fileId, senderPeerId) {
+  return `${senderPeerId || 'unknown'}:${fileId}`
 }
 
 export function ChatShell() {
@@ -125,15 +130,37 @@ export function ChatShell() {
   const [isSharingScreen, setIsSharingScreen] = useState(false)
   const incomingFileChunksRef = useRef(new Map())
   const transferMetaRef = useRef(new Map())
+  const incomingTransfersRef = useRef(new Map())
+  const outgoingTransfersRef = useRef(new Map())
   const activeMediaCallsRef = useRef(new Map())
   const callStreamsRef = useRef(new Map())
+  const fileTransfersRef = useRef({})
+  const objectUrlsRef = useRef(new Set())
   const localStreamRef = useRef(null)
+  const mountedRef = useRef(false)
   const isInCallRef = useRef(false)
   const participantPeerIdsRef = useRef([])
   const wireMediaCallRef = useRef(() => {})
   const teardownCallRef = useRef(() => {})
   const cameraTrackRef = useRef(null)
   const screenTrackRef = useRef(null)
+  const seenInviteRef = useRef(new Set())
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+    }
+  }, [])
+
+  const updateTransferState = (id, partial) => {
+    if (!mountedRef.current) return
+    setFileTransfers((prev) => {
+      const current = prev[id] ?? {}
+      const next = { ...current, ...partial }
+      return { ...prev, [id]: next }
+    })
+  }
 
   const replaceOutgoingVideoTrack = (track) => {
     for (const mc of activeMediaCallsRef.current.values()) {
@@ -149,9 +176,40 @@ export function ChatShell() {
     stream?.getTracks?.().forEach((track) => track.stop())
   }
 
+  const cleanupTransferRuntime = () => {
+    const urls = objectUrlsRef.current
+    const outgoingTransfers = outgoingTransfersRef.current
+    const incomingTransfers = incomingTransfersRef.current
+    for (const url of urls) {
+      URL.revokeObjectURL(url)
+    }
+    urls.clear()
+    for (const [transferId, transfer] of outgoingTransfers.entries()) {
+      transfer.cancelled = true
+      sendToAllPeers({
+        type: 'file-transfer-cancel',
+        payload: {
+          id: transferId.split(':').slice(1).join(':'),
+          senderPeerId: transfer.senderPeerId,
+          reason: 'sender-disconnected',
+        },
+      })
+    }
+    outgoingTransfers.clear()
+    incomingTransfers.clear()
+  }
+
+  useEffect(() => {
+    return cleanupTransferRuntime
+  }, [])
+
   useEffect(() => {
     localStreamRef.current = localStream
   }, [localStream])
+
+  useEffect(() => {
+    fileTransfersRef.current = fileTransfers
+  }, [fileTransfers])
 
   const cleanupRemotePeer = (remotePeerId) => {
     activeMediaCallsRef.current.delete(remotePeerId)
@@ -181,8 +239,11 @@ export function ChatShell() {
     })
   }
 
-  const teardownCall = () => {
-    sendToAllPeers({ type: 'call-ended', payload: {} })
+  const teardownCall = ({ broadcast = true } = {}) => {
+    if (!isInCallRef.current && !isCallOpen) return
+    if (broadcast) {
+      sendToAllPeers({ type: 'call-ended', payload: {} })
+    }
     for (const mc of [...activeMediaCallsRef.current.values()]) {
       try {
         mc?.close?.()
@@ -219,11 +280,13 @@ export function ChatShell() {
     return stream
   }
 
-  wireMediaCallRef.current = wireMediaCall
-  teardownCallRef.current = teardownCall
+  useEffect(() => {
+    wireMediaCallRef.current = wireMediaCall
+    teardownCallRef.current = teardownCall
+  })
 
   const handleCallClick = async () => {
-    if (isInCallRef.current) return
+    if (isInCallRef.current || incomingGroupCall) return
     try {
       await startLocalStream()
       const myId = getPeerId()
@@ -232,14 +295,13 @@ export function ChatShell() {
       participantPeerIdsRef.current = [myId]
       await broadcastCallInvite(activeProject?.id, me, myId, [myId])
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error('[Call] start failed:', err)
       isInCallRef.current = false
     }
   }
 
   const handleAcceptCall = async () => {
-    if (!incomingGroupCall) return
+    if (!incomingGroupCall || isInCallRef.current) return
     const invite = incomingGroupCall
     try {
       const stream = await startLocalStream()
@@ -255,13 +317,11 @@ export function ChatShell() {
       const callAndListen = (remotePeerId) => {
         if (!remotePeerId || remotePeerId === myPeerId) return
         if (participantPeerIdsRef.current.includes(remotePeerId)) return
-        // eslint-disable-next-line no-console
         console.log('[Call] calling participant:', remotePeerId)
         let mediaCall
         try {
           mediaCall = peerInstance.call(remotePeerId, stream)
         } catch (err) {
-          // eslint-disable-next-line no-console
           console.error('[Call] peer.call failed:', remotePeerId, err)
           return
         }
@@ -289,7 +349,6 @@ export function ChatShell() {
         roster,
       )
     } catch (err) {
-      // eslint-disable-next-line no-console
       console.error('[Call] accept failed:', err)
     }
   }
@@ -297,12 +356,12 @@ export function ChatShell() {
   useEffect(() => {
     if (!hasLoadedChat) return
     void saveActiveChannelId(activeId)
-  }, [activeId])
+  }, [activeId, hasLoadedChat])
 
   useEffect(() => {
     if (!hasLoadedChat) return
     void saveMessages(messages)
-  }, [messages])
+  }, [messages, hasLoadedChat])
 
   useEffect(() => {
     let cancelled = false
@@ -337,7 +396,6 @@ export function ChatShell() {
     })()
 
     const offConnected = onP2PEvent(P2P_EVENTS.PEER_CONNECTED, (info) => {
-      // eslint-disable-next-line no-console
       console.log('[ChatShell] P2P: connection established', info)
       setConnectedPeers(getConnectedPeers())
       const allPeers = getConnectedPeers()
@@ -349,12 +407,10 @@ export function ChatShell() {
       }
     })
     const offDisconnected = onP2PEvent(P2P_EVENTS.PEER_DISCONNECTED, (info) => {
-      // eslint-disable-next-line no-console
       console.log('[ChatShell] P2P: connection closed', info)
       setConnectedPeers(getConnectedPeers())
     })
     const offMessage = onP2PEvent(P2P_EVENTS.MESSAGE, ({ from, data }) => {
-      // eslint-disable-next-line no-console
       console.log('[ChatShell] P2P: received message...', { from, data })
       if (!data || !data.type) return
       if (data.type === 'chat-message') {
@@ -367,50 +423,84 @@ export function ChatShell() {
       } else if (data.type === 'file-meta') {
         const meta = data.payload
         if (!meta || !meta.id) return
-        transferMetaRef.current.set(meta.id, meta)
-        incomingFileChunksRef.current.set(meta.id, [])
-        updateTransferState(meta.id, {
+        const senderPeerId = meta.senderPeerId || from
+        const transferId = createTransferId(meta.id, senderPeerId)
+        const totalChunks = Number.isFinite(meta.totalChunks) ? meta.totalChunks : 0
+        const transferMeta = {
+          ...meta,
+          senderPeerId,
+          transferId,
+          totalChunks,
+        }
+        transferMetaRef.current.set(transferId, transferMeta)
+        incomingFileChunksRef.current.set(transferId, new Array(totalChunks))
+        incomingTransfersRef.current.set(transferId, {
+          transferId,
+          senderPeerId,
+          totalChunks,
+          receivedIndices: new Set(),
+          lastChunkAt: performance.now(),
+          retries: 0,
+          completed: false,
+          cancelled: false,
+        })
+        updateTransferState(transferId, {
           direction: 'download',
           totalBytes: meta.size,
           transferredBytes: 0,
-          totalChunks: meta.totalChunks,
+          totalChunks,
           completedChunks: 0,
           percent: 0,
           speedLabel: '',
           startedAt: performance.now(),
+          senderPeerId,
         })
       } else if (data.type === 'file-chunk') {
         const payload = data.payload
         if (!payload || !payload.id || !payload.chunk) return
-        const meta = transferMetaRef.current.get(payload.id)
+        const senderPeerId = payload.senderPeerId || from
+        const transferId = createTransferId(payload.id, senderPeerId)
+        const meta = transferMetaRef.current.get(transferId)
         if (!meta) return
-        const chunks = incomingFileChunksRef.current.get(payload.id) ?? []
+        const transferState = incomingTransfersRef.current.get(transferId)
+        if (!transferState || transferState.completed || transferState.cancelled) return
+        if (payload.index < 0 || payload.index >= meta.totalChunks) return
+        const chunks = incomingFileChunksRef.current.get(transferId) ?? []
         chunks[payload.index] = payload.chunk
-        incomingFileChunksRef.current.set(payload.id, chunks)
+        incomingFileChunksRef.current.set(transferId, chunks)
+        transferState.receivedIndices.add(payload.index)
+        transferState.lastChunkAt = performance.now()
 
         const transferredBytes = chunks.reduce(
           (sum, c) => sum + (c ? c.length : 0),
           0,
         )
-        const startedAt = fileTransfers[payload.id]?.startedAt ?? performance.now()
+        const existingTransfer = fileTransfersRef.current[transferId]
+        const startedAt = existingTransfer?.startedAt ?? performance.now()
         const elapsedMs = Math.max(1, performance.now() - startedAt)
         const bytesPerSecond = (transferredBytes / elapsedMs) * 1000
         const kbPerSecond = bytesPerSecond / 1024
 
-        updateTransferState(payload.id, {
+        updateTransferState(transferId, {
           transferredBytes,
-          completedChunks: (fileTransfers[payload.id]?.completedChunks ?? 0) + 1,
+          completedChunks: transferState.receivedIndices.size,
           percent: Math.round((transferredBytes / meta.size) * 100),
           speedLabel: `${kbPerSecond.toFixed(1)} KB/s`,
           startedAt,
         })
 
-        if (transferredBytes >= meta.size) {
+        if (
+          transferState.receivedIndices.size >= meta.totalChunks &&
+          transferredBytes >= meta.size
+        ) {
+          transferState.completed = true
           const blob = new Blob(chunks, { type: meta.type || 'application/octet-stream' })
           const url = URL.createObjectURL(blob)
-          setFileUrls((prev) => ({ ...prev, [meta.id]: url }))
+          objectUrlsRef.current.add(url)
+          setFileUrls((prev) => ({ ...prev, [transferId]: url }))
           const message = {
-            id: meta.id,
+            id: transferId,
+            originalTransferId: meta.id,
             channelId: meta.channelId,
             projectId: meta.projectId ?? null,
             sender: meta.sender ?? from,
@@ -426,19 +516,59 @@ export function ChatShell() {
             if (prev.some((m) => m.id === message.id)) return prev
             return [...prev, message]
           })
-          updateTransferState(payload.id, {
+          updateTransferState(transferId, {
             percent: 100,
           })
-          transferMetaRef.current.delete(payload.id)
-          incomingFileChunksRef.current.delete(payload.id)
+          transferMetaRef.current.delete(transferId)
+          incomingFileChunksRef.current.delete(transferId)
+          incomingTransfersRef.current.delete(transferId)
+        }
+      } else if (data.type === 'file-chunk-request') {
+        const payload = data.payload
+        if (!payload?.id || !Array.isArray(payload.indices)) return
+        const requesterPeerId = payload.requesterPeerId || from
+        if (!requesterPeerId) return
+        const outgoing = outgoingTransfersRef.current.get(payload.id)
+        if (!outgoing || outgoing.cancelled) return
+        for (const index of payload.indices) {
+          const chunk = outgoing.chunks[index]
+          if (!chunk) continue
+          sendToPeer(requesterPeerId, {
+            type: 'file-chunk',
+            payload: {
+              id: payload.id,
+              index,
+              total: outgoing.totalChunks,
+              chunk,
+              senderPeerId: outgoing.senderPeerId,
+            },
+          })
+        }
+      } else if (data.type === 'file-transfer-cancel') {
+        const payload = data.payload
+        if (!payload?.id) return
+        const senderPeerId = payload.senderPeerId || from
+        const transferId = createTransferId(payload.id, senderPeerId)
+        const transferState = incomingTransfersRef.current.get(transferId)
+        if (!transferState) return
+        transferState.cancelled = true
+        incomingTransfersRef.current.delete(transferId)
+        transferMetaRef.current.delete(transferId)
+        incomingFileChunksRef.current.delete(transferId)
+        updateTransferState(transferId, {
+          status: 'cancelled',
+          speedLabel: '',
+        })
+      } else if (data.type === 'peer-disconnect') {
+        if (from) {
+          setConnectedPeers(getConnectedPeers())
         }
       } else if (data.type === 'call-ended') {
         if (!isInCallRef.current) return
-        teardownCallRef.current()
+        teardownCallRef.current({ broadcast: false })
       } else if (data.type === 'peer-introduce') {
         const newPeerId = data.payload?.peerId
         if (newPeerId && newPeerId !== getPeerId()) {
-          // eslint-disable-next-line no-console
           console.log('[ChatShell] auto-connecting to introduced peer:', newPeerId)
           void connectToPeer(newPeerId).then(() => {
             setConnectedPeers(getConnectedPeers())
@@ -473,13 +603,13 @@ export function ChatShell() {
       offDisconnected()
       offMessage()
       offIncomingCall()
-      teardownCallRef.current()
+      teardownCallRef.current({ broadcast: false })
     }
   }, [])
 
   useEffect(() => {
     const stopOnUnload = () => {
-      teardownCallRef.current()
+      teardownCallRef.current({ broadcast: false })
     }
     window.addEventListener('beforeunload', stopOnUnload)
     return () => {
@@ -489,9 +619,39 @@ export function ChatShell() {
   }, [])
 
   useEffect(() => {
+    const retryTimer = window.setInterval(() => {
+      const myPeerId = getPeerId()
+      for (const [transferId, transfer] of incomingTransfersRef.current.entries()) {
+        if (transfer.completed || transfer.cancelled) continue
+        if (!transfer.senderPeerId) continue
+        const elapsed = performance.now() - transfer.lastChunkAt
+        if (elapsed < 2500 || transfer.retries >= 3) continue
+        const missing = []
+        for (let idx = 0; idx < transfer.totalChunks; idx++) {
+          if (!transfer.receivedIndices.has(idx)) {
+            missing.push(idx)
+            if (missing.length >= 32) break
+          }
+        }
+        if (missing.length === 0) continue
+        transfer.retries += 1
+        transfer.lastChunkAt = performance.now()
+        sendToPeer(transfer.senderPeerId, {
+          type: 'file-chunk-request',
+          payload: {
+            id: transferId.split(':').slice(1).join(':'),
+            requesterPeerId: myPeerId,
+            indices: missing,
+          },
+        })
+      }
+    }, 1500)
+    return () => window.clearInterval(retryTimer)
+  }, [])
+
+  useEffect(() => {
     const onDbChange = (e) => {
       const detail = e?.detail
-      // eslint-disable-next-line no-console
       console.log('[ChatShell] zerocollab:idb event', detail)
       if (!detail?.store) return
       // For now, only react to settings changes so that local
@@ -511,8 +671,12 @@ export function ChatShell() {
   useEffect(() => {
     const ids = new Set(allConversations.map((c) => c.id))
     if (ids.size > 0 && !ids.has(activeId)) {
-      setActiveId('general')
+      const resetTimer = window.setTimeout(() => {
+        setActiveId('general')
+      }, 0)
+      return () => window.clearTimeout(resetTimer)
     }
+    return undefined
   }, [allConversations, activeId])
 
   useEffect(() => {
@@ -530,6 +694,12 @@ export function ChatShell() {
       const { callerEmail, callerPeerId, projectId, existingParticipants } = e.detail ?? {}
       if (!callerPeerId || callerPeerId === getPeerId()) return
       if (projectId && activeProject?.id && projectId !== activeProject.id) return
+      const inviteKey = `${callerPeerId}:${e.detail?.timestamp ?? 'none'}`
+      if (seenInviteRef.current.has(inviteKey)) return
+      seenInviteRef.current.add(inviteKey)
+      window.setTimeout(() => {
+        seenInviteRef.current.delete(inviteKey)
+      }, 10000)
       const existing =
         Array.isArray(existingParticipants) && existingParticipants.length > 0
           ? existingParticipants
@@ -537,13 +707,19 @@ export function ChatShell() {
       setIncomingGroupCall({ callerEmail, callerPeerId, existingParticipants: existing })
     }
 
+    const handlePeerLeft = () => {
+      setConnectedPeers(getConnectedPeers())
+    }
+
     window.addEventListener('hub:message', handleHubMessage)
     window.addEventListener('hub:call-invite', handleCallInvite)
+    window.addEventListener('hub:peer-left', handlePeerLeft)
 
     return () => {
       setIncomingGroupCall(null)
       window.removeEventListener('hub:message', handleHubMessage)
       window.removeEventListener('hub:call-invite', handleCallInvite)
+      window.removeEventListener('hub:peer-left', handlePeerLeft)
     }
   }, [activeProject])
 
@@ -553,7 +729,13 @@ export function ChatShell() {
     }
     updateOnlineMembers()
     window.addEventListener('hub:peer-joined', updateOnlineMembers)
-    return () => window.removeEventListener('hub:peer-joined', updateOnlineMembers)
+    window.addEventListener('hub:peer-left', updateOnlineMembers)
+    window.addEventListener('hub:presence-sync', updateOnlineMembers)
+    return () => {
+      window.removeEventListener('hub:peer-joined', updateOnlineMembers)
+      window.removeEventListener('hub:peer-left', updateOnlineMembers)
+      window.removeEventListener('hub:presence-sync', updateOnlineMembers)
+    }
   }, [])
 
   useEffect(() => {
@@ -567,7 +749,6 @@ export function ChatShell() {
       }
       if (activeMediaCallsRef.current.has(responderPeerId)) return
 
-      // eslint-disable-next-line no-console
       console.log('[Call] new participant joined, calling them:', responderPeerId)
       const peerInstance = getPeerInstance()
       if (!peerInstance) return
@@ -576,7 +757,6 @@ export function ChatShell() {
       try {
         mediaCall = peerInstance.call(responderPeerId, localStreamRef.current)
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.error('[Call] outbound to joiner failed:', responderPeerId, err)
         return
       }
@@ -589,7 +769,7 @@ export function ChatShell() {
     return () => {
       window.removeEventListener('hub:call-response', handleHubCallResponse)
     }
-  }, [isCallOpen, localStream])
+  }, [])
 
   const activeMessages = useMemo(
     () =>
@@ -603,7 +783,6 @@ export function ChatShell() {
   )
 
   const sendMessage = (text) => {
-    // eslint-disable-next-line no-console
     console.log('[ChatShell] sendMessage', { text, activeId, me })
     const now = Date.now()
     const next = {
@@ -616,11 +795,9 @@ export function ChatShell() {
     }
     setMessages((prev) => {
       const updated = [...prev, next]
-      // eslint-disable-next-line no-console
       console.log('[ChatShell] messages after local append', updated.length)
       return updated
     })
-    // eslint-disable-next-line no-console
     console.log('[ChatShell] broadcasting over P2P', next)
     sendToAllPeers({ type: 'chat-message', payload: next })
     void broadcastMessage(next).catch((err) =>
@@ -642,25 +819,17 @@ export function ChatShell() {
     setPendingFile(null)
   }
 
-  const updateTransferState = (id, partial) => {
-    setFileTransfers((prev) => {
-      const current = prev[id] ?? {}
-      const next = { ...current, ...partial }
-      return { ...prev, [id]: next }
-    })
-  }
-
   const handleSendFile = async () => {
     if (!pendingFile) return
     const file = pendingFile.file
     const id = createId()
+    const senderPeerId = getPeerId()
     const now = Date.now()
     const channelId = activeId
     const projectId = activeProject?.id || null
     const sender = me
     const maxSize = 50 * 1024 * 1024
     if (file.size > maxSize) {
-      // eslint-disable-next-line no-alert
       alert(t('composer_file_too_large'))
       return
     }
@@ -684,6 +853,7 @@ export function ChatShell() {
 
     setMessages((prev) => [...prev, message])
     const localUrl = URL.createObjectURL(file)
+    objectUrlsRef.current.add(localUrl)
     setFileUrls((prev) => ({ ...prev, [id]: localUrl }))
 
     const startTime = performance.now()
@@ -695,6 +865,7 @@ export function ChatShell() {
       completedChunks: 0,
       percent: 0,
       speedLabel: '',
+      senderPeerId,
     })
 
     sendToAllPeers({
@@ -709,16 +880,28 @@ export function ChatShell() {
         size: file.size,
         type: file.type,
         totalChunks,
+        senderPeerId,
       },
     })
 
     const buffer = await file.arrayBuffer()
     const view = new Uint8Array(buffer)
+    const chunksForRetry = new Array(totalChunks)
+    outgoingTransfersRef.current.set(id, {
+      id,
+      senderPeerId,
+      totalChunks,
+      chunks: chunksForRetry,
+      cancelled: false,
+    })
 
     for (let index = 0; index < totalChunks; index++) {
+      const transfer = outgoingTransfersRef.current.get(id)
+      if (!transfer || transfer.cancelled) break
       const start = index * CHUNK_SIZE
       const end = Math.min(start + CHUNK_SIZE, view.length)
       const chunk = view.slice(start, end)
+      chunksForRetry[index] = chunk
       sendToAllPeers({
         type: 'file-chunk',
         payload: {
@@ -726,6 +909,7 @@ export function ChatShell() {
           index,
           total: totalChunks,
           chunk,
+          senderPeerId,
         },
       })
 
@@ -744,6 +928,9 @@ export function ChatShell() {
     updateTransferState(id, {
       percent: 100,
     })
+    window.setTimeout(() => {
+      outgoingTransfersRef.current.delete(id)
+    }, 45000)
     handleCancelFile()
   }
 
@@ -917,7 +1104,7 @@ export function ChatShell() {
         onToggleMute={handleToggleMute}
         onToggleCamera={handleToggleCamera}
         onToggleScreenShare={handleToggleScreenShare}
-        onEndCall={() => teardownCall()}
+        onEndCall={() => teardownCall({ broadcast: true })}
         incomingCallFrom=""
         onAcceptIncoming={() => {}}
         onDeclineIncoming={() => {}}

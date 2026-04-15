@@ -62,17 +62,17 @@ function App() {
       }
 
       if (saved.length > 0) {
-        // eslint-disable-next-line no-console
+         
         console.log('[App] auto-reconnecting to saved peers:', saved)
         for (const peerId of saved) {
           if (typeof peerId !== 'string' || !peerId) continue
           try {
             const conn = await connectToPeer(peerId)
             if (!conn) throw new Error('connect failed')
-            // eslint-disable-next-line no-console
+             
             console.log('[App] reconnected to:', peerId)
           } catch (err) {
-            // eslint-disable-next-line no-console
+             
             console.log('[App] failed to reconnect to:', peerId, err)
             try {
               const current = JSON.parse(

@@ -16,12 +16,19 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
 
   useEffect(() => {
     if (!team) return
-    setName(team.name || '')
-    setMembers(team.members || [])
+    const syncTimer = window.setTimeout(() => {
+      setName(team.name || '')
+      setMembers(team.members || [])
+    }, 0)
+    return () => window.clearTimeout(syncTimer)
   }, [team])
 
   useEffect(() => {
-    if (!open) setIsEditing(false)
+    if (open) return
+    const resetEditTimer = window.setTimeout(() => {
+      setIsEditing(false)
+    }, 0)
+    return () => window.clearTimeout(resetEditTimer)
   }, [open])
 
   if (!team) return null

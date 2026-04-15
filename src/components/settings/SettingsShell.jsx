@@ -85,11 +85,14 @@ export function SettingsShell() {
   }
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !('Notification' in window)) {
-      setBrowserNotifPermission('unsupported')
-      return
-    }
-    setBrowserNotifPermission(Notification.permission)
+    const permissionTimer = window.setTimeout(() => {
+      if (typeof window === 'undefined' || !('Notification' in window)) {
+        setBrowserNotifPermission('unsupported')
+        return
+      }
+      setBrowserNotifPermission(Notification.permission)
+    }, 0)
+    return () => window.clearTimeout(permissionTimer)
   }, [])
 
   useEffect(() => {

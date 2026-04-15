@@ -22,16 +22,22 @@ let basePeerId = null
 let sessionPeerId = null
 let isInitializing = false
 let initPromise = null
+let reconnectTimer = null
+let reconnectAttempts = 0
+let manuallyClosed = false
 
 /** @type {Record<string, Set<Function>>} */
 const listeners = {}
 
 /** @type {Map<string, import('peerjs').DataConnection>} */
 const connections = new Map()
+/** @type {Map<string, Promise<import('peerjs').DataConnection|null>>} */
+const pendingConnections = new Map()
+const CONNECTION_BIND_MARK = '__zcBoundListeners'
 
 function emit(event, payload) {
   // Temporary debug logging
-  // eslint-disable-next-line no-console
+   
   console.log('[p2pManager] emit', event, payload)
   const set = listeners[event]
   if (!set) return
@@ -42,6 +48,42 @@ function emit(event, payload) {
       // ignore listener errors
     }
   }
+}
+
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer)
+    reconnectTimer = null
+  }
+}
+
+function cleanupConnection(remoteId) {
+  const existing = connections.get(remoteId)
+  if (!existing) return
+  connections.delete(remoteId)
+  pendingConnections.delete(remoteId)
+  try {
+    existing.close()
+  } catch {
+    // ignore
+  }
+}
+
+function scheduleReconnect() {
+  if (!peer || peer.destroyed || manuallyClosed) return
+  clearReconnectTimer()
+  const delay = Math.min(10000, 750 * 2 ** reconnectAttempts)
+  reconnectAttempts += 1
+  reconnectTimer = setTimeout(() => {
+    if (!peer || peer.destroyed || manuallyClosed) return
+    try {
+      peer.reconnect()
+    } catch (err) {
+      console.error('[p2pManager] reconnect failed', err)
+      setStatus(STATUS.OFFLINE)
+      scheduleReconnect()
+    }
+  }, delay)
 }
 
 function setStatus(next) {
@@ -57,6 +99,9 @@ function ensureBrowserEnv() {
 async function createPeerInstance() {
   if (!ensureBrowserEnv()) return null
 
+  manuallyClosed = false
+  clearReconnectTimer()
+  reconnectAttempts = 0
   basePeerId = await getOrCreatePeerId()
   const sessionSuffix =
     typeof crypto !== 'undefined' && crypto.randomUUID
@@ -66,7 +111,7 @@ async function createPeerInstance() {
 
   setStatus(STATUS.CONNECTING)
 
-  // eslint-disable-next-line no-console
+   
   console.log('[p2pManager] creating Peer with id', sessionPeerId)
   peer = new Peer(sessionPeerId, {
     config: {
@@ -88,47 +133,48 @@ async function createPeerInstance() {
   })
 
   peer.on('open', () => {
-    // eslint-disable-next-line no-console
+     
     console.log('[p2pManager] peer open', sessionPeerId)
+    reconnectAttempts = 0
+    clearReconnectTimer()
     setStatus(STATUS.ONLINE)
   })
 
   peer.on('connection', (conn) => {
-    // eslint-disable-next-line no-console
+     
     console.log('[p2pManager] incoming connection from', conn.peer)
     setupConnection(conn)
   })
 
   peer.on('call', (mediaCall) => {
-    // eslint-disable-next-line no-console
+     
     console.log('[p2pManager] incoming media call from', mediaCall.peer)
     emit(EVENTS.INCOMING_CALL, mediaCall)
   })
 
   peer.on('disconnected', () => {
-    // eslint-disable-next-line no-console
+     
     console.log('[p2pManager] peer disconnected, attempting reconnect...')
     setStatus(STATUS.CONNECTING)
-    try {
-      peer.reconnect()
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error('[p2pManager] reconnect failed', err)
-      setStatus(STATUS.OFFLINE)
-    }
+    scheduleReconnect()
   })
 
   peer.on('error', (err) => {
-    // eslint-disable-next-line no-console
+     
     console.error('[p2pManager] peer error', err)
     emit(EVENTS.ERROR, err)
-    setStatus(STATUS.OFFLINE)
+    setStatus(peer && !peer.destroyed ? STATUS.CONNECTING : STATUS.OFFLINE)
+    if (peer && !peer.destroyed) {
+      scheduleReconnect()
+    }
   })
 
   peer.on('close', () => {
-    // eslint-disable-next-line no-console
+     
     console.log('[p2pManager] peer closed')
+    clearReconnectTimer()
     setStatus(STATUS.OFFLINE)
+    pendingConnections.clear()
     connections.clear()
   })
 
@@ -137,7 +183,20 @@ async function createPeerInstance() {
 
 function setupConnection(conn) {
   const { peer: remoteId } = conn
-  // eslint-disable-next-line no-console
+  if (!remoteId) return
+  if (conn[CONNECTION_BIND_MARK]) {
+    if (!connections.has(remoteId)) {
+      connections.set(remoteId, conn)
+    }
+    return
+  }
+  conn[CONNECTION_BIND_MARK] = true
+
+  const existing = connections.get(remoteId)
+  if (existing && existing !== conn) {
+    cleanupConnection(remoteId)
+  }
+   
   console.log('[p2pManager] setupConnection', remoteId, {
     open: conn.open,
   })
@@ -166,15 +225,16 @@ function setupConnection(conn) {
   }
 
   conn.on('data', (data) => {
-    // eslint-disable-next-line no-console
+     
     console.log('[p2pManager] data from', remoteId, data)
     emit(EVENTS.MESSAGE, { from: remoteId, data })
   })
 
   conn.on('close', () => {
-    // eslint-disable-next-line no-console
+     
     console.log('[p2pManager] connection closed', remoteId)
     connections.delete(remoteId)
+    pendingConnections.delete(remoteId)
     if (typeof sessionStorage !== 'undefined') {
       try {
         const raw = sessionStorage.getItem('zc-connected-peers')
@@ -193,7 +253,7 @@ function setupConnection(conn) {
   })
 
   conn.on('error', (err) => {
-    // eslint-disable-next-line no-console
+     
     console.error('[p2pManager] connection error', remoteId, err)
     emit(EVENTS.ERROR, err)
   })
@@ -244,55 +304,105 @@ export async function connectToPeer(remotePeerId) {
   if (!peer || peer.destroyed) return null
 
   const existing = connections.get(remotePeerId)
-  if (existing) {
-    // eslint-disable-next-line no-console
+  if (existing?.open) {
+     
     console.log('[p2pManager] reusing existing connection', remotePeerId, {
       open: existing.open,
     })
     return existing
   }
+  if (pendingConnections.has(remotePeerId)) {
+    return pendingConnections.get(remotePeerId)
+  }
 
-  // eslint-disable-next-line no-console
+  if (existing && !existing.open) {
+    cleanupConnection(remotePeerId)
+  }
+
+   
   console.log('[p2pManager] connecting to remote peer', remotePeerId)
-  const conn = peer.connect(remotePeerId)
+  const conn = peer.connect(remotePeerId, { reliable: true })
   setupConnection(conn)
 
   // Wait for the data channel to open before returning.
-  await new Promise((resolve) => {
+  const openPromise = new Promise((resolve) => {
+    let settled = false
+    const done = (value) => {
+      if (settled) return
+      settled = true
+      resolve(value)
+    }
+    const timer = setTimeout(() => {
+      done(null)
+    }, 10000)
+    const clear = () => clearTimeout(timer)
+
     if (conn.open) {
-      resolve()
+      clear()
+      done(conn)
       return
     }
     conn.on('open', () => {
-      // eslint-disable-next-line no-console
+      clear()
       console.log('[p2pManager] connection open', remotePeerId)
-      resolve()
+      done(conn)
+    })
+    conn.on('error', () => {
+      clear()
+      done(null)
+    })
+    conn.on('close', () => {
+      clear()
+      done(null)
     })
   })
+  pendingConnections.set(remotePeerId, openPromise)
+  const openedConn = await openPromise
+  pendingConnections.delete(remotePeerId)
+  if (!openedConn) {
+    cleanupConnection(remotePeerId)
+    return null
+  }
 
-  return conn
+  return openedConn
 }
 
 export function sendToAllPeers(payload) {
   if (!payload) return
-  // eslint-disable-next-line no-console
+   
   console.log('[p2pManager] sendToAllPeers payload', payload, {
     peerCount: connections.size,
   })
   for (const [id, conn] of connections.entries()) {
-    if (!conn.open) {
-      // eslint-disable-next-line no-console
+    if (!conn || !conn.open) {
+       
       console.log('[p2pManager] skip send, connection not open', id)
+      if (conn?.destroyed || !conn) {
+        connections.delete(id)
+      }
       continue
     }
     try {
-      // eslint-disable-next-line no-console
+       
       console.log('[p2pManager] sending to', id)
       conn.send(payload)
     } catch (err) {
-      // eslint-disable-next-line no-console
+       
       console.error('[p2pManager] send error', id, err)
     }
+  }
+}
+
+export function sendToPeer(remotePeerId, payload) {
+  if (!remotePeerId || !payload) return false
+  const conn = connections.get(remotePeerId)
+  if (!conn || !conn.open) return false
+  try {
+    conn.send(payload)
+    return true
+  } catch (err) {
+    console.error('[p2pManager] sendToPeer error', remotePeerId, err)
+    return false
   }
 }
 
@@ -318,6 +428,25 @@ export function on(event, callback) {
   return () => {
     listeners[event].delete(callback)
   }
+}
+
+export function destroyP2P() {
+  manuallyClosed = true
+  clearReconnectTimer()
+  pendingConnections.clear()
+  for (const [id] of connections.entries()) {
+    cleanupConnection(id)
+  }
+  connections.clear()
+  if (peer && !peer.destroyed) {
+    try {
+      peer.destroy()
+    } catch {
+      // ignore
+    }
+  }
+  peer = null
+  setStatus(STATUS.OFFLINE)
 }
 
 export const P2P_STATUS = STATUS

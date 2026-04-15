@@ -17,7 +17,10 @@ export function AddMeetingModal({ open, onClose, onCreate }) {
 
   useEffect(() => {
     if (!open) return
-    setForm(initialForm)
+    const resetTimer = window.setTimeout(() => {
+      setForm(initialForm)
+    }, 0)
+    return () => window.clearTimeout(resetTimer)
   }, [open])
 
   const handleSubmit = () => {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Modal } from '../ui/Modal.jsx'
 import { Button } from '../ui/Button.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
@@ -17,14 +17,8 @@ export function TaskDetailModal({
   initialEdit = false,
 }) {
   const { t } = useLanguage()
-  const [isEditing, setIsEditing] = useState(false)
-  const [form, setForm] = useState(null)
-
-  useEffect(() => {
-    if (!open) return
-    setIsEditing(!!initialEdit)
-    setForm(task ? { ...task } : null)
-  }, [open, task, initialEdit])
+  const [isEditing, setIsEditing] = useState(!!initialEdit)
+  const [form, setForm] = useState(() => (task ? { ...task } : null))
 
   const calendarOptions = useMemo(() => {
     const base = [

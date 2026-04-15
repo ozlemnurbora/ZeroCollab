@@ -27,13 +27,20 @@ export function ProjectDetailModal({
 
   useEffect(() => {
     if (!project) return
-    setName(project.name || '')
-    setDescription(project.description || '')
-    setSelectedTeamIds(project.teamIds || [])
+    const syncTimer = window.setTimeout(() => {
+      setName(project.name || '')
+      setDescription(project.description || '')
+      setSelectedTeamIds(project.teamIds || [])
+    }, 0)
+    return () => window.clearTimeout(syncTimer)
   }, [project])
 
   useEffect(() => {
-    if (!open) setIsEditing(false)
+    if (open) return
+    const resetEditTimer = window.setTimeout(() => {
+      setIsEditing(false)
+    }, 0)
+    return () => window.clearTimeout(resetEditTimer)
   }, [open])
 
   if (!project) return null

@@ -47,7 +47,7 @@ export function CalendarPage() {
   const [selectedISODate, setSelectedISODate] = useState(() => toISODate(new Date()))
   const [isDayOpen, setIsDayOpen] = useState(false)
   const [isAddOpen, setIsAddOpen] = useState(false)
-  const [selectedTask, setSelectedTask] = useState(null)
+  const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [detailInitialEdit, setDetailInitialEdit] = useState(false)
   const [syncNotice, setSyncNotice] = useState(false)
   const [customCalendars, setCustomCalendars] = useState(() => {
@@ -67,11 +67,10 @@ export function CalendarPage() {
     tasksRef.current = tasks
   }, [tasks])
 
-  useEffect(() => {
-    if (!selectedTask) return
-    const latest = tasks.find((t) => t.id === selectedTask.id)
-    if (latest) setSelectedTask(latest)
-  }, [tasks, selectedTask])
+  const selectedTask = useMemo(
+    () => tasks.find((task) => task.id === selectedTaskId) ?? null,
+    [tasks, selectedTaskId],
+  )
 
   useEffect(() => {
     if (typeof localStorage === 'undefined') return
@@ -578,12 +577,13 @@ export function CalendarPage() {
         meetings={meetingsByISODate.get(selectedISODate) ?? []}
         onAdd={() => setIsAddOpen(true)}
         onTaskClick={(task) => {
-          setSelectedTask(task)
+          setSelectedTaskId(task.id)
           setDetailInitialEdit(false)
         }}
       />
 
       <AddTaskModal
+        key={`calendar-add-task-${isAddOpen ? 'open' : 'closed'}-${activeCalendar}-${selectedISODate}`}
         open={isAddOpen}
         onClose={() => setIsAddOpen(false)}
         onCreate={createTask}
@@ -600,13 +600,14 @@ export function CalendarPage() {
       />
 
       <TaskDetailModal
+        key={`calendar-task-detail-${selectedTaskId ?? 'none'}-${detailInitialEdit ? 'edit' : 'view'}`}
         open={!!selectedTask}
-        onClose={() => setSelectedTask(null)}
+        onClose={() => setSelectedTaskId(null)}
         task={selectedTask}
         onUpdate={updateTask}
         onDelete={(id) => {
           deleteTask(id)
-          setSelectedTask(null)
+          setSelectedTaskId(null)
         }}
         customCalendars={customCalendars}
         initialEdit={detailInitialEdit}

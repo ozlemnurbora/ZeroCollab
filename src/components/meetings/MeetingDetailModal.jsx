@@ -7,8 +7,11 @@ export function MeetingDetailModal({ open, onClose, meeting, onUpdate, onDelete 
   const [form, setForm] = useState({})
 
   useEffect(() => {
-    if (meeting) setForm(meeting)
-    setIsEditing(false)
+    const syncTimer = window.setTimeout(() => {
+      if (meeting) setForm(meeting)
+      setIsEditing(false)
+    }, 0)
+    return () => window.clearTimeout(syncTimer)
   }, [meeting])
 
   if (!meeting) return null
