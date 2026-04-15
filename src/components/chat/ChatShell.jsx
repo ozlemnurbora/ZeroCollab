@@ -282,9 +282,11 @@ export function ChatShell() {
     })
   }
 
+  /** @returns {() => void} flush — call after answer()/peer.call() to catch sync remoteStream */
   const wireMediaCall = (mediaCall, remotePeerId) => {
-    if (!mediaCall || !remotePeerId) return
-    if (mediaCall[DIRECT_MEDIA_BOUND]) return
+    const noop = () => {}
+    if (!mediaCall || !remotePeerId) return noop
+    if (mediaCall[DIRECT_MEDIA_BOUND]) return noop
     mediaCall[DIRECT_MEDIA_BOUND] = true
 
     const existing = activeMediaCallsRef.current.get(remotePeerId)
@@ -296,7 +298,10 @@ export function ChatShell() {
       }
     }
     activeMediaCallsRef.current.set(remotePeerId, mediaCall)
+    let streamDelivered = false
     const onStream = (rs) => {
+      if (streamDelivered || !rs) return
+      streamDelivered = true
       callStreamsRef.current.set(remotePeerId, rs)
       setRemoteStreams((prev) => new Map(prev).set(remotePeerId, rs))
       setRemoteStream(rs)
@@ -313,6 +318,11 @@ export function ChatShell() {
     mediaCall.on('error', () => {
       cleanupRemotePeer(remotePeerId)
     })
+    const flushRemoteIfNeeded = () => {
+      const rs = mediaCall.remoteStream
+      if (rs) onStream(rs)
+    }
+    return flushRemoteIfNeeded
   }
 
   const tryAnswerOrQueueDirectCall = (mediaCall) => {
@@ -339,6 +349,7 @@ export function ChatShell() {
       mediaCall?.close?.()
       return
     }
+    const flush = wireMediaCallRef.current?.(mediaCall, remotePeerId) ?? (() => {})
     try {
       mediaCall.answer(localStreamRef.current)
     } catch (err) {
@@ -346,7 +357,8 @@ export function ChatShell() {
       mediaCall?.close?.()
       return
     }
-    wireMediaCallRef.current?.(mediaCall, remotePeerId)
+    flush()
+    queueMicrotask(flush)
   }
 
   const teardownCall = ({ broadcast = true } = {}) => {
@@ -455,12 +467,16 @@ export function ChatShell() {
       setIncomingGroupCall(null)
       setCallPhase('acquiring_local_media')
       const stream = await startLocalStream()
+      if (!stream || !localStreamRef.current) {
+        setCallPhase('failed')
+        window.setTimeout(() => setCallPhase('idle'), 0)
+        return
+      }
       const myPeerId = getPeerId()
       isInCallRef.current = true
       setIsCallOpen(true)
       setCallPhase('connecting')
       participantPeerIdsRef.current = [myPeerId, invite.callerPeerId]
-      if (!stream || !localStreamRef.current) return
 
       await connectToPeer(invite.callerPeerId)
 
@@ -842,7 +858,8 @@ export function ChatShell() {
         targetPeerId,
       } = e.detail ?? {}
       if (callType && callType !== 'direct') return
-      if (targetPeerId && targetPeerId !== getPeerId()) return
+      const myPeer = getPeerId()
+      if (!targetPeerId || targetPeerId !== myPeer) return
       if (!callerPeerId || callerPeerId === getPeerId()) return
       if (projectId && activeProject?.id && projectId !== activeProject.id) return
       const inviteKey = `${callerPeerId}:${e.detail?.timestamp ?? 'none'}`
@@ -913,6 +930,8 @@ export function ChatShell() {
       if (!responderPeerId || responderPeerId === getPeerId()) return
       if (!isInCallRef.current) return
       if (targetPeerId && targetPeerId !== responderPeerId) return
+      const expectedTarget = outgoingCallRef.current.targetPeerId
+      if (expectedTarget && expectedTarget !== responderPeerId) return
 
       outgoingCallRef.current = {
         ...outgoingCallRef.current,
@@ -948,7 +967,9 @@ export function ChatShell() {
         return
       }
       if (!mediaCall) return
-      wireMediaCallRef.current(mediaCall, responderPeerId)
+      const flush = wireMediaCallRef.current(mediaCall, responderPeerId)
+      flush?.()
+      queueMicrotask(() => flush?.())
     }
 
     window.addEventListener('hub:call-response', handleHubCallResponse)

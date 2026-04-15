@@ -586,17 +586,7 @@ export function MeetingSessionProvider({ children }) {
           { peerId: from, activeInRoom: true, joinedAt: data.joinedAt || Date.now() },
         )
       } else if (data.type === 'room-chat' && data.message) {
-        const incoming = data.message
-        const inserted = appendRoomMessage(incoming)
-        // Gossip: re-fan-out to all data peers so partial meshes still converge (dedupe by message id).
-        if (inserted) {
-          sendToAllPeers({
-            type: 'room-chat',
-            roomId: meeting.roomId,
-            meetingId: meeting.meetingId,
-            message: incoming,
-          })
-        }
+        appendRoomMessage(data.message)
       } else if (data.type === 'room-chat-sync' && Array.isArray(data.messages)) {
         for (const message of data.messages) {
           appendRoomMessage(message)
