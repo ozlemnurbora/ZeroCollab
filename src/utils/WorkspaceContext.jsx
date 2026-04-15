@@ -8,6 +8,8 @@ import {
 } from 'react'
 import { useAuth } from './AuthContext.jsx'
 import { connectToProjectHub, disconnectFromProjectHub } from './appHub.js'
+import { pruneSharedTasksByProjectIds } from '../components/kanban/taskStorage.js'
+import { pruneMeetingsByProjectIds } from './meetingStorage.js'
 import {
   fetchMyProjects,
   fetchMyTeams,
@@ -130,6 +132,7 @@ export function WorkspaceProvider({ children }) {
   const teamsRef = useRef(teams)
   const activeProjectRef = useRef(activeProject)
   const activeTeamRef = useRef(activeTeam)
+  const memberProjectIdsRef = useRef(new Set())
 
   useEffect(() => {
     projectsRef.current = projects
@@ -137,6 +140,15 @@ export function WorkspaceProvider({ children }) {
     activeProjectRef.current = activeProject
     activeTeamRef.current = activeTeam
   }, [projects, teams, activeProject, activeTeam])
+
+  useEffect(() => {
+    const currentIds = new Set(projects.map((project) => project.id))
+    const removedIds = [...memberProjectIdsRef.current].filter((id) => !currentIds.has(id))
+    memberProjectIdsRef.current = currentIds
+    if (removedIds.length === 0) return
+    void pruneSharedTasksByProjectIds(removedIds)
+    void pruneMeetingsByProjectIds(removedIds)
+  }, [projects])
 
   const loadProjects = useCallback(async () => {
     if (!user) return
@@ -389,6 +401,7 @@ export function WorkspaceProvider({ children }) {
     <WorkspaceContext.Provider
       value={{
         projects,
+        memberProjectIds: projects.map((project) => project.id),
         teams,
         activeProject,
         activeTeam,

@@ -406,6 +406,11 @@ export function sendToPeer(remotePeerId, payload) {
   }
 }
 
+export function disconnectPeer(remotePeerId) {
+  if (!remotePeerId) return
+  cleanupConnection(remotePeerId)
+}
+
 export async function placeCall(remotePeerId, stream) {
   if (!remotePeerId || !stream || !ensureBrowserEnv()) return null
   await initP2P()

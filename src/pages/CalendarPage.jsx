@@ -13,8 +13,13 @@ import {
 import { Button } from '../components/ui/Button.jsx'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
+import { useAuth } from '../utils/AuthContext.jsx'
 import { on, sendToAllPeers, P2P_EVENTS } from '../utils/p2pManager.js'
-import { mergeTasksFromSync, tasksForP2PBroadcast } from '../utils/taskP2PSync.js'
+import {
+  filterTasksForVisibility,
+  mergeTasksFromSync,
+  tasksForP2PBroadcast,
+} from '../utils/taskP2PSync.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -33,7 +38,8 @@ const CALENDAR_COLORS = [
 
 export function CalendarPage() {
   const { t } = useLanguage()
-  const { activeProject, activeTeam } = useWorkspace()
+  const { user } = useAuth()
+  const { activeProject, activeTeam, memberProjectIds = [] } = useWorkspace()
   const [tasks, setTasks] = useState([])
   const [meetings, setMeetings] = useState([])
   const [activeCalendar, setActiveCalendar] = useState('general')
@@ -71,6 +77,21 @@ export function CalendarPage() {
     () => tasks.find((task) => task.id === selectedTaskId) ?? null,
     [tasks, selectedTaskId],
   )
+  const syncOptions = useMemo(
+    () => ({
+      activeProjectId: activeProject?.id ?? null,
+      allowedProjectIds: memberProjectIds,
+      currentUserId: user?.id ?? null,
+    }),
+    [activeProject?.id, memberProjectIds, user?.id],
+  )
+  const visibilityOptions = useMemo(
+    () => ({
+      allowedProjectIds: memberProjectIds,
+      currentUserId: user?.id ?? null,
+    }),
+    [memberProjectIds, user?.id],
+  )
 
   useEffect(() => {
     if (typeof localStorage === 'undefined') return
@@ -79,14 +100,15 @@ export function CalendarPage() {
 
   const broadcastTasks = useCallback(
     (updatedTasks) => {
-      const generalTasks = tasksForP2PBroadcast(updatedTasks, activeProject)
+      const generalTasks = tasksForP2PBroadcast(updatedTasks, syncOptions)
       if (generalTasks.length === 0) return
       sendToAllPeers({
         type: 'TASK_SYNC',
         tasks: generalTasks,
+        projectId: syncOptions.activeProjectId,
       })
     },
-    [activeProject],
+    [syncOptions],
   )
 
   useEffect(() => {
@@ -116,6 +138,7 @@ export function CalendarPage() {
   useEffect(() => {
     const handleMeetingUpdate = async (e) => {
       const { meeting, meetingId, meetingAction, projectId } = e.detail || {}
+      if (projectId && !memberProjectIds.includes(projectId)) return
       if (activeProject?.id && projectId && projectId !== activeProject.id) return
 
       if (meetingAction === 'upsert' && meeting) {
@@ -132,26 +155,26 @@ export function CalendarPage() {
     }
     window.addEventListener('hub:meeting-update', handleMeetingUpdate)
     return () => window.removeEventListener('hub:meeting-update', handleMeetingUpdate)
-  }, [activeProject])
+  }, [activeProject?.id, memberProjectIds])
 
   useEffect(() => {
     let hideTimer
     let peerBroadcastTimer
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
       if (data?.type !== 'TASK_SYNC') return
-      const incomingGeneralTasks = (data.tasks ?? []).filter((t) =>
-        t &&
-        t.calendarType === 'general' &&
-        (!activeProject?.id ||
-          !t.projectId ||
-          t.projectId === activeProject.id),
+      const incomingGeneralTasks = (Array.isArray(data.tasks) ? data.tasks : []).filter(
+        (task) =>
+          task &&
+          (task.calendarType === 'general' || !task.calendarType) &&
+          !!task.projectId &&
+          memberProjectIds.includes(task.projectId),
       )
       if (incomingGeneralTasks.length === 0) return
       setSyncNotice(true)
       window.clearTimeout(hideTimer)
       hideTimer = window.setTimeout(() => setSyncNotice(false), 3200)
       setTasks((prev) => {
-        const next = mergeTasksFromSync(prev, data.tasks, activeProject)
+        const next = mergeTasksFromSync(prev, data.tasks, visibilityOptions)
         void saveTasks(next)
         return next
       })
@@ -168,15 +191,14 @@ export function CalendarPage() {
       unsubMsg()
       unsubPeer()
     }
-  }, [broadcastTasks, activeProject])
+  }, [broadcastTasks, activeProject?.id, memberProjectIds, visibilityOptions])
 
   const filteredTasks = useMemo(() => {
-    let list = Array.isArray(tasks) ? tasks : []
-
-    // Filter by active project
+    let list = filterTasksForVisibility(tasks, visibilityOptions)
     if (activeProject) {
       list = list.filter(
-        (t) => t.projectId === activeProject.id || !t.projectId,
+        (task) =>
+          task.projectId === activeProject.id || (!task.projectId && task.calendarType !== 'general'),
       )
     }
 
@@ -191,7 +213,7 @@ export function CalendarPage() {
 
     // Custom calendar
     return list.filter((task) => task.calendarId === activeCalendar)
-  }, [tasks, activeCalendar, activeProject])
+  }, [tasks, activeCalendar, activeProject, visibilityOptions])
 
   const addCalendar = () => {
     const name = newCalendarName.trim()
@@ -250,25 +272,17 @@ export function CalendarPage() {
     const map = new Map()
 
     const filteredMeetings = meetings.filter((meeting) => {
-      if (
-        !activeProject ||
-        !meeting.projectId ||
-        meeting.projectId === activeProject.id ||
-        !meeting.projectId
-      ) {
-        if (activeCalendar === 'general')
-          return meeting.calendarType === 'general'
-        if (activeCalendar === 'personal')
-          return (
-            meeting.calendarType === 'personal' ||
-            meeting.calendarType !== 'general'
-          )
-        return (
-          meeting.calendarId === activeCalendar ||
-          meeting.calendarType === activeCalendar
-        )
+      const hasAuthorizedProject = meeting?.projectId && memberProjectIds.includes(meeting.projectId)
+      const isPersonal = !meeting?.projectId && meeting?.calendarType !== 'general'
+      if (!hasAuthorizedProject && !isPersonal) return false
+      if (activeProject?.id && meeting.projectId && meeting.projectId !== activeProject.id) {
+        return false
       }
-      return false
+      if (activeCalendar === 'general') return meeting.calendarType === 'general'
+      if (activeCalendar === 'personal') {
+        return meeting.calendarType === 'personal' || meeting.calendarType !== 'general'
+      }
+      return meeting.calendarId === activeCalendar || meeting.calendarType === activeCalendar
     })
 
     for (const meeting of filteredMeetings) {
@@ -300,7 +314,7 @@ export function CalendarPage() {
       }
     }
     return map
-  }, [meetings, activeCalendar, activeProject])
+  }, [meetings, activeCalendar, activeProject, memberProjectIds])
 
   const selectedTasks = tasksByISODate.get(selectedISODate) ?? []
 
@@ -344,8 +358,12 @@ export function CalendarPage() {
 
   const createTask = (payload) => {
     const now = Date.now()
+    const canCreateSharedTask =
+      !!activeProject?.id && memberProjectIds.includes(activeProject.id)
     const calendarType =
-      payload?.calendarType === 'general' ? 'general' : 'personal'
+      payload?.calendarType === 'general' && canCreateSharedTask
+        ? 'general'
+        : 'personal'
     setTasks((prev) => {
       const next = [
         {
@@ -356,6 +374,7 @@ export function CalendarPage() {
           teamId: activeTeam?.id || null,
           ...payload,
           calendarType,
+          ownerUserId: user?.id || null,
         },
         ...(Array.isArray(prev) ? prev : []),
       ]
@@ -380,6 +399,14 @@ export function CalendarPage() {
       return next
     })
   }
+
+  useEffect(() => {
+    const visible = filterTasksForVisibility(tasksRef.current, visibilityOptions)
+    if (visible.length !== tasksRef.current.length) {
+      setTasks(visible)
+      void saveTasks(visible)
+    }
+  }, [visibilityOptions])
 
   return (
     <section>

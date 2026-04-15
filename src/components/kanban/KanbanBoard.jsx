@@ -7,10 +7,15 @@ import { KanbanColumn } from './KanbanColumn.jsx'
 import { TaskDetailModal } from './TaskDetailModal.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
+import { useAuth } from '../../utils/AuthContext.jsx'
 import { loadMeetings } from '../../utils/meetingStorage.js'
 import { broadcastMeetingUpdate, broadcastTaskSync } from '../../utils/hubManager.js'
 import { on, sendToAllPeers, P2P_EVENTS } from '../../utils/p2pManager.js'
-import { mergeTasksFromSync, tasksForP2PBroadcast } from '../../utils/taskP2PSync.js'
+import {
+  filterTasksForVisibility,
+  mergeTasksFromSync,
+  tasksForP2PBroadcast,
+} from '../../utils/taskP2PSync.js'
 import { checkTaskReminders, startReminderChecker } from '../../utils/taskReminder.js'
 
 function createId() {
@@ -21,7 +26,8 @@ function createId() {
 
 export function KanbanBoard({ headerActions = null }) {
   const { t } = useLanguage()
-  const { activeProject, activeTeam } = useWorkspace()
+  const { user } = useAuth()
+  const { activeProject, activeTeam, memberProjectIds = [] } = useWorkspace()
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
   const [hasLoadedTasks, setHasLoadedTasks] = useState(false)
@@ -52,17 +58,33 @@ export function KanbanBoard({ headerActions = null }) {
     () => tasks.find((task) => task.id === selectedTaskId) ?? null,
     [tasks, selectedTaskId],
   )
+  const syncOptions = useMemo(
+    () => ({
+      activeProjectId: activeProject?.id ?? null,
+      allowedProjectIds: memberProjectIds,
+      currentUserId: user?.id ?? null,
+    }),
+    [activeProject?.id, memberProjectIds, user?.id],
+  )
+  const visibilityOptions = useMemo(
+    () => ({
+      allowedProjectIds: memberProjectIds,
+      currentUserId: user?.id ?? null,
+    }),
+    [memberProjectIds, user?.id],
+  )
 
   const broadcastTasks = useCallback(
     (updatedTasks) => {
-      const generalTasks = tasksForP2PBroadcast(updatedTasks, activeProject)
+      const generalTasks = tasksForP2PBroadcast(updatedTasks, syncOptions)
       if (generalTasks.length === 0) return
       sendToAllPeers({
         type: 'TASK_SYNC',
         tasks: generalTasks,
+        projectId: syncOptions.activeProjectId,
       })
     },
-    [activeProject],
+    [syncOptions],
   )
 
   useEffect(() => {
@@ -99,19 +121,19 @@ export function KanbanBoard({ headerActions = null }) {
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
       console.log('[KanbanBoard] message received', data)
       if (data?.type !== 'TASK_SYNC') return
-      const incomingGeneralTasks = (data.tasks ?? []).filter((t) =>
-        t &&
-        t.calendarType === 'general' &&
-        (!activeProject?.id ||
-          !t.projectId ||
-          t.projectId === activeProject.id),
+      const incomingGeneralTasks = (Array.isArray(data.tasks) ? data.tasks : []).filter(
+        (task) =>
+          task &&
+          (task.calendarType === 'general' || !task.calendarType) &&
+          !!task.projectId &&
+          memberProjectIds.includes(task.projectId),
       )
       if (incomingGeneralTasks.length === 0) return
       setSyncNotice(true)
       window.clearTimeout(hideTimer)
       hideTimer = window.setTimeout(() => setSyncNotice(false), 3200)
       setTasks((prev) => {
-        const next = mergeTasksFromSync(prev, data.tasks, activeProject)
+        const next = mergeTasksFromSync(prev, data.tasks, visibilityOptions)
         void saveTasks(next)
         return next
       })
@@ -129,7 +151,7 @@ export function KanbanBoard({ headerActions = null }) {
       unsubMsg()
       unsubPeer()
     }
-  }, [broadcastTasks, activeProject])
+  }, [broadcastTasks, activeProject?.id, memberProjectIds, visibilityOptions])
 
   useEffect(() => {
     const onDragEnd = () => {
@@ -146,15 +168,18 @@ export function KanbanBoard({ headerActions = null }) {
       console.log('[KanbanBoard] peer joined, broadcasting tasks and meetings')
       setTimeout(async () => {
         broadcastTasks(tasksRef.current)
-        await broadcastTaskSync(tasksRef.current, activeProject?.id)
+        const outgoing = tasksForP2PBroadcast(tasksRef.current, syncOptions)
+        if (outgoing.length > 0) {
+          await broadcastTaskSync(outgoing, activeProject?.id)
+        }
 
         try {
           const allMeetings = await loadMeetings()
           const projectMeetings = allMeetings.filter(
             (meeting) =>
-              !activeProject?.id ||
-              !meeting.projectId ||
-              meeting.projectId === activeProject.id,
+              !!meeting?.projectId &&
+              memberProjectIds.includes(meeting.projectId) &&
+              (!activeProject?.id || meeting.projectId === activeProject.id),
           )
           console.log(
             '[KanbanBoard] broadcasting meetings to new peer:',
@@ -170,16 +195,17 @@ export function KanbanBoard({ headerActions = null }) {
     }
     window.addEventListener('hub:peer-joined', handlePeerJoined)
     return () => window.removeEventListener('hub:peer-joined', handlePeerJoined)
-  }, [hasLoadedTasks, activeProject, broadcastTasks])
+  }, [hasLoadedTasks, activeProject?.id, broadcastTasks, memberProjectIds, syncOptions])
 
   useEffect(() => {
     const handleHubMessage = (e) => {
       const { action, tasks: incomingTasks, projectId } = e.detail || {}
       if (action !== 'task-sync') return
+      if (projectId && !memberProjectIds.includes(projectId)) return
       if (activeProject?.id && projectId && projectId !== activeProject.id) return
       if (Array.isArray(incomingTasks)) {
         setTasks((prev) => {
-          const next = mergeTasksFromSync(prev, incomingTasks, activeProject)
+          const next = mergeTasksFromSync(prev, incomingTasks, visibilityOptions)
           void saveTasks(next)
           return next
         })
@@ -187,14 +213,24 @@ export function KanbanBoard({ headerActions = null }) {
     }
     window.addEventListener('hub:message', handleHubMessage)
     return () => window.removeEventListener('hub:message', handleHubMessage)
-  }, [activeProject])
+  }, [activeProject?.id, memberProjectIds, visibilityOptions])
+
+  useEffect(() => {
+    const visible = filterTasksForVisibility(tasksRef.current, visibilityOptions)
+    if (visible.length !== tasksRef.current.length) {
+      setTasks(visible)
+      void saveTasks(visible)
+    }
+  }, [visibilityOptions])
 
   const filteredTasks = useMemo(() => {
-    if (!activeProject) return tasks
-    return tasks.filter(
-      (t) => t.projectId === activeProject.id || !t.projectId,
+    const visible = filterTasksForVisibility(tasks, visibilityOptions)
+    if (!activeProject) return visible
+    return visible.filter(
+      (task) =>
+        task.projectId === activeProject.id || (!task.projectId && task.calendarType !== 'general'),
     )
-  }, [tasks, activeProject])
+  }, [tasks, activeProject, visibilityOptions])
 
   const tasksByColumn = useMemo(() => {
     const map = new Map(KANBAN_COLUMNS.map((c) => [c.id, []]))
@@ -220,7 +256,12 @@ export function KanbanBoard({ headerActions = null }) {
 
   const createTask = (payload) => {
     const now = Date.now()
-    const calendarType = payload?.calendarType === 'general' ? 'general' : 'personal'
+    const canCreateSharedTask =
+      !!activeProject?.id && memberProjectIds.includes(activeProject.id)
+    const calendarType =
+      payload?.calendarType === 'general' && canCreateSharedTask
+        ? 'general'
+        : 'personal'
     setTasks((prev) => {
       const next = [
         {
@@ -231,6 +272,7 @@ export function KanbanBoard({ headerActions = null }) {
           calendarType,
           projectId: activeProject?.id || payload.projectId || null,
           teamId: activeTeam?.id || payload.teamId || null,
+          ownerUserId: user?.id || null,
         },
         ...prev,
       ]

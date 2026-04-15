@@ -1,5 +1,5 @@
 import { supabase } from './supabase.js'
-import { connectToPeer, getPeerId } from './p2pManager.js'
+import { connectToPeer, disconnectPeer, getPeerId } from './p2pManager.js'
 
 let activeChannel = null
 let currentProjectId = null
@@ -75,6 +75,9 @@ export async function joinProjectHub(projectId, userId, userEmail) {
   activeChannel.on('presence', { event: 'leave' }, ({ leftPresences }) => {
     if (myJoinVersion !== joinVersion || !activeChannel) return
     leftPresences.forEach((presence) => {
+      if (presence?.peerId) {
+        disconnectPeer(presence.peerId)
+      }
       window.dispatchEvent(new CustomEvent('hub:peer-left', {
         detail: { peerId: presence.peerId, userId: presence.userId },
       }))

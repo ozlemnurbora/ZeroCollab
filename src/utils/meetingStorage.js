@@ -31,3 +31,23 @@ export async function deleteMeeting(id) {
     console.error('[MeetingDB] delete error:', err)
   }
 }
+
+export async function pruneMeetingsByProjectIds(projectIds) {
+  const ids = new Set(Array.isArray(projectIds) ? projectIds.filter(Boolean) : [])
+  if (ids.size === 0) return
+  try {
+    const db = await getDatabase()
+    const existing = (await db.getAll('meetings')) ?? []
+    const next = existing.filter((meeting) => !meeting?.projectId || !ids.has(meeting.projectId))
+    if (next.length === existing.length) return
+    const tx = db.transaction('meetings', 'readwrite')
+    await tx.store.clear()
+    for (const meeting of next) {
+      if (meeting?.id) await tx.store.put(meeting)
+    }
+    await tx.done
+    console.log('[MeetingDB] pruned meetings for projects:', Array.from(ids))
+  } catch (err) {
+    console.error('[MeetingDB] prune error:', err)
+  }
+}

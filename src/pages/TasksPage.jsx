@@ -14,7 +14,7 @@ import { broadcastMeetingUpdate } from '../utils/hubManager.js'
 
 export function TasksPage() {
   const { t } = useLanguage()
-  const { activeProject } = useWorkspace()
+  const { activeProject, memberProjectIds = [] } = useWorkspace()
   const [meetings, setMeetings] = useState([])
   const [isAddMeetingOpen, setIsAddMeetingOpen] = useState(false)
   const [selectedMeeting, setSelectedMeeting] = useState(null)
@@ -22,14 +22,20 @@ export function TasksPage() {
   useEffect(() => {
     loadMeetings().then((data) => {
       console.log('[Meeting] loaded from DB:', data)
-      setMeetings(Array.isArray(data) ? data : [])
+      const list = Array.isArray(data) ? data : []
+      const visible = list.filter((meeting) => {
+        if (!meeting?.projectId) return meeting?.calendarType !== 'general'
+        return memberProjectIds.includes(meeting.projectId)
+      })
+      setMeetings(visible)
     })
-  }, [])
+  }, [memberProjectIds])
 
   useEffect(() => {
     const handleMeetingUpdate = async (e) => {
       const { meeting, meetingId, meetingAction, projectId } = e.detail || {}
       console.log('[TasksPage] hub:meeting-update received:', meetingAction, meeting?.id)
+      if (projectId && !memberProjectIds.includes(projectId)) return
       if (activeProject?.id && projectId && projectId !== activeProject.id) return
 
       if (meetingAction === 'upsert' && meeting) {
@@ -46,7 +52,7 @@ export function TasksPage() {
     }
     window.addEventListener('hub:meeting-update', handleMeetingUpdate)
     return () => window.removeEventListener('hub:meeting-update', handleMeetingUpdate)
-  }, [activeProject])
+  }, [activeProject?.id, memberProjectIds])
 
   return (
     <section>
@@ -90,9 +96,11 @@ export function TasksPage() {
             {meetings
               .filter(
                 (meeting) =>
-                  !activeProject ||
-                  !meeting.projectId ||
-                  meeting.projectId === activeProject?.id,
+                  (
+                    (!meeting.projectId && meeting.calendarType !== 'general') ||
+                    (meeting.projectId && memberProjectIds.includes(meeting.projectId))
+                  ) &&
+                  (!activeProject || !meeting.projectId || meeting.projectId === activeProject?.id),
               )
               .map((meeting) => (
                 <div

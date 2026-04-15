@@ -17,3 +17,17 @@ export async function saveTasks(tasks) {
   }
 }
 
+export async function pruneSharedTasksByProjectIds(projectIds) {
+  const ids = new Set(Array.isArray(projectIds) ? projectIds.filter(Boolean) : [])
+  if (ids.size === 0) return
+  const current = await loadTasks()
+  const next = current.filter((task) => {
+    if (!task?.projectId) return true
+    if (task.calendarType !== 'general') return true
+    return !ids.has(task.projectId)
+  })
+  if (next.length !== current.length) {
+    await saveTasks(next)
+  }
+}
+
