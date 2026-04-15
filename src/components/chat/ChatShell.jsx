@@ -201,6 +201,9 @@ export function ChatShell() {
     inviteSentAt: 0,
     responded: false,
   })
+  /** PeerJS MediaConnection waiting for local media / accept (DM only) */
+  const pendingDirectMediaCallRef = useRef(null)
+  const tryAnswerOrQueueDirectCallRef = useRef(() => {})
 
   useEffect(() => {
     mountedRef.current = true
@@ -293,18 +296,57 @@ export function ChatShell() {
       }
     }
     activeMediaCallsRef.current.set(remotePeerId, mediaCall)
-    mediaCall.on('stream', (rs) => {
+    const onStream = (rs) => {
       callStreamsRef.current.set(remotePeerId, rs)
       setRemoteStreams((prev) => new Map(prev).set(remotePeerId, rs))
       setRemoteStream(rs)
       setCallPhase('connected')
-    })
+    }
+    if (typeof mediaCall.once === 'function') {
+      mediaCall.once('stream', onStream)
+    } else {
+      mediaCall.on('stream', onStream)
+    }
     mediaCall.on('close', () => {
       cleanupRemotePeer(remotePeerId)
     })
     mediaCall.on('error', () => {
       cleanupRemotePeer(remotePeerId)
     })
+  }
+
+  const tryAnswerOrQueueDirectCall = (mediaCall) => {
+    const remotePeerId = mediaCall?.peer
+    if (!remotePeerId) {
+      mediaCall?.close?.()
+      return
+    }
+    if (mediaCall?.metadata?.callType && mediaCall.metadata.callType !== 'direct') {
+      return
+    }
+    if (!isInCallRef.current || !localStreamRef.current) {
+      if (pendingDirectMediaCallRef.current && pendingDirectMediaCallRef.current !== mediaCall) {
+        try {
+          pendingDirectMediaCallRef.current.close()
+        } catch {
+          // ignore
+        }
+      }
+      pendingDirectMediaCallRef.current = mediaCall
+      return
+    }
+    if (activeMediaCallsRef.current.has(remotePeerId)) {
+      mediaCall?.close?.()
+      return
+    }
+    try {
+      mediaCall.answer(localStreamRef.current)
+    } catch (err) {
+      console.error('[Call] answer failed:', err)
+      mediaCall?.close?.()
+      return
+    }
+    wireMediaCallRef.current?.(mediaCall, remotePeerId)
   }
 
   const teardownCall = ({ broadcast = true } = {}) => {
@@ -340,6 +382,14 @@ export function ChatShell() {
       inviteSentAt: 0,
       responded: false,
     }
+    if (pendingDirectMediaCallRef.current) {
+      try {
+        pendingDirectMediaCallRef.current.close()
+      } catch {
+        // ignore
+      }
+      pendingDirectMediaCallRef.current = null
+    }
   }
 
   const startLocalStream = async () => {
@@ -359,6 +409,7 @@ export function ChatShell() {
   useEffect(() => {
     wireMediaCallRef.current = wireMediaCall
     teardownCallRef.current = teardownCall
+    tryAnswerOrQueueDirectCallRef.current = tryAnswerOrQueueDirectCall
   })
 
   const handleCallClick = async () => {
@@ -373,10 +424,11 @@ export function ChatShell() {
         setCallPhase('idle')
         return
       }
+      setCallPhase('outgoing_invite')
+      await connectToPeer(directTargetPeerId)
       const myId = getPeerId()
       isInCallRef.current = true
       setIsCallOpen(true)
-      setCallPhase('inviting')
       participantPeerIdsRef.current = [myId, directTargetPeerId]
       outgoingCallRef.current = {
         targetPeerId: directTargetPeerId,
@@ -391,7 +443,8 @@ export function ChatShell() {
       console.error('[Call] start failed:', err)
       isInCallRef.current = false
       setIsCallOpen(false)
-      setCallPhase('idle')
+      setCallPhase('failed')
+      window.setTimeout(() => setCallPhase('idle'), 0)
     }
   }
 
@@ -399,19 +452,31 @@ export function ChatShell() {
     if (!incomingGroupCall || isInCallRef.current) return
     const invite = incomingGroupCall
     try {
+      setIncomingGroupCall(null)
+      setCallPhase('acquiring_local_media')
       const stream = await startLocalStream()
       const myPeerId = getPeerId()
       isInCallRef.current = true
       setIsCallOpen(true)
       setCallPhase('connecting')
       participantPeerIdsRef.current = [myPeerId, invite.callerPeerId]
-      setIncomingGroupCall(null)
       if (!stream || !localStreamRef.current) return
+
+      await connectToPeer(invite.callerPeerId)
 
       await broadcastCallResponse(true, myPeerId, invite.callerPeerId, {
         callType: 'direct',
         targetPeerId: myPeerId,
       })
+
+      const pending = pendingDirectMediaCallRef.current
+      if (
+        pending &&
+        pending.peer === invite.callerPeerId
+      ) {
+        pendingDirectMediaCallRef.current = null
+        tryAnswerOrQueueDirectCall(pending)
+      }
     } catch (err) {
       console.error('[Call] accept failed:', err)
       teardownCallRef.current({ broadcast: false })
@@ -424,13 +489,15 @@ export function ChatShell() {
       if (!isInCallRef.current || !outgoing.targetPeerId || outgoing.responded) return
       if (Date.now() - outgoing.inviteSentAt < 20000) return
       alert('Call timed out. Please try again.')
+      setCallPhase('failed')
       teardownCallRef.current({ broadcast: true })
     }, 1000)
     return () => window.clearInterval(timer)
   }, [])
 
   useEffect(() => {
-    if (!isCallOpen || remoteStream || callPhase !== 'connecting') return undefined
+    if (!isCallOpen || remoteStream || (callPhase !== 'connecting' && callPhase !== 'outgoing_invite'))
+      return undefined
     const started = Date.now()
     const timer = window.setInterval(() => {
       if (!isInCallRef.current) {
@@ -669,27 +736,7 @@ export function ChatShell() {
       if (mediaCall?.metadata?.callType && mediaCall.metadata.callType !== 'direct') {
         return
       }
-      const remotePeerId = mediaCall?.peer
-      if (!remotePeerId) {
-        mediaCall?.close?.()
-        return
-      }
-      if (!isInCallRef.current || !localStreamRef.current) {
-        mediaCall?.close?.()
-        return
-      }
-      if (activeMediaCallsRef.current.has(remotePeerId)) {
-        mediaCall?.close?.()
-        return
-      }
-      try {
-        mediaCall.answer(localStreamRef.current)
-      } catch (err) {
-        console.error('[Call] answer failed:', err)
-        mediaCall?.close?.()
-        return
-      }
-      wireMediaCallRef.current(mediaCall, remotePeerId)
+      tryAnswerOrQueueDirectCallRef.current?.(mediaCall)
     })
 
     return () => {
@@ -809,6 +856,7 @@ export function ChatShell() {
           ? existingParticipants
           : [callerPeerId]
       setIncomingGroupCall({ callerEmail, callerPeerId, existingParticipants: existing })
+      setCallPhase('incoming_invite')
     }
 
     window.addEventListener('hub:message', handleHubMessage)
@@ -1232,6 +1280,7 @@ export function ChatShell() {
                   },
                 )
                 setIncomingGroupCall(null)
+                setCallPhase('idle')
               }}
               className="flex-1 rounded-lg bg-rose-500 px-3 py-2 text-sm font-medium text-white hover:bg-rose-400"
             >

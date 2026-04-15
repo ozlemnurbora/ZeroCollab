@@ -302,14 +302,6 @@ export function MeetingSessionProvider({ children }) {
     return true
   }, [])
 
-  const relayRoomMessage = useCallback((payload, excludePeerIds = []) => {
-    const blocked = new Set([...(excludePeerIds || []), getPeerId()])
-    for (const peerId of getConnectedPeers()) {
-      if (!peerId || blocked.has(peerId)) continue
-      sendToPeer(peerId, payload)
-    }
-  }, [])
-
   const clearSessionState = useCallback(() => {
     setSessionStatus(DEFAULT_STATUS)
     setError('')
@@ -521,12 +513,20 @@ export function MeetingSessionProvider({ children }) {
     })
     const offIncomingCall = onP2PEvent(P2P_EVENTS.INCOMING_CALL, (mediaCall) => {
       const metadata = mediaCall?.metadata || {}
+      // Direct 1:1 calls are handled only by ChatShell. Never close them here — previously
+      // `!activeMeeting` caused every DM incoming call to be destroyed on the Chat page.
+      if (metadata.callType !== 'room') {
+        return
+      }
       const meeting = activeMeetingRef.current
       if (!meeting || !inSessionRef.current || !localStreamRef.current) {
         mediaCall?.close?.()
         return
       }
-      if (metadata.callType !== 'room' || metadata.roomId !== meeting.roomId) return
+      if (metadata.roomId !== meeting.roomId) {
+        mediaCall?.close?.()
+        return
+      }
       const peerId = mediaCall.peer
       if (activeCallsRef.current.has(peerId)) {
         mediaCall?.close?.()
@@ -588,16 +588,14 @@ export function MeetingSessionProvider({ children }) {
       } else if (data.type === 'room-chat' && data.message) {
         const incoming = data.message
         const inserted = appendRoomMessage(incoming)
+        // Gossip: re-fan-out to all data peers so partial meshes still converge (dedupe by message id).
         if (inserted) {
-          relayRoomMessage(
-            {
-              type: 'room-chat',
-              roomId: meeting.roomId,
-              meetingId: meeting.meetingId,
-              message: incoming,
-            },
-            [from],
-          )
+          sendToAllPeers({
+            type: 'room-chat',
+            roomId: meeting.roomId,
+            meetingId: meeting.meetingId,
+            message: incoming,
+          })
         }
       } else if (data.type === 'room-chat-sync' && Array.isArray(data.messages)) {
         for (const message of data.messages) {
@@ -614,7 +612,7 @@ export function MeetingSessionProvider({ children }) {
       offIncomingCall()
       offMessage()
     }
-  }, [appendRoomMessage, localIdentity, placeRoomCall, relayRoomMessage, removePeerSession, upsertParticipant, wireMediaCall])
+  }, [appendRoomMessage, localIdentity, placeRoomCall, removePeerSession, upsertParticipant, wireMediaCall])
 
   useEffect(() => {
     if (!activeMeeting?.endAt || !inSessionRef.current) return undefined
