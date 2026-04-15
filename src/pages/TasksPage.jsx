@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { KanbanBoard } from '../components/kanban/KanbanBoard.jsx'
 import { AddMeetingModal } from '../components/meetings/AddMeetingModal.jsx'
 import { MeetingDetailModal } from '../components/meetings/MeetingDetailModal.jsx'
@@ -13,6 +14,7 @@ import {
 import { broadcastMeetingUpdate } from '../utils/hubManager.js'
 
 export function TasksPage() {
+  const navigate = useNavigate()
   const { t } = useLanguage()
   const { activeProject, memberProjectIds = [] } = useWorkspace()
   const [meetings, setMeetings] = useState([])
@@ -106,7 +108,7 @@ export function TasksPage() {
                 <div
                   key={meeting.id}
                   className="group cursor-pointer rounded-xl border border-violet-500/30 bg-violet-500/5 p-4 transition hover:border-violet-500/60 hover:bg-violet-500/10"
-                  onClick={() => setSelectedMeeting(meeting)}
+                  onClick={() => navigate(`/meetings/${meeting.id}`)}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -144,6 +146,28 @@ export function TasksPage() {
                       className="shrink-0 text-xs text-rose-400 opacity-0 group-hover:opacity-100 hover:text-rose-300"
                     >
                       ✕
+                    </button>
+                  </div>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        navigate(`/meetings/${meeting.id}`)
+                      }}
+                      className="rounded-md bg-violet-500 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-violet-400"
+                    >
+                      Join Meeting
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setSelectedMeeting(meeting)
+                      }}
+                      className="rounded-md border border-[rgb(var(--zc-border))] px-2.5 py-1 text-[11px] text-[rgb(var(--zc-muted2))] hover:bg-[rgb(var(--zc-border)/0.4)]"
+                    >
+                      Details
                     </button>
                   </div>
                   <div className="mt-2">

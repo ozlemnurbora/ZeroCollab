@@ -189,6 +189,7 @@ export async function broadcastCallInvite(
   callerEmail,
   callerPeerId,
   existingParticipants,
+  options = {},
 ) {
   if (!activeChannel) return
   const participants =
@@ -203,6 +204,9 @@ export async function broadcastCallInvite(
       callerEmail,
       callerPeerId,
       existingParticipants: participants,
+      callType: options.callType || 'direct',
+      targetPeerId: options.targetPeerId || null,
+      roomId: options.roomId || null,
       timestamp: Date.now(),
     },
   })
@@ -210,12 +214,25 @@ export async function broadcastCallInvite(
   console.log('[Hub] broadcast call invite')
 }
 
-export async function broadcastCallResponse(accepted, responderPeerId, callerPeerId) {
+export async function broadcastCallResponse(
+  accepted,
+  responderPeerId,
+  callerPeerId,
+  options = {},
+) {
   if (!activeChannel) return
   await activeChannel.send({
     type: 'broadcast',
     event: 'call-response',
-    payload: { accepted, responderPeerId, callerPeerId, timestamp: Date.now() },
+    payload: {
+      accepted,
+      responderPeerId,
+      callerPeerId,
+      callType: options.callType || 'direct',
+      targetPeerId: options.targetPeerId || null,
+      roomId: options.roomId || null,
+      timestamp: Date.now(),
+    },
   })
 }
 

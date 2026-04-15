@@ -113,7 +113,7 @@ export function DayTasksModal({
                     )}
                     <button
                       type="button"
-                      onClick={() => navigate('/chat')}
+                      onClick={() => navigate(`/meetings/${meeting.id}`)}
                       className="mt-2 w-full rounded-md bg-violet-500 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-violet-400"
                     >
                       Join Meeting

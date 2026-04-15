@@ -231,7 +231,7 @@ export function MonthlyCalendar({
                         key={`${task.id}_${task.occurrenceDate || iso || ''}`}
                         task={task}
                         statusLabel={statusLabel}
-                        onJoin={() => navigate('/chat')}
+                        onJoin={() => navigate(`/meetings/${task.id}`)}
                       />
                     ))}
                   </ul>
@@ -261,7 +261,7 @@ export function MonthlyCalendar({
                     key={`${task.id}_${task.occurrenceDate || toISODate(safeFocus) || ''}`}
                     task={task}
                     statusLabel={statusLabel}
-                    onJoin={() => navigate('/chat')}
+                    onJoin={() => navigate(`/meetings/${task.id}`)}
                   />
                 ))
               ) : (

@@ -10,6 +10,7 @@ import { DashboardPage } from './pages/DashboardPage.jsx'
 import { TasksPage } from './pages/TasksPage.jsx'
 import { CalendarPage } from './pages/CalendarPage.jsx'
 import { ChatPage } from './pages/ChatPage.jsx'
+import { MeetingRoomPage } from './pages/MeetingRoomPage.jsx'
 import { EvaluationPage } from './pages/EvaluationPage.jsx'
 import { SettingsPage } from './pages/SettingsPage.jsx'
 import { AuthPage } from './pages/AuthPage.jsx'
@@ -36,6 +37,7 @@ function AppRoutes() {
         <Route path="tasks" element={<TasksPage />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="chat" element={<ChatPage />} />
+        <Route path="meetings/:meetingId" element={<MeetingRoomPage />} />
         <Route path="evaluation" element={<EvaluationPage />} />
         <Route path="settings" element={<SettingsPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

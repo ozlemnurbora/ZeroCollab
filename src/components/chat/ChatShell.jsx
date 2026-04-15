@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ConversationList } from './ConversationList.jsx'
 import { MessageList } from './MessageList.jsx'
 import { MessageComposer } from './MessageComposer.jsx'
@@ -43,7 +44,14 @@ function createTransferId(fileId, senderPeerId) {
   return `${senderPeerId || 'unknown'}:${fileId}`
 }
 
+function dmIdFromEmail(email) {
+  const local = String(email || '').split('@')[0].trim().toLowerCase()
+  if (!local) return ''
+  return `dm:${local.replace(/\s+/g, '_')}`
+}
+
 export function ChatShell() {
+  const navigate = useNavigate()
   const { t } = useLanguage()
   const { user } = useAuth()
   const { activeProject, teams } = useWorkspace()
@@ -111,6 +119,21 @@ export function ChatShell() {
     return t('chat_anonymous')
   }, [user, t])
   const [activeId, setActiveId] = useState('general')
+  const isDirectConversation = activeId.startsWith('dm:')
+  const activeDmPresence = useMemo(() => {
+    if (!isDirectConversation) return null
+    return (
+      onlineMembers.find((presence) => {
+        const presenceDmId = dmIdFromEmail(presence?.userEmail || '')
+        return (
+          presenceDmId === activeId &&
+          presence.peerId &&
+          presence.peerId !== getPeerId()
+        )
+      }) ?? null
+    )
+  }, [activeId, isDirectConversation, onlineMembers])
+  const directTargetPeerId = activeDmPresence?.peerId ?? ''
   const [messages, setMessages] = useState([])
   const [myAvatarColor, setMyAvatarColor] = useState(null)
   const [isLoadingChat, setIsLoadingChat] = useState(true)
@@ -286,14 +309,21 @@ export function ChatShell() {
   })
 
   const handleCallClick = async () => {
-    if (isInCallRef.current || incomingGroupCall) return
+    if (isInCallRef.current || incomingGroupCall || !isDirectConversation) return
+    if (!directTargetPeerId) {
+      alert(t('chat_peer_initializing'))
+      return
+    }
     try {
       await startLocalStream()
       const myId = getPeerId()
       isInCallRef.current = true
       setIsCallOpen(true)
-      participantPeerIdsRef.current = [myId]
-      await broadcastCallInvite(activeProject?.id, me, myId, [myId])
+      participantPeerIdsRef.current = [myId, directTargetPeerId]
+      await broadcastCallInvite(activeProject?.id, me, myId, [myId], {
+        callType: 'direct',
+        targetPeerId: directTargetPeerId,
+      })
     } catch (err) {
       console.error('[Call] start failed:', err)
       isInCallRef.current = false
@@ -308,46 +338,29 @@ export function ChatShell() {
       const myPeerId = getPeerId()
       isInCallRef.current = true
       setIsCallOpen(true)
-      participantPeerIdsRef.current = [myPeerId]
+      participantPeerIdsRef.current = [myPeerId, invite.callerPeerId]
       setIncomingGroupCall(null)
 
       const peerInstance = getPeerInstance()
       if (!peerInstance || !stream) return
 
-      const callAndListen = (remotePeerId) => {
-        if (!remotePeerId || remotePeerId === myPeerId) return
-        if (participantPeerIdsRef.current.includes(remotePeerId)) return
-        console.log('[Call] calling participant:', remotePeerId)
-        let mediaCall
-        try {
-          mediaCall = peerInstance.call(remotePeerId, stream)
-        } catch (err) {
-          console.error('[Call] peer.call failed:', remotePeerId, err)
-          return
-        }
-        if (!mediaCall) return
-        participantPeerIdsRef.current = [...participantPeerIdsRef.current, remotePeerId]
-        wireMediaCall(mediaCall, remotePeerId)
+      let mediaCall
+      try {
+        mediaCall = peerInstance.call(invite.callerPeerId, stream, {
+          metadata: { callType: 'direct' },
+        })
+      } catch (err) {
+        console.error('[Call] peer.call failed:', invite.callerPeerId, err)
+        return
+      }
+      if (mediaCall) {
+        wireMediaCall(mediaCall, invite.callerPeerId)
       }
 
-      callAndListen(invite.callerPeerId)
-      invite.existingParticipants?.forEach((id) => callAndListen(id))
-
-      await broadcastCallResponse(true, myPeerId, invite.callerPeerId)
-
-      const roster = [
-        ...new Set([
-          invite.callerPeerId,
-          myPeerId,
-          ...(invite.existingParticipants || []),
-        ]),
-      ]
-      await broadcastCallInvite(
-        activeProject?.id,
-        invite.callerEmail || me,
-        invite.callerPeerId,
-        roster,
-      )
+      await broadcastCallResponse(true, myPeerId, invite.callerPeerId, {
+        callType: 'direct',
+        targetPeerId: invite.callerPeerId,
+      })
     } catch (err) {
       console.error('[Call] accept failed:', err)
     }
@@ -584,6 +597,9 @@ export function ChatShell() {
       }
     })
     const offIncomingCall = onP2PEvent(P2P_EVENTS.INCOMING_CALL, (mediaCall) => {
+      if (mediaCall?.metadata?.callType && mediaCall.metadata.callType !== 'direct') {
+        return
+      }
       if (isInCallRef.current && localStreamRef.current) {
         const remotePeerId = mediaCall?.peer
         if (!remotePeerId || activeMediaCallsRef.current.has(remotePeerId)) {
@@ -691,7 +707,16 @@ export function ChatShell() {
 
     const handleCallInvite = (e) => {
       if (isInCallRef.current) return
-      const { callerEmail, callerPeerId, projectId, existingParticipants } = e.detail ?? {}
+      const {
+        callerEmail,
+        callerPeerId,
+        projectId,
+        existingParticipants,
+        callType,
+        targetPeerId,
+      } = e.detail ?? {}
+      if (callType && callType !== 'direct') return
+      if (targetPeerId && targetPeerId !== getPeerId()) return
       if (!callerPeerId || callerPeerId === getPeerId()) return
       if (projectId && activeProject?.id && projectId !== activeProject.id) return
       const inviteKey = `${callerPeerId}:${e.detail?.timestamp ?? 'none'}`
@@ -740,7 +765,10 @@ export function ChatShell() {
 
   useEffect(() => {
     const handleHubCallResponse = async (e) => {
-      const { accepted, responderPeerId } = e.detail ?? {}
+      const { accepted, responderPeerId, callerPeerId, callType, targetPeerId } = e.detail ?? {}
+      if (callType && callType !== 'direct') return
+      if (callerPeerId && callerPeerId !== getPeerId()) return
+      if (targetPeerId && targetPeerId !== getPeerId()) return
       if (!accepted || responderPeerId === getPeerId()) return
       if (!isInCallRef.current || !localStreamRef.current) return
 
@@ -755,7 +783,9 @@ export function ChatShell() {
 
       let mediaCall
       try {
-        mediaCall = peerInstance.call(responderPeerId, localStreamRef.current)
+        mediaCall = peerInstance.call(responderPeerId, localStreamRef.current, {
+          metadata: { callType: 'direct' },
+        })
       } catch (err) {
         console.error('[Call] outbound to joiner failed:', responderPeerId, err)
         return
@@ -1030,7 +1060,17 @@ export function ChatShell() {
           </div>
 
           <div className="flex items-center gap-2 sm:shrink-0">
-            <CallButton onClick={handleCallClick} />
+            {isDirectConversation ? (
+              <CallButton onClick={handleCallClick} disabled={!directTargetPeerId} />
+            ) : (
+              <button
+                type="button"
+                onClick={() => navigate('/tasks')}
+                className="h-9 rounded-md bg-indigo-500/90 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-400"
+              >
+                Create Meeting
+              </button>
+            )}
           </div>
         </header>
 
@@ -1062,7 +1102,7 @@ export function ChatShell() {
       {incomingGroupCall && (
         <div className="fixed bottom-4 right-4 z-50 rounded-xl border border-indigo-500/40 bg-[rgb(var(--zc-panel))] p-4 shadow-xl">
           <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-            📞 {incomingGroupCall.callerEmail} is calling...
+            📞 {incomingGroupCall.callerEmail || incomingGroupCall.callerPeerId} is calling...
           </p>
           <div className="mt-3 flex gap-2">
             <button
@@ -1079,6 +1119,10 @@ export function ChatShell() {
                   false,
                   getPeerId(),
                   incomingGroupCall.callerPeerId,
+                  {
+                    callType: 'direct',
+                    targetPeerId: incomingGroupCall.callerPeerId,
+                  },
                 )
                 setIncomingGroupCall(null)
               }}
