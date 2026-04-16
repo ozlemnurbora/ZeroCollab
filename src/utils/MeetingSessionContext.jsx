@@ -482,14 +482,22 @@ export function MeetingSessionProvider({ children }) {
     const messageText = String(text || '').trim()
     const meeting = activeMeetingRef.current
     if (!messageText || !meeting) return
+    const senderProfile = {
+      displayName: localIdentity.displayName || '',
+      username: localIdentity.username || '',
+      email: localIdentity.email || '',
+    }
+    const senderPeerId = getPeerId()
+    const senderUserKey = getUserKey(localIdentity, senderPeerId)
     const message = {
       id: `m_${Date.now()}_${Math.random().toString(16).slice(2)}`,
       roomId: meeting.roomId,
       meetingId: meeting.meetingId,
-      peerId: getPeerId(),
+      peerId: senderPeerId,
       userId: localIdentity.userId || '',
-      userKey: getUserKey(localIdentity, getPeerId()),
-      senderName: displayNameFromIdentity(localIdentity, getPeerId()),
+      userKey: senderUserKey,
+      senderUserKey,
+      senderProfile,
       text: messageText,
       createdAt: Date.now(),
     }
@@ -586,10 +594,38 @@ export function MeetingSessionProvider({ children }) {
           { peerId: from, activeInRoom: true, joinedAt: data.joinedAt || Date.now() },
         )
       } else if (data.type === 'room-chat' && data.message) {
-        appendRoomMessage(data.message)
+        const msg = { ...data.message }
+        // Ensure chat identity is derived from canonical participant registry, not raw peer/session IDs.
+        if (!msg.senderUserKey) {
+          msg.senderUserKey = participantByPeerRef.current.get(from) || msg.userKey || ''
+        }
+        if (!msg.userKey) {
+          msg.userKey = msg.senderUserKey || ''
+        }
+        // Backfill participant metadata if provided (does not create a second participant entry).
+        if (msg.senderProfile) {
+          upsertParticipant(
+            {
+              userId: msg.userId || '',
+              email: msg.senderProfile.email || '',
+              username:
+                msg.senderProfile.username || usernameFromEmail(msg.senderProfile.email),
+              displayName: msg.senderProfile.displayName || '',
+            },
+            { peerId: from, activeInRoom: true, joinedAt: msg.createdAt || Date.now() },
+          )
+        }
+        appendRoomMessage(msg)
       } else if (data.type === 'room-chat-sync' && Array.isArray(data.messages)) {
         for (const message of data.messages) {
-          appendRoomMessage(message)
+          const msg = { ...message }
+          if (!msg.senderUserKey) {
+            msg.senderUserKey = participantByPeerRef.current.get(from) || msg.userKey || ''
+          }
+          if (!msg.userKey) {
+            msg.userKey = msg.senderUserKey || ''
+          }
+          appendRoomMessage(msg)
         }
       } else if (data.type === 'room-leave') {
         removePeerSession(from)
