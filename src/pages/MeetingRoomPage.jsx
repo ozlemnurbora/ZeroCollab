@@ -55,18 +55,6 @@ export function MeetingRoomPage() {
     maxRoomParticipants,
   } = useMeetingSession()
 
-  const participantLabelByUserKey = useState(() => new Map())[0]
-  participantLabelByUserKey.clear()
-  for (const p of participants) {
-    if (p?.userKey) participantLabelByUserKey.set(p.userKey, p.isLocal ? 'You' : p.label)
-  }
-
-  const resolveRoomSenderLabel = (msg) => {
-    const key = msg?.senderUserKey || msg?.userKey || ''
-    if (key && participantLabelByUserKey.has(key)) return participantLabelByUserKey.get(key)
-    return msg?.senderName || 'Participant'
-  }
-
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -266,7 +254,7 @@ export function MeetingRoomPage() {
                 {roomMessages.map((msg) => (
                   <div key={msg.id} className="rounded bg-[rgb(var(--zc-border)/0.35)] px-2 py-1">
                     <span className="font-medium text-[rgb(var(--zc-text))]">
-                      {resolveRoomSenderLabel(msg)}:{' '}
+                      {msg.senderName || 'Participant'}:{' '}
                     </span>
                     <span className="text-[rgb(var(--zc-muted))]">{msg.text}</span>
                   </div>

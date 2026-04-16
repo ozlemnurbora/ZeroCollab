@@ -38,6 +38,16 @@ function usernameFromEmail(email) {
   return local || ''
 }
 
+function getStableUserKey(identity = {}) {
+  const userId = String(identity.userId || '').trim()
+  if (userId) return `uid:${userId}`
+  const email = normalizeEmail(identity.email)
+  if (email) return `email:${email}`
+  const username = String(identity.username || '').trim().toLowerCase()
+  if (username) return `uname:${username}`
+  return ''
+}
+
 function getUserKey(identity = {}, peerId = '') {
   const userId = String(identity.userId || '').trim()
   if (userId) return `uid:${userId}`
@@ -142,11 +152,37 @@ export function MeetingSessionProvider({ children }) {
       username: identity.username || '',
       displayName: identity.displayName || '',
     }
-    const userKey = getUserKey(normalizedIdentity, peerId)
+    const stableKey = getStableUserKey(normalizedIdentity)
 
     setParticipantRegistry((prev) => {
       let next = { ...prev }
       const prevKeyForPeer = peerId ? participantByPeerRef.current.get(peerId) : null
+
+      // Never create visible remote participants from raw peer/session identity.
+      // If we have no stable identity yet, only update an already-mapped participant (if any).
+      if (!options.isLocal && !stableKey) {
+        if (peerId && prevKeyForPeer && next[prevKeyForPeer]) {
+          const existing = next[prevKeyForPeer]
+          const mergedPeerSessions = new Set(existing.peerSessions || [])
+          mergedPeerSessions.add(peerId)
+          next[prevKeyForPeer] = {
+            ...existing,
+            peerSessions: Array.from(mergedPeerSessions),
+            hasActiveStream:
+              options.hasActiveStream !== undefined
+                ? options.hasActiveStream
+                : existing.hasActiveStream,
+            activeInRoom:
+              options.activeInRoom !== undefined ? options.activeInRoom : existing.activeInRoom,
+            lastSeenAt: Date.now(),
+          }
+          participantByPeerRef.current.set(peerId, prevKeyForPeer)
+          return next
+        }
+        return prev
+      }
+
+      const userKey = stableKey || getUserKey(normalizedIdentity, peerId)
 
       // Same peer session upgraded identity (e.g. peer:… → email:…): merge into one canonical row
       if (peerId && prevKeyForPeer && prevKeyForPeer !== userKey) {
@@ -209,6 +245,25 @@ export function MeetingSessionProvider({ children }) {
     })
   }, [])
 
+  const markPeerStreamActive = useCallback((peerId, active) => {
+    if (!peerId) return
+    const userKey = participantByPeerRef.current.get(peerId)
+    if (!userKey) return
+    setParticipantRegistry((prev) => {
+      const existing = prev[userKey]
+      if (!existing) return prev
+      if (existing.hasActiveStream === Boolean(active)) return prev
+      return {
+        ...prev,
+        [userKey]: {
+          ...existing,
+          hasActiveStream: Boolean(active),
+          lastSeenAt: Date.now(),
+        },
+      }
+    })
+  }, [])
+
   const removePeerSession = useCallback((peerId) => {
     if (!peerId) return
     activeCallsRef.current.delete(peerId)
@@ -230,9 +285,12 @@ export function MeetingSessionProvider({ children }) {
         delete rest[userKey]
         return rest
       }
+      // If they no longer have any active session with a stream, clear the streaming flag.
+      const stillStreaming = (nextEntry.peerSessions || []).some((id) => remoteStreams.has(id))
+      nextEntry.hasActiveStream = Boolean(nextEntry.isLocal ? localStream : stillStreaming)
       return { ...prev, [userKey]: nextEntry }
     })
-  }, [])
+  }, [localStream, remoteStreams])
 
   const replaceOutgoingVideoTrack = useCallback((track) => {
     for (const mediaCall of activeCallsRef.current.values()) {
@@ -261,11 +319,13 @@ export function MeetingSessionProvider({ children }) {
 
     mediaCall.on('stream', (stream) => {
       setRemoteStreams((prev) => new Map(prev).set(peerId, stream))
-      upsertParticipant({}, { peerId, hasActiveStream: true, activeInRoom: true })
+      // Streams do not create visible participants. Only identity-bearing events may.
+      // If we already know who this peer belongs to, mark their canonical participant as streaming.
+      markPeerStreamActive(peerId, true)
     })
     mediaCall.on('close', () => removePeerSession(peerId))
     mediaCall.on('error', () => removePeerSession(peerId))
-  }, [removePeerSession, upsertParticipant])
+  }, [markPeerStreamActive, removePeerSession])
 
   const placeRoomCall = useCallback((peerId) => {
     const meeting = activeMeetingRef.current
@@ -505,6 +565,7 @@ export function MeetingSessionProvider({ children }) {
       userKey: senderUserKey,
       senderUserKey,
       senderProfile,
+      senderName: displayNameFromIdentity(localIdentity, ''),
       text: messageText,
       createdAt: Date.now(),
     }
@@ -653,6 +714,10 @@ export function MeetingSessionProvider({ children }) {
             },
             { peerId: from, activeInRoom: true, joinedAt: msg.createdAt || Date.now() },
           )
+          msg.senderName = displayNameFromIdentity(msg.senderProfile, '')
+        } else if (!msg.senderName && msg.senderUserKey) {
+          const entry = participantRegistry[msg.senderUserKey]
+          if (entry) msg.senderName = displayNameFromIdentity(entry, '')
         }
         appendRoomMessage(msg)
       } else if (data.type === 'room-chat-sync' && Array.isArray(data.messages)) {
@@ -663,6 +728,9 @@ export function MeetingSessionProvider({ children }) {
           }
           if (!msg.userKey) {
             msg.userKey = msg.senderUserKey || ''
+          }
+          if (!msg.senderName && msg.senderProfile) {
+            msg.senderName = displayNameFromIdentity(msg.senderProfile, '')
           }
           appendRoomMessage(msg)
         }
@@ -677,7 +745,15 @@ export function MeetingSessionProvider({ children }) {
       offIncomingCall()
       offMessage()
     }
-  }, [appendRoomMessage, localIdentity, placeRoomCall, removePeerSession, upsertParticipant, wireMediaCall])
+  }, [
+    appendRoomMessage,
+    localIdentity,
+    participantRegistry,
+    placeRoomCall,
+    removePeerSession,
+    upsertParticipant,
+    wireMediaCall,
+  ])
 
   useEffect(() => {
     if (!activeMeeting?.endAt || !inSessionRef.current) return undefined
