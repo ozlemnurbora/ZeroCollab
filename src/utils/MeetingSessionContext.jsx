@@ -3,6 +3,7 @@ import { loadSettings } from '../components/settings/settingsStorage.js'
 import { useAuth } from './AuthContext.jsx'
 import {
   P2P_EVENTS,
+  connectToPeer,
   getConnectedPeers,
   getPeerId,
   getPeerInstance,
@@ -102,6 +103,7 @@ export function MeetingSessionProvider({ children }) {
   const roomMessagesRef = useRef([])
   const roomMessageIdsRef = useRef(new Set())
   const participantByPeerRef = useRef(new Map())
+  const roomPeerIdsRef = useRef(new Set())
 
   useEffect(() => {
     localStreamRef.current = localStream
@@ -313,6 +315,7 @@ export function MeetingSessionProvider({ children }) {
     setIsSharingScreen(false)
     setParticipantRegistry({})
     participantByPeerRef.current.clear()
+    roomPeerIdsRef.current.clear()
     roomMessageIdsRef.current.clear()
   }, [])
 
@@ -412,9 +415,13 @@ export function MeetingSessionProvider({ children }) {
       activeInRoom: true,
       joinedAt: Date.now(),
     })
+    if (localPeerId) roomPeerIdsRef.current.add(localPeerId)
 
     const peers = getConnectedPeers().slice(0, MAX_ROOM_P2P_PARTICIPANTS - 1)
-    peers.forEach((peerId) => placeRoomCall(peerId))
+    peers.forEach((peerId) => {
+      if (peerId) roomPeerIdsRef.current.add(peerId)
+      placeRoomCall(peerId)
+    })
 
     sendToAllPeers({
       type: 'room-join',
@@ -511,9 +518,24 @@ export function MeetingSessionProvider({ children }) {
   }, [appendRoomMessage, localIdentity])
 
   useEffect(() => {
+    const publishRoomPeerList = (meeting) => {
+      if (!meeting) return
+      const peers = Array.from(roomPeerIdsRef.current).filter(Boolean)
+      // Keep it small; meetings are capped anyway.
+      const limited = peers.slice(0, MAX_ROOM_P2P_PARTICIPANTS)
+      sendToAllPeers({
+        type: 'room-peer-list',
+        roomId: meeting.roomId,
+        meetingId: meeting.meetingId,
+        peers: limited,
+      })
+    }
+
     const offConnected = onP2PEvent(P2P_EVENTS.PEER_CONNECTED, ({ peerId }) => {
       if (inSessionRef.current && peerId) {
+        roomPeerIdsRef.current.add(peerId)
         placeRoomCall(peerId)
+        publishRoomPeerList(activeMeetingRef.current)
       }
     })
     const offDisconnected = onP2PEvent(P2P_EVENTS.PEER_DISCONNECTED, ({ peerId }) => {
@@ -547,7 +569,13 @@ export function MeetingSessionProvider({ children }) {
       const meeting = activeMeetingRef.current
       if (!meeting || !data || data.roomId !== meeting.roomId) return
 
+      if (from) {
+        roomPeerIdsRef.current.add(from)
+      }
+
       if (data.type === 'room-join') {
+        // Ensure we have a direct data connection to the joiner, then gossip peer list
+        if (from) void connectToPeer(from)
         const senderProfile = data.senderProfile || {}
         upsertParticipant(
           {
@@ -561,6 +589,7 @@ export function MeetingSessionProvider({ children }) {
         if (inSessionRef.current) {
           placeRoomCall(from)
         }
+        publishRoomPeerList(meeting)
         sendToPeer(from, {
           type: 'room-presence',
           roomId: meeting.roomId,
@@ -583,6 +612,7 @@ export function MeetingSessionProvider({ children }) {
           })
         }
       } else if (data.type === 'room-presence') {
+        if (from) void connectToPeer(from)
         const senderProfile = data.senderProfile || {}
         upsertParticipant(
           {
@@ -593,6 +623,15 @@ export function MeetingSessionProvider({ children }) {
           },
           { peerId: from, activeInRoom: true, joinedAt: data.joinedAt || Date.now() },
         )
+        publishRoomPeerList(meeting)
+      } else if (data.type === 'room-peer-list' && Array.isArray(data.peers)) {
+        // Converge everyone to the same room peer set.
+        for (const peerId of data.peers) {
+          if (!peerId || peerId === getPeerId()) continue
+          roomPeerIdsRef.current.add(peerId)
+          void connectToPeer(peerId)
+          if (inSessionRef.current) placeRoomCall(peerId)
+        }
       } else if (data.type === 'room-chat' && data.message) {
         const msg = { ...data.message }
         // Ensure chat identity is derived from canonical participant registry, not raw peer/session IDs.
