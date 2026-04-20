@@ -4,6 +4,14 @@ import { Button } from '../ui/Button.jsx'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import { sendProjectInvitation } from '../../utils/invitationManager.js'
 import { useAuth } from '../../utils/AuthContext.jsx'
+import { fetchProjectMembers } from '../../utils/workspaceDB.js'
+
+function memberTypeLabel(member) {
+  if (member.role === 'owner') return 'Manager'
+  if (member.memberSource === 'team') return 'Team Member'
+  if (member.memberSource === 'direct') return 'Direct Member'
+  return 'Member'
+}
 
 export function ProjectDetailModal({
   open,
@@ -24,6 +32,8 @@ export function ProjectDetailModal({
     project?.teamIds || [],
   )
   const [isEditing, setIsEditing] = useState(false)
+  const [projectMembers, setProjectMembers] = useState([])
+  const [membersLoading, setMembersLoading] = useState(false)
 
   useEffect(() => {
     if (!project) return
@@ -42,6 +52,30 @@ export function ProjectDetailModal({
     }, 0)
     return () => window.clearTimeout(resetEditTimer)
   }, [open])
+
+  useEffect(() => {
+    if (!open || !project?.id) {
+      if (!open) setProjectMembers([])
+      return
+    }
+    let cancelled = false
+    setMembersLoading(true)
+    void fetchProjectMembers(project.id)
+      .then((list) => {
+        if (!cancelled) {
+          setProjectMembers(Array.isArray(list) ? list : [])
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setProjectMembers([])
+      })
+      .finally(() => {
+        if (!cancelled) setMembersLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [open, project?.id])
 
   if (!project) return null
 
@@ -86,8 +120,12 @@ export function ProjectDetailModal({
     return ''
   }
 
+  const ownerFromMembers = projectMembers.find((m) => m.role === 'owner')
   const ownerNameResolved =
-    resolveUserName(ownerUserId) || project.ownerEmail || 'Unknown'
+    ownerFromMembers?.name ||
+    resolveUserName(ownerUserId) ||
+    project.ownerEmail ||
+    'Unknown'
   const showYouSuffix = !!user?.id && ownerUserId && ownerUserId === user.id
 
   const toggleTeam = (teamId) => {
@@ -200,6 +238,40 @@ export function ProjectDetailModal({
           <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
             Manager
           </span>
+        </div>
+
+        <div>
+          <p className="mb-2 text-sm font-medium text-[rgb(var(--zc-muted))]">
+            Project Members
+          </p>
+          {membersLoading ? (
+            <p className="text-xs text-[rgb(var(--zc-subtle))]">Loading members…</p>
+          ) : projectMembers.length === 0 ? (
+            <p className="text-xs text-[rgb(var(--zc-subtle))]">No members to show.</p>
+          ) : (
+            <ul className="space-y-1.5">
+              {[...projectMembers]
+                .sort((a, b) => {
+                  if (a.role === 'owner' && b.role !== 'owner') return -1
+                  if (a.role !== 'owner' && b.role === 'owner') return 1
+                  return (a.name || '').localeCompare(b.name || '')
+                })
+                .map((member) => {
+                  const key = member.userId || member.email || member.name
+                  return (
+                    <li
+                      key={key}
+                      className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg bg-[rgb(var(--zc-border)/0.25)] px-3 py-2 text-sm"
+                    >
+                      <span className="text-[rgb(var(--zc-text))]">{member.name}</span>
+                      <span className="text-[10px] text-[rgb(var(--zc-subtle))]">
+                        {memberTypeLabel(member)}
+                      </span>
+                    </li>
+                  )
+                })}
+            </ul>
+          )}
         </div>
 
         {isEditing && isOwner ? (

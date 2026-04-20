@@ -34,6 +34,26 @@ export async function fetchMyProjects(userId) {
   return (data || []).map(mapProjectFromMemberRow).filter(Boolean)
 }
 
+export async function fetchProjectMembers(projectId) {
+  const { data, error } = await supabase
+    .from('project_members')
+    .select('user_id, user_email, role, member_source')
+    .eq('project_id', projectId)
+
+  if (error) {
+    console.error('[WorkspaceDB] fetchProjectMembers error:', error)
+    return []
+  }
+
+  return (data || []).map((row) => ({
+    userId: row.user_id,
+    email: row.user_email,
+    name: row.user_email ? row.user_email.split('@')[0] : 'Unknown',
+    role: row.role,
+    memberSource: row.member_source,
+  }))
+}
+
 export async function createProject(project, userId, userEmail) {
   const { error: projError } = await supabase.from('projects').insert({
     id: project.id,
