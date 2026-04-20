@@ -29,6 +29,11 @@ export function DashboardPage() {
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
 
+  const memberNameFromAny = (member) =>
+    typeof member === 'string'
+      ? member
+      : member?.name || member?.email || 'Unknown'
+
   useEffect(() => {
     let cancelled = false
     ;(async () => {
@@ -64,7 +69,9 @@ export function DashboardPage() {
 
     const members = new Set()
     projectTeams.forEach((team) => {
-      ;(team.members || []).forEach((member) => members.add(member))
+      ;(team.members || []).forEach((member) =>
+        members.add(memberNameFromAny(member)),
+      )
     })
 
     if (members.size === 0) {

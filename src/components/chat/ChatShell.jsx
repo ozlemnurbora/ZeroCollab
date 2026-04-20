@@ -72,6 +72,11 @@ export function ChatShell() {
   const { activeProject, teams } = useWorkspace()
   const [onlineMembers, setOnlineMembers] = useState([])
 
+  const memberNameFromAny = (member) =>
+    typeof member === 'string'
+      ? member
+      : member?.name || member?.email || 'Unknown'
+
   const dynamicChannels = useMemo(() => {
     const channels = [...DEFAULT_CHANNELS]
 
@@ -109,11 +114,17 @@ export function ChatShell() {
     projectTeams.forEach((team) => {
       ;(team.members || []).forEach((member) => members.add(member))
     })
-    return Array.from(members).map((member) => ({
-      id: `dm:${member.toLowerCase().replace(/\s+/g, '_')}`,
+    return Array.from(members).map((member) => {
+      const memberName = memberNameFromAny(member)
+      const safeSlug = String(memberName || '')
+        .toLowerCase()
+        .replace(/\s+/g, '_')
+      return {
+        id: `dm:${safeSlug}`,
       type: 'dm',
-      name: member,
-    }))
+        name: memberName,
+      }
+    })
   }, [activeProject, teams])
 
   const allConversations = useMemo(
