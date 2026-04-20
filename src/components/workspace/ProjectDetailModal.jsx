@@ -45,6 +45,8 @@ export function ProjectDetailModal({
 
   if (!project) return null
 
+  const ownerUserId = project.owner_id || project.ownerId || ''
+
   const isOwner =
     !!user?.id &&
     (project.owner_id === user.id ||
@@ -52,6 +54,32 @@ export function ProjectDetailModal({
       (project.ownerId == null &&
         project.owner_id == null &&
         !project.isShared))
+
+  const resolveUserName = (userId) => {
+    if (!userId) return ''
+
+    if (user?.id && userId === user.id) {
+      const email = user.email || ''
+      return email ? email.split('@')[0] : 'You'
+    }
+
+    const teamList = Array.isArray(teams) ? teams : []
+    for (const team of teamList) {
+      const members = Array.isArray(team?.members) ? team.members : []
+      for (const m of members) {
+        if (!m || typeof m === 'string') continue
+        if (m.userId && m.userId === userId) {
+          return m.name || m.email || ''
+        }
+      }
+    }
+
+    return ''
+  }
+
+  const ownerNameResolved =
+    resolveUserName(ownerUserId) || project.ownerEmail || 'Unknown'
+  const showYouSuffix = !!user?.id && ownerUserId && ownerUserId === user.id
 
   const toggleTeam = (teamId) => {
     setSelectedTeamIds((prev) =>
@@ -149,6 +177,17 @@ export function ProjectDetailModal({
       }
     >
       <div className="space-y-4">
+        <div className="flex items-center gap-2 text-xs text-[rgb(var(--zc-subtle))]">
+          <span>Project Manager:</span>
+          <span className="text-[rgb(var(--zc-muted))]">
+            {ownerNameResolved}
+            {showYouSuffix ? ' (You)' : ''}
+          </span>
+          <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
+            Manager
+          </span>
+        </div>
+
         {isEditing ? (
           <>
             <div>
