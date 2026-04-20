@@ -465,7 +465,11 @@ export function SidebarLayout() {
       <ProjectDetailModal
         open={!!selectedProject}
         onClose={() => setSelectedProject(null)}
-        project={selectedProject}
+        project={
+          selectedProject
+            ? projects.find((p) => p.id === selectedProject.id) ?? selectedProject
+            : null
+        }
         teams={teams}
         onUpdate={updateProject}
         onDelete={(id) => void removeProject(id).then(() => removeProjectFromList(id))}

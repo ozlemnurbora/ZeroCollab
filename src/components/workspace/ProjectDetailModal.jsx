@@ -55,12 +55,14 @@ export function ProjectDetailModal({
         project.owner_id == null &&
         !project.isShared))
 
-  const memberSource =
+  /** Mirrors project_members.member_source from fetchMyProjects (fallback for legacy rows). */
+  const membershipSource =
     project.memberSource ??
     (project.role === 'owner' ? 'owner' : 'team')
 
-  const canLeaveProject =
-    !!user?.id && !isOwner && memberSource === 'direct'
+  const canInviteToProject = isOwner
+
+  const canLeaveProject = !isOwner && membershipSource === 'direct'
 
   const resolveUserName = (userId) => {
     if (!userId) return ''
@@ -100,6 +102,7 @@ export function ProjectDetailModal({
   }
 
   const handleInvite = async () => {
+    if (!canInviteToProject) return
     if (!inviteEmail.trim()) return
     try {
       setInviteStatus('sending')
@@ -136,7 +139,7 @@ export function ProjectDetailModal({
             >
               Delete Project
             </Button>
-          ) : canLeaveProject ? (
+          ) : canLeaveProject && user?.id ? (
             <Button
               variant="danger"
               onClick={() => {
@@ -289,7 +292,7 @@ export function ProjectDetailModal({
                 </div>
               )}
             </div>
-            {isOwner ? (
+            {canInviteToProject ? (
               <div className="mt-4">
                 <p className="text-sm font-medium text-[rgb(var(--zc-muted))] mb-2">
                   Invite to Project

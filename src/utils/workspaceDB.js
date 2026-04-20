@@ -3,8 +3,9 @@ import { supabase } from './supabase.js'
 function mapProjectFromMemberRow(row) {
   const p = row.projects
   if (!p) return null
+  // From project_members.member_source: 'owner' | 'direct' | 'team'
   const memberSource =
-    row.member_source ||
+    row.member_source ??
     (row.role === 'owner' ? 'owner' : 'team')
   return {
     ...p,
