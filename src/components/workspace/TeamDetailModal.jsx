@@ -130,15 +130,7 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
               Delete Team
             </Button>
           ) : (
-            <Button
-              variant="danger"
-              onClick={() => {
-                onLeave?.(team.id)
-                onClose?.()
-              }}
-            >
-              Leave Team
-            </Button>
+            <div className="min-w-[1px]" aria-hidden="true" />
           )}
           <div className="flex flex-wrap items-center justify-end gap-2">
             {isEditing ? (
@@ -168,7 +160,9 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
                 <Button variant="secondary" onClick={onClose}>
                   Close
                 </Button>
-                <Button onClick={() => setIsEditing(true)}>Edit</Button>
+                {isOwner ? (
+                  <Button onClick={() => setIsEditing(true)}>Edit</Button>
+                ) : null}
               </>
             )}
           </div>
@@ -176,7 +170,7 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
       }
     >
       <div className="space-y-4">
-        {isEditing ? (
+        {isEditing && isOwner ? (
           <div>
             <label className="mb-1 block text-sm font-medium text-[rgb(var(--zc-muted))]">
               Team Name
@@ -264,7 +258,7 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
           {isEditing && memberRemoveError ? (
             <p className="mt-1 text-xs text-rose-400">{memberRemoveError}</p>
           ) : null}
-          {isEditing ? (
+          {isEditing && isOwner ? (
             <div className="mt-3 border-t border-[rgb(var(--zc-border))] pt-3">
               <p className="text-xs font-medium text-[rgb(var(--zc-muted))] mb-2">
                 Invite by Email

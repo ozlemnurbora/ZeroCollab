@@ -22,7 +22,6 @@ import {
   updateProject as dbUpdateProject,
   createTeam,
   deleteTeam as dbDeleteTeam,
-  leaveTeam as dbLeaveTeam,
   assignTeamToProject,
   removeTeamFromProject,
   subscribeToMyProjects,
@@ -296,6 +295,8 @@ export function WorkspaceProvider({ children }) {
       createdAt: Date.now(),
       teamIds: [],
       ownerId: user.id,
+      role: 'owner',
+      memberSource: 'owner',
     }
     await createProject(newProject, user.id, user.email)
     await loadProjects()
@@ -307,10 +308,22 @@ export function WorkspaceProvider({ children }) {
     const project = projects.find((p) => p.id === projectId)
     if (!project) return
 
-    if (project.owner_id === user.id || project.ownerId === user.id) {
+    const isProjOwner =
+      project.owner_id === user.id || project.ownerId === user.id
+    const memberSource =
+      project.memberSource ??
+      (project.role === 'owner' ? 'owner' : 'team')
+
+    if (isProjOwner) {
       await dbDeleteProject(projectId, user.id)
-    } else {
+    } else if (memberSource === 'direct') {
       await dbLeaveProject(projectId, user.id)
+    } else {
+      console.warn(
+        '[WorkspaceContext] removeProject blocked: only direct-invite members may leave',
+        projectId,
+      )
+      return
     }
 
     if (activeProject?.id === projectId) {
@@ -373,11 +386,16 @@ export function WorkspaceProvider({ children }) {
     const team = teamsRef.current.find((t) => t.id === teamId)
     if (!team) return
 
-    if (team.owner_id === user.id || team.ownerId === user.id) {
-      await dbDeleteTeam(teamId, user.id)
-    } else {
-      await dbLeaveTeam(teamId, user.id)
+    const isTeamOwner = team.owner_id === user.id || team.ownerId === user.id
+    if (!isTeamOwner) {
+      console.warn(
+        '[WorkspaceContext] removeTeam blocked: only team owner can delete team',
+        teamId,
+      )
+      return
     }
+
+    await dbDeleteTeam(teamId, user.id)
     if (activeTeamRef.current?.id === teamId) {
       selectTeam(null)
     }

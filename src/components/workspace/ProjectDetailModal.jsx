@@ -55,6 +55,13 @@ export function ProjectDetailModal({
         project.owner_id == null &&
         !project.isShared))
 
+  const memberSource =
+    project.memberSource ??
+    (project.role === 'owner' ? 'owner' : 'team')
+
+  const canLeaveProject =
+    !!user?.id && !isOwner && memberSource === 'direct'
+
   const resolveUserName = (userId) => {
     if (!userId) return ''
 
@@ -129,7 +136,7 @@ export function ProjectDetailModal({
             >
               Delete Project
             </Button>
-          ) : (
+          ) : canLeaveProject ? (
             <Button
               variant="danger"
               onClick={() => {
@@ -139,6 +146,8 @@ export function ProjectDetailModal({
             >
               Leave Project
             </Button>
+          ) : (
+            <div className="min-w-[1px]" aria-hidden="true" />
           )}
           <div className="flex flex-wrap items-center justify-end gap-2">
             {isEditing ? (
@@ -169,7 +178,9 @@ export function ProjectDetailModal({
                 <Button variant="secondary" onClick={onClose}>
                   Close
                 </Button>
-                <Button onClick={() => setIsEditing(true)}>Edit</Button>
+                {isOwner ? (
+                  <Button onClick={() => setIsEditing(true)}>Edit</Button>
+                ) : null}
               </>
             )}
           </div>
@@ -188,7 +199,7 @@ export function ProjectDetailModal({
           </span>
         </div>
 
-        {isEditing ? (
+        {isEditing && isOwner ? (
           <>
             <div>
               <label className="mb-1 block text-sm font-medium text-[rgb(var(--zc-muted))]">
@@ -278,30 +289,32 @@ export function ProjectDetailModal({
                 </div>
               )}
             </div>
-            <div className="mt-4">
-              <p className="text-sm font-medium text-[rgb(var(--zc-muted))] mb-2">
-                Invite to Project
-              </p>
-              <div className="flex gap-2">
-                <input
-                  type="email"
-                  value={inviteEmail}
-                  onChange={e => setInviteEmail(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleInvite()}
-                  placeholder="Enter email address..."
-                  className="flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                />
-                <Button onClick={handleInvite} disabled={!inviteEmail.trim() || inviteStatus === 'sending'}>
-                  {inviteStatus === 'sending' ? 'Sending...' : 'Invite'}
-                </Button>
+            {isOwner ? (
+              <div className="mt-4">
+                <p className="text-sm font-medium text-[rgb(var(--zc-muted))] mb-2">
+                  Invite to Project
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    type="email"
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleInvite()}
+                    placeholder="Enter email address..."
+                    className="flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  />
+                  <Button onClick={handleInvite} disabled={!inviteEmail.trim() || inviteStatus === 'sending'}>
+                    {inviteStatus === 'sending' ? 'Sending...' : 'Invite'}
+                  </Button>
+                </div>
+                {inviteStatus === 'sent' && (
+                  <p className="mt-1 text-xs text-emerald-400">✓ Invitation sent!</p>
+                )}
+                {inviteStatus === 'error' && (
+                  <p className="mt-1 text-xs text-rose-400">Failed to send invitation.</p>
+                )}
               </div>
-              {inviteStatus === 'sent' && (
-                <p className="mt-1 text-xs text-emerald-400">✓ Invitation sent!</p>
-              )}
-              {inviteStatus === 'error' && (
-                <p className="mt-1 text-xs text-rose-400">Failed to send invitation.</p>
-              )}
-            </div>
+            ) : null}
           </>
         )}
       </div>

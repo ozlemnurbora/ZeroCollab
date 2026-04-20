@@ -111,6 +111,14 @@ export function SidebarLayout() {
   const isProjectOwner = (project) =>
     project.owner_id === user?.id || project.ownerId === user?.id
 
+  const canLeaveProject = (project) => {
+    if (!user?.id || isProjectOwner(project)) return false
+    const src =
+      project.memberSource ??
+      (project.role === 'owner' ? 'owner' : 'team')
+    return src === 'direct'
+  }
+
   const isTeamOwner = (team) =>
     team.owner_id === user?.id || team.ownerId === user?.id
 
@@ -247,7 +255,7 @@ export function SidebarLayout() {
                       >
                         ✕
                       </button>
-                    ) : (
+                    ) : canLeaveProject(project) ? (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -261,6 +269,8 @@ export function SidebarLayout() {
                       >
                         →
                       </button>
+                    ) : (
+                      <span className="h-5 w-5 shrink-0" aria-hidden="true" />
                     )}
                     <button
                       type="button"
@@ -370,14 +380,7 @@ export function SidebarLayout() {
                         ✕
                       </button>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => void removeTeam(team.id)}
-                        className="hidden group-hover:flex h-5 w-5 shrink-0 items-center justify-center rounded text-xs text-amber-400 hover:bg-amber-500/10"
-                        title="Leave team"
-                      >
-                        →
-                      </button>
+                      <span className="h-5 w-5 shrink-0" aria-hidden="true" />
                     )}
                     <button
                       type="button"

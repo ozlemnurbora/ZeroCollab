@@ -3,11 +3,15 @@ import { supabase } from './supabase.js'
 function mapProjectFromMemberRow(row) {
   const p = row.projects
   if (!p) return null
+  const memberSource =
+    row.member_source ||
+    (row.role === 'owner' ? 'owner' : 'team')
   return {
     ...p,
     ownerId: p.owner_id,
     description: p.description ?? '',
     role: row.role,
+    memberSource,
     teamIds: [],
     isShared: row.role !== 'owner',
   }
@@ -18,7 +22,7 @@ function mapProjectFromMemberRow(row) {
 export async function fetchMyProjects(userId) {
   const { data, error } = await supabase
     .from('project_members')
-    .select('project_id, role, projects(*)')
+    .select('project_id, role, member_source, projects(*)')
     .eq('user_id', userId)
 
   if (error) {
@@ -45,6 +49,7 @@ export async function createProject(project, userId, userEmail) {
     user_id: userId,
     user_email: userEmail,
     role: 'owner',
+    member_source: 'owner',
   })
 
   if (memberError) throw memberError
@@ -72,12 +77,26 @@ export async function leaveProject(projectId, userId) {
 }
 
 export async function joinProjectAsMember(projectId, userId, userEmail, role = 'member') {
-  const { error } = await supabase.from('project_members').insert({
-    project_id: projectId,
-    user_id: userId,
-    user_email: userEmail,
-    role,
-  })
+  const { data: existing, error: selError } = await supabase
+    .from('project_members')
+    .select('role')
+    .eq('project_id', projectId)
+    .eq('user_id', userId)
+    .maybeSingle()
+
+  if (selError) throw selError
+  if (existing?.role === 'owner') return
+
+  const { error } = await supabase.from('project_members').upsert(
+    {
+      project_id: projectId,
+      user_id: userId,
+      user_email: userEmail,
+      role: role || 'member',
+      member_source: 'direct',
+    },
+    { onConflict: 'project_id,user_id' },
+  )
 
   if (error) throw error
 }
@@ -113,12 +132,28 @@ export async function assignTeamToProject(projectId, teamId) {
 
   for (const member of members) {
     if (!member.user_id) continue
+
+    const { data: existing, error: exError } = await supabase
+      .from('project_members')
+      .select('role, member_source')
+      .eq('project_id', projectId)
+      .eq('user_id', member.user_id)
+      .maybeSingle()
+
+    if (exError) {
+      console.error('[WorkspaceDB] project_members lookup failed:', exError)
+      continue
+    }
+    if (existing?.role === 'owner') continue
+    if (existing?.member_source === 'direct') continue
+
     const { error: pmError } = await supabase.from('project_members').upsert(
       {
         project_id: projectId,
         user_id: member.user_id,
         user_email: member.user_email,
         role: 'member',
+        member_source: 'team',
       },
       { onConflict: 'project_id,user_id' },
     )

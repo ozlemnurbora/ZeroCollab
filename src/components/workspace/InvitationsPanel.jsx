@@ -105,12 +105,27 @@ export function InvitationsPanel() {
 
       if (projectTeams && projectTeams.length > 0) {
         for (const pt of projectTeams) {
+          const { data: existingPm, error: pmSelErr } = await supabase
+            .from('project_members')
+            .select('role, member_source')
+            .eq('project_id', pt.project_id)
+            .eq('user_id', user.id)
+            .maybeSingle()
+
+          if (pmSelErr) {
+            console.error('[InvitationsPanel] project_members lookup:', pmSelErr)
+            continue
+          }
+          if (existingPm?.role === 'owner') continue
+          if (existingPm?.member_source === 'direct') continue
+
           const { error: pmError } = await supabase.from('project_members').upsert(
             {
               project_id: pt.project_id,
               user_id: user.id,
               user_email: user.email,
               role: 'member',
+              member_source: 'team',
             },
             { onConflict: 'project_id,user_id' },
           )
