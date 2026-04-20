@@ -223,24 +223,80 @@ export async function fetchTeamMembers(teamId) {
   }))
 }
 
-export async function removeMemberFromTeam(teamId, userId, currentUserId) {
-  const { data: team } = await supabase
+export async function removeMemberFromTeam(teamId, targetUserId, currentUserId) {
+  // verify current user is the owner
+  const { data: team, error: teamError } = await supabase
     .from('teams')
     .select('owner_id')
     .eq('id', teamId)
     .single()
 
+  if (teamError) throw teamError
   if (!team || team.owner_id !== currentUserId) {
-    throw new Error('Only team owner can remove members')
+    throw new Error('Only the team owner can remove members')
   }
 
-  const { error } = await supabase
+  if (targetUserId === currentUserId) {
+    throw new Error('Owner cannot remove themselves with removeMemberFromTeam')
+  }
+
+  // find all projects linked to this team
+  const { data: projectTeams, error: ptError } = await supabase
+    .from('project_teams')
+    .select('project_id')
+    .eq('team_id', teamId)
+
+  if (ptError) throw ptError
+
+  // remove from team_members
+  const { error: removeError } = await supabase
     .from('team_members')
     .delete()
     .eq('team_id', teamId)
-    .eq('user_id', userId)
+    .eq('user_id', targetUserId)
 
-  if (error) throw error
+  if (removeError) throw removeError
+
+  // for each related project, remove the user from project_members
+  // only if they are not still included through another assigned team
+  const projectIds = (projectTeams || []).map((pt) => pt.project_id)
+
+  for (const projectId of projectIds) {
+    const { data: otherTeams, error: otherTeamsError } = await supabase
+      .from('project_teams')
+      .select('team_id')
+      .eq('project_id', projectId)
+      .neq('team_id', teamId)
+
+    if (otherTeamsError) throw otherTeamsError
+
+    const otherTeamIds = (otherTeams || []).map((t) => t.team_id)
+
+    let stillInProject = false
+    if (otherTeamIds.length > 0) {
+      const { data: stillInOtherTeam, error: stillError } = await supabase
+        .from('team_members')
+        .select('user_id')
+        .eq('user_id', targetUserId)
+        .in('team_id', otherTeamIds)
+
+      if (stillError) throw stillError
+      if (stillInOtherTeam && stillInOtherTeam.length > 0) {
+        stillInProject = true
+      }
+    }
+
+    if (!stillInProject) {
+      const { error: projectRemoveError } = await supabase
+        .from('project_members')
+        .delete()
+        .eq('project_id', projectId)
+        .eq('user_id', targetUserId)
+        .neq('role', 'owner')
+
+      if (projectRemoveError) throw projectRemoveError
+    }
+  }
 }
 
 export async function createTeam(team, userId, userEmail) {

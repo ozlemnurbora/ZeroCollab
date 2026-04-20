@@ -6,13 +6,15 @@ import { useAuth } from '../../utils/AuthContext.jsx'
 import { sendTeamInvitation } from '../../utils/invitationManager.js'
 
 export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLeave }) {
-  const { selectTeam } = useWorkspace()
+  const { selectTeam, kickTeamMember } = useWorkspace()
   const { user } = useAuth()
   const [name, setName] = useState(team?.name || '')
   const [members, setMembers] = useState(team?.members || [])
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteStatus, setInviteStatus] = useState('')
   const [isEditing, setIsEditing] = useState(false)
+  const [memberRemoveError, setMemberRemoveError] = useState('')
+  const [removingMemberKey, setRemovingMemberKey] = useState('')
 
   useEffect(() => {
     if (!team) return
@@ -36,7 +38,7 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
   const isOwner =
     !!user?.id && (team.owner_id === user.id || team.ownerId === user.id)
 
-  const removeMember = (member) => {
+  const removeMemberLocallyAfterSuccess = (member) => {
     setMembers((prev) => {
       if (typeof member === 'string') {
         return prev.filter((x) => x !== member)
@@ -56,6 +58,31 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
         return x !== member
       })
     })
+  }
+
+  const handleKickMember = async (member, memberKey, memberUserId) => {
+    setMemberRemoveError('')
+
+    if (!isOwner) return
+    if (!memberUserId) {
+      setMemberRemoveError('Cannot remove this member (missing userId).')
+      return
+    }
+    if (memberUserId === (team.owner_id || team.ownerId)) {
+      setMemberRemoveError('Owner cannot remove themselves.')
+      return
+    }
+
+    try {
+      setRemovingMemberKey(memberKey)
+      await kickTeamMember(team.id, memberUserId)
+      removeMemberLocallyAfterSuccess(member)
+    } catch (err) {
+      console.error('[TeamDetailModal] remove member failed:', err)
+      setMemberRemoveError(err?.message || 'Failed to remove member.')
+    } finally {
+      setRemovingMemberKey('')
+    }
   }
 
   const handleSave = () => {
@@ -194,6 +221,11 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
                 !!memberUserId &&
                 (team.owner_id === memberUserId || team.ownerId === memberUserId)
 
+              const canKick =
+                isEditing && isOwner && !!memberUserId && !isManager
+
+              const isRemoving = removingMemberKey === memberKey
+
               return (
                 <div
                   key={memberKey}
@@ -214,20 +246,24 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
                       </div>
                     </div>
                   </div>
-                  {isEditing ? (
+                  {canKick ? (
                     <button
                       type="button"
-                      onClick={() => removeMember(member)}
+                      onClick={() => void handleKickMember(member, memberKey, memberUserId)}
                       className="text-xs text-rose-400 hover:text-rose-300"
                       aria-label="Remove member"
+                      disabled={isRemoving}
                     >
-                      ✕
+                      {isRemoving ? '…' : '✕'}
                     </button>
                   ) : null}
                 </div>
               )
             })}
           </div>
+          {isEditing && memberRemoveError ? (
+            <p className="mt-1 text-xs text-rose-400">{memberRemoveError}</p>
+          ) : null}
           {isEditing ? (
             <div className="mt-3 border-t border-[rgb(var(--zc-border))] pt-3">
               <p className="text-xs font-medium text-[rgb(var(--zc-muted))] mb-2">

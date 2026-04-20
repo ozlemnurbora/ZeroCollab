@@ -15,6 +15,7 @@ import {
   fetchMyTeams,
   fetchProjectTeams,
   fetchTeamMembers,
+  removeMemberFromTeam,
   createProject,
   deleteProject as dbDeleteProject,
   leaveProject as dbLeaveProject,
@@ -397,6 +398,13 @@ export function WorkspaceProvider({ children }) {
     await loadTeams()
   }
 
+  const kickTeamMember = async (teamId, targetUserId) => {
+    if (!user) return
+    await removeMemberFromTeam(teamId, targetUserId, user.id)
+    await loadTeams()
+    await loadProjects()
+  }
+
   return (
     <WorkspaceContext.Provider
       value={{
@@ -414,6 +422,7 @@ export function WorkspaceProvider({ children }) {
         removeTeam,
         updateProjects,
         updateTeams,
+        kickTeamMember,
         reloadProjects: loadProjects,
         reloadTeams: loadTeams,
       }}
