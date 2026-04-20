@@ -212,11 +212,35 @@ export async function fetchMyTeams(userId) {
 export async function fetchTeamMembers(teamId) {
   const { data, error } = await supabase
     .from('team_members')
-    .select('user_email, display_name')
+    .select('user_id, user_email, display_name')
     .eq('team_id', teamId)
 
   if (error) return []
-  return (data || []).map((row) => row.display_name || row.user_email.split('@')[0])
+  return (data || []).map((row) => ({
+    userId: row.user_id,
+    email: row.user_email,
+    name: row.display_name || row.user_email.split('@')[0],
+  }))
+}
+
+export async function removeMemberFromTeam(teamId, userId, currentUserId) {
+  const { data: team } = await supabase
+    .from('teams')
+    .select('owner_id')
+    .eq('id', teamId)
+    .single()
+
+  if (!team || team.owner_id !== currentUserId) {
+    throw new Error('Only team owner can remove members')
+  }
+
+  const { error } = await supabase
+    .from('team_members')
+    .delete()
+    .eq('team_id', teamId)
+    .eq('user_id', userId)
+
+  if (error) throw error
 }
 
 export async function createTeam(team, userId, userEmail) {

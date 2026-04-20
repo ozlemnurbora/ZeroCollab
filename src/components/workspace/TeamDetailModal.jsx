@@ -37,7 +37,25 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
     !!user?.id && (team.owner_id === user.id || team.ownerId === user.id)
 
   const removeMember = (member) => {
-    setMembers((prev) => prev.filter((x) => x !== member))
+    setMembers((prev) => {
+      if (typeof member === 'string') {
+        return prev.filter((x) => x !== member)
+      }
+
+      const targetUserId = member?.userId || ''
+      const targetEmail = member?.email || ''
+      const targetName = member?.name || ''
+
+      return prev.filter((x) => {
+        if (typeof x === 'string') return true
+
+        if (targetUserId && x?.userId) return x.userId !== targetUserId
+        if (targetEmail && x?.email) return x.email !== targetEmail
+        if (targetName && x?.name) return x.name !== targetName
+
+        return x !== member
+      })
+    })
   }
 
   const handleSave = () => {
@@ -153,28 +171,62 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
             {members.length === 0 && (
               <p className="text-xs text-[rgb(var(--zc-subtle))]">No members yet.</p>
             )}
-            {members.map((member) => (
-              <div
-                key={member}
-                className="flex items-center justify-between rounded-lg bg-[rgb(var(--zc-border)/0.3)] px-3 py-2"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/30 text-xs font-medium text-indigo-300">
-                    {member[0]?.toUpperCase()}
+            {members.map((member) => {
+              const memberName =
+                typeof member === 'string'
+                  ? member
+                  : member?.name || member?.email || 'Unknown'
+
+              const memberUserId =
+                typeof member === 'string' ? '' : member?.userId || ''
+
+              const memberKey =
+                typeof member === 'string'
+                  ? member
+                  : member?.userId ||
+                    member?.email ||
+                    member?.name ||
+                    JSON.stringify(member)
+
+              const memberInitial = memberName?.[0]?.toUpperCase() || '?'
+
+              const isManager =
+                !!memberUserId &&
+                (team.owner_id === memberUserId || team.ownerId === memberUserId)
+
+              return (
+                <div
+                  key={memberKey}
+                  className="flex items-center justify-between rounded-lg bg-[rgb(var(--zc-border)/0.3)] px-3 py-2"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-500/30 text-xs font-medium text-indigo-300">
+                      {memberInitial}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm text-[rgb(var(--zc-text))] truncate">
+                          {memberName}
+                        </span>
+                        <span className="text-[10px] text-[rgb(var(--zc-subtle))]">
+                          {isManager ? 'Manager' : 'Member'}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-sm text-[rgb(var(--zc-text))]">{member}</span>
+                  {isEditing ? (
+                    <button
+                      type="button"
+                      onClick={() => removeMember(member)}
+                      className="text-xs text-rose-400 hover:text-rose-300"
+                      aria-label="Remove member"
+                    >
+                      ✕
+                    </button>
+                  ) : null}
                 </div>
-                {isEditing ? (
-                  <button
-                    type="button"
-                    onClick={() => removeMember(member)}
-                    className="text-xs text-rose-400 hover:text-rose-300"
-                  >
-                    ✕
-                  </button>
-                ) : null}
-              </div>
-            ))}
+              )
+            })}
           </div>
           {isEditing ? (
             <div className="mt-3 border-t border-[rgb(var(--zc-border))] pt-3">
