@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { loadMeetings } from '../utils/meetingStorage.js'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
+import { useAuth } from '../utils/AuthContext.jsx'
 import { useMeetingSession } from '../utils/MeetingSessionContext.jsx'
 import { getMeetingLifecycle } from '../utils/meetingLifecycle.js'
 
@@ -27,6 +28,8 @@ function VideoTile({ stream, label, muted = false }) {
 export function MeetingRoomPage() {
   const { meetingId } = useParams()
   const navigate = useNavigate()
+  const { user } = useAuth()
+  const ownerUserId = user?.id ?? null
   const { memberProjectIds = [] } = useWorkspace()
   const [meeting, setMeeting] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -56,10 +59,15 @@ export function MeetingRoomPage() {
   } = useMeetingSession()
 
   useEffect(() => {
+    if (!ownerUserId) {
+      setPageError('Sign in to join meetings.')
+      setLoading(false)
+      return
+    }
     let cancelled = false
     ;(async () => {
       setLoading(true)
-      const meetings = await loadMeetings()
+      const meetings = await loadMeetings(ownerUserId)
       if (cancelled) return
       const found = (Array.isArray(meetings) ? meetings : []).find((m) => m.id === meetingId)
       if (!found) {
@@ -79,7 +87,7 @@ export function MeetingRoomPage() {
     return () => {
       cancelled = true
     }
-  }, [joinMeetingSession, meetingId, memberProjectIds])
+  }, [joinMeetingSession, meetingId, memberProjectIds, ownerUserId])
 
   useEffect(() => {
     setIsMeetingPageOpen(true)

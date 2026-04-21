@@ -6,6 +6,7 @@ import { MeetingDetailModal } from '../components/meetings/MeetingDetailModal.js
 import { Button } from '../components/ui/Button.jsx'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
+import { useAuth } from '../utils/AuthContext.jsx'
 import {
   deleteMeeting,
   loadMeetings,
@@ -13,48 +14,68 @@ import {
 } from '../utils/meetingStorage.js'
 import { broadcastMeetingUpdate } from '../utils/hubManager.js'
 
+function meetingStorageProjectId(meeting, activeProject) {
+  if (meeting?.calendarType === 'general' && activeProject?.id) return activeProject.id
+  return null
+}
+
 export function TasksPage() {
   const navigate = useNavigate()
   const { t } = useLanguage()
+  const { user } = useAuth()
+  const ownerUserId = user?.id ?? null
   const { activeProject, memberProjectIds = [] } = useWorkspace()
   const [meetings, setMeetings] = useState([])
   const [isAddMeetingOpen, setIsAddMeetingOpen] = useState(false)
   const [selectedMeeting, setSelectedMeeting] = useState(null)
 
   useEffect(() => {
-    loadMeetings().then((data) => {
+    if (!ownerUserId) {
+      setMeetings([])
+      return
+    }
+    loadMeetings(ownerUserId).then((data) => {
       console.log('[Meeting] loaded from DB:', data)
       const list = Array.isArray(data) ? data : []
       const visible = list.filter((meeting) => {
-        if (!meeting?.projectId) return meeting?.calendarType !== 'general'
-        return memberProjectIds.includes(meeting.projectId)
+        if (meeting.calendarType === 'general') {
+          if (!meeting?.projectId) return false
+          return memberProjectIds.includes(meeting.projectId)
+        }
+        return meeting.ownerUserId === ownerUserId
       })
       setMeetings(visible)
     })
-  }, [memberProjectIds])
+  }, [memberProjectIds, ownerUserId])
 
   useEffect(() => {
     const handleMeetingUpdate = async (e) => {
       const { meeting, meetingId, meetingAction, projectId } = e.detail || {}
       console.log('[TasksPage] hub:meeting-update received:', meetingAction, meeting?.id)
-      if (projectId && !memberProjectIds.includes(projectId)) return
-      if (activeProject?.id && projectId && projectId !== activeProject.id) return
-
       if (meetingAction === 'upsert' && meeting) {
-        await saveMeeting(meeting)
+        if (meeting.calendarType === 'general') {
+          if (projectId && !memberProjectIds.includes(projectId)) return
+          if (activeProject?.id && projectId && projectId !== activeProject.id) return
+          if (!meeting.projectId || !memberProjectIds.includes(meeting.projectId)) return
+        } else {
+          if (!ownerUserId || meeting.ownerUserId !== ownerUserId) return
+        }
+        if (ownerUserId) await saveMeeting(meeting, ownerUserId)
         setMeetings((prev) => {
           const exists = prev.find((m) => m.id === meeting.id)
           if (exists) return prev.map((m) => (m.id === meeting.id ? meeting : m))
           return [...prev, meeting]
         })
       } else if (meetingAction === 'delete' && meetingId) {
-        await deleteMeeting(meetingId)
+        if (projectId && !memberProjectIds.includes(projectId)) return
+        if (activeProject?.id && projectId && projectId !== activeProject.id) return
+        if (ownerUserId) await deleteMeeting(meetingId, ownerUserId)
         setMeetings((prev) => prev.filter((m) => m.id !== meetingId))
       }
     }
     window.addEventListener('hub:meeting-update', handleMeetingUpdate)
     return () => window.removeEventListener('hub:meeting-update', handleMeetingUpdate)
-  }, [activeProject?.id, memberProjectIds])
+  }, [activeProject?.id, memberProjectIds, ownerUserId])
 
   return (
     <section>
@@ -96,14 +117,15 @@ export function TasksPage() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {meetings
-              .filter(
-                (meeting) =>
-                  (
-                    (!meeting.projectId && meeting.calendarType !== 'general') ||
-                    (meeting.projectId && memberProjectIds.includes(meeting.projectId))
-                  ) &&
-                  (!activeProject || !meeting.projectId || meeting.projectId === activeProject?.id),
-              )
+              .filter((meeting) => {
+                if (meeting.calendarType === 'general') {
+                  if (!meeting.projectId || !memberProjectIds.includes(meeting.projectId))
+                    return false
+                  if (activeProject?.id && meeting.projectId !== activeProject.id) return false
+                  return true
+                }
+                return meeting.ownerUserId === ownerUserId
+              })
               .map((meeting) => (
                 <div
                   key={meeting.id}
@@ -133,15 +155,21 @@ export function TasksPage() {
                       type="button"
                       onClick={async (e) => {
                         e.stopPropagation()
-                        await deleteMeeting(meeting.id)
+                        if (ownerUserId) await deleteMeeting(meeting.id, ownerUserId)
                         setMeetings((prev) =>
                           prev.filter((entry) => entry.id !== meeting.id),
                         )
-                        void broadcastMeetingUpdate(
-                          { id: meeting.id },
-                          'delete',
-                          activeProject?.id,
-                        )
+                        if (
+                          meeting.calendarType === 'general' &&
+                          meeting.projectId &&
+                          activeProject?.id
+                        ) {
+                          void broadcastMeetingUpdate(
+                            { id: meeting.id },
+                            'delete',
+                            meeting.projectId,
+                          )
+                        }
                       }}
                       className="shrink-0 text-xs text-rose-400 opacity-0 group-hover:opacity-100 hover:text-rose-300"
                     >
@@ -194,16 +222,23 @@ export function TasksPage() {
           console.log('[Meeting] creating meeting:', meeting)
           const newMeeting = {
             ...meeting,
-            projectId: activeProject?.id || null,
+            projectId: meetingStorageProjectId(meeting, activeProject),
+            ownerUserId: ownerUserId ?? meeting.ownerUserId ?? null,
           }
           console.log('[Meeting] saving:', newMeeting)
-          await saveMeeting(newMeeting)
+          if (ownerUserId) await saveMeeting(newMeeting, ownerUserId)
           console.log('[Meeting] saved, updating state')
           setMeetings((prev) => {
             console.log('[Meeting] prev meetings:', prev)
             return [...prev, newMeeting]
           })
-          void broadcastMeetingUpdate(newMeeting, 'upsert', activeProject?.id)
+          if (
+            newMeeting.calendarType === 'general' &&
+            newMeeting.projectId &&
+            activeProject?.id
+          ) {
+            void broadcastMeetingUpdate(newMeeting, 'upsert', newMeeting.projectId)
+          }
         }}
       />
 
@@ -212,16 +247,33 @@ export function TasksPage() {
         onClose={() => setSelectedMeeting(null)}
         meeting={selectedMeeting}
         onUpdate={async (updated) => {
-          await saveMeeting(updated)
-          setMeetings((prev) => prev.map((m) => (m.id === updated.id ? updated : m)))
+          const normalized = {
+            ...updated,
+            projectId: meetingStorageProjectId(updated, activeProject),
+          }
+          if (ownerUserId) await saveMeeting(normalized, ownerUserId)
+          setMeetings((prev) => prev.map((m) => (m.id === normalized.id ? normalized : m)))
           setSelectedMeeting(null)
-          void broadcastMeetingUpdate(updated, 'upsert', activeProject?.id)
+          if (
+            normalized.calendarType === 'general' &&
+            normalized.projectId &&
+            activeProject?.id
+          ) {
+            void broadcastMeetingUpdate(normalized, 'upsert', normalized.projectId)
+          }
         }}
         onDelete={async (id) => {
-          await deleteMeeting(id)
+          const prevMeeting = selectedMeeting
+          if (ownerUserId) await deleteMeeting(id, ownerUserId)
           setMeetings((prev) => prev.filter((m) => m.id !== id))
           setSelectedMeeting(null)
-          void broadcastMeetingUpdate({ id }, 'delete', activeProject?.id)
+          if (
+            prevMeeting?.calendarType === 'general' &&
+            prevMeeting?.projectId &&
+            activeProject?.id
+          ) {
+            void broadcastMeetingUpdate({ id }, 'delete', prevMeeting.projectId)
+          }
         }}
       />
     </section>

@@ -184,6 +184,33 @@ export async function clearTasks() {
   emitChange({ store: STORES.tasks, cleared: true })
 }
 
+/** Tasks belonging to this account (strict; omits legacy rows without ownerUserId). */
+export async function getTasksForOwner(ownerUserId) {
+  if (!ownerUserId) return []
+  const db = await getDatabase()
+  const all = (await db.getAll(STORES.tasks)) ?? []
+  return all.filter((t) => t?.ownerUserId === ownerUserId)
+}
+
+/**
+ * Replace this user's task slice while preserving other users' tasks in the same DB.
+ */
+export async function replaceTasksForOwner(ownerUserId, tasks) {
+  if (!ownerUserId) return
+  const db = await getDatabase()
+  const all = (await db.getAll(STORES.tasks)) ?? []
+  const others = all.filter((t) => t?.ownerUserId && t.ownerUserId !== ownerUserId)
+  const stamped = (tasks ?? []).map((t) => ({ ...t, ownerUserId }))
+  const next = [...others, ...stamped]
+  const tx = db.transaction(STORES.tasks, 'readwrite')
+  await tx.store.clear()
+  for (const t of next) {
+    if (t && typeof t === 'object' && t.id) await tx.store.put(t)
+  }
+  await tx.done
+  emitChange({ store: STORES.tasks })
+}
+
 // -------- Messages store --------
 export async function getMessages() {
   const db = await getDatabase()
@@ -217,6 +244,29 @@ export async function clearMessages() {
   const db = await getDatabase()
   await db.clear(STORES.messages)
   emitChange({ store: STORES.messages, cleared: true })
+}
+
+export async function getMessagesForOwner(ownerUserId) {
+  if (!ownerUserId) return []
+  const db = await getDatabase()
+  const all = (await db.getAll(STORES.messages)) ?? []
+  return all.filter((m) => m?.ownerUserId === ownerUserId)
+}
+
+export async function replaceMessagesForOwner(ownerUserId, messages) {
+  if (!ownerUserId) return
+  const db = await getDatabase()
+  const all = (await db.getAll(STORES.messages)) ?? []
+  const others = all.filter((m) => m?.ownerUserId && m.ownerUserId !== ownerUserId)
+  const stamped = (messages ?? []).map((m) => ({ ...m, ownerUserId }))
+  const next = [...others, ...stamped]
+  const tx = db.transaction(STORES.messages, 'readwrite')
+  await tx.store.clear()
+  for (const m of next) {
+    if (m && typeof m === 'object' && m.id) await tx.store.put(m)
+  }
+  await tx.done
+  emitChange({ store: STORES.messages })
 }
 
 // -------- Evaluations store --------
@@ -254,6 +304,53 @@ export async function clearEvaluations() {
   emitChange({ store: STORES.evaluations, cleared: true })
 }
 
+export async function getEvaluationsForOwner(ownerUserId) {
+  if (!ownerUserId) return []
+  const db = await getDatabase()
+  const all = (await db.getAll(STORES.evaluations)) ?? []
+  return all.filter((e) => e?.ownerUserId === ownerUserId)
+}
+
+export async function replaceEvaluationsForOwner(ownerUserId, items) {
+  if (!ownerUserId) return
+  const db = await getDatabase()
+  const all = (await db.getAll(STORES.evaluations)) ?? []
+  const others = all.filter((e) => e?.ownerUserId && e.ownerUserId !== ownerUserId)
+  const stamped = (items ?? []).map((e) => ({ ...e, ownerUserId }))
+  const next = [...others, ...stamped]
+  const tx = db.transaction(STORES.evaluations, 'readwrite')
+  await tx.store.clear()
+  for (const e of next) {
+    if (e && typeof e === 'object' && e.id) await tx.store.put(e)
+  }
+  await tx.done
+  emitChange({ store: STORES.evaluations })
+}
+
+// -------- Meetings store (merge by id, multi-owner safe) --------
+
+export async function getMeetingsRaw() {
+  const db = await getDatabase()
+  return (await db.getAll(STORES.meetings)) ?? []
+}
+
+export async function getMeetingsForOwner(ownerUserId) {
+  if (!ownerUserId) return []
+  const all = await getMeetingsRaw()
+  return all.filter((m) => m?.ownerUserId === ownerUserId)
+}
+
+export async function replaceMeetingsStore(meetings) {
+  const db = await getDatabase()
+  const tx = db.transaction(STORES.meetings, 'readwrite')
+  await tx.store.clear()
+  for (const m of meetings ?? []) {
+    if (m && typeof m === 'object' && m.id) await tx.store.put(m)
+  }
+  await tx.done
+  emitChange({ store: STORES.meetings })
+}
+
 // -------- Settings store --------
 export async function getSetting(key) {
   const db = await getDatabase()
@@ -282,10 +379,20 @@ export async function getAllSettings() {
   }, {})
 }
 
+export function settingsChatUserKey(userId) {
+  return userId ? `chatUser:${userId}` : SETTINGS_KEYS.chatUser
+}
+
+export function settingsChatChannelKey(userId) {
+  return userId ? `chatChannel:${userId}` : SETTINGS_KEYS.chatChannel
+}
+
 export const DATABASE_META = {
   name: DB_NAME,
   version: DB_VERSION,
   stores: STORES,
   settingsKeys: SETTINGS_KEYS,
+  settingsChatUserKey,
+  settingsChatChannelKey,
 }
 

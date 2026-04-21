@@ -78,6 +78,7 @@ export function AddTaskModal({
               if (!canSubmit) return
               const calendarId = form.calendarId || 'personal'
               const calendarType = calendarId === 'general' ? 'general' : 'personal'
+              const isGeneral = calendarType === 'general'
               onCreate?.({
                 title: form.title.trim(),
                 description: form.description.trim(),
@@ -86,8 +87,8 @@ export function AddTaskModal({
                 dueDate: form.dueDate || '',
                 calendarType,
                 calendarId,
-                projectId: form.projectId || '',
-                teamId: form.teamId || '',
+                projectId: isGeneral ? form.projectId || null : null,
+                teamId: isGeneral ? form.teamId || null : null,
               })
               onClose?.()
             }}

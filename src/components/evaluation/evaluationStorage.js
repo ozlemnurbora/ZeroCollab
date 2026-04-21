@@ -1,19 +1,20 @@
-import { getEvaluations, putEvaluations } from '../../utils/database.js'
+import { getEvaluationsForOwner, replaceEvaluationsForOwner } from '../../utils/database.js'
 
-export async function loadEvaluations() {
+export async function loadEvaluations(ownerUserId) {
   try {
-    const items = await getEvaluations()
+    if (!ownerUserId) return []
+    const items = await getEvaluationsForOwner(ownerUserId)
     return Array.isArray(items) ? items : []
   } catch {
     return []
   }
 }
 
-export async function saveEvaluations(items) {
+export async function saveEvaluations(items, ownerUserId) {
   try {
-    await putEvaluations(items)
+    if (!ownerUserId) return
+    await replaceEvaluationsForOwner(ownerUserId, items)
   } catch {
     // ignore storage errors
   }
 }
-

@@ -37,6 +37,8 @@ function isTaskChatMessage(message) {
 export function KanbanBoard({ headerActions = null }) {
   const { t } = useLanguage()
   const { user } = useAuth()
+  const ownerUserId = user?.id ?? null
+  const ownerUserIdRef = useRef(ownerUserId)
   const { activeProject, activeTeam, memberProjectIds = [] } = useWorkspace()
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
@@ -63,6 +65,10 @@ export function KanbanBoard({ headerActions = null }) {
   useEffect(() => {
     tasksRef.current = tasks
   }, [tasks])
+
+  useEffect(() => {
+    ownerUserIdRef.current = ownerUserId
+  }, [ownerUserId])
 
   const selectedTask = useMemo(
     () => tasks.find((task) => task.id === selectedTaskId) ?? null,
@@ -98,9 +104,9 @@ export function KanbanBoard({ headerActions = null }) {
   )
 
   useEffect(() => {
-    if (!hasLoadedTasks) return
-    void saveTasks(tasks)
-  }, [tasks, hasLoadedTasks])
+    if (!hasLoadedTasks || !ownerUserId) return
+    void saveTasks(tasks, ownerUserId)
+  }, [tasks, hasLoadedTasks, ownerUserId])
 
   useEffect(() => {
     if (!hasLoadedTasks) return
@@ -110,10 +116,16 @@ export function KanbanBoard({ headerActions = null }) {
   }, [hasLoadedTasks, tasks])
 
   useEffect(() => {
+    if (!ownerUserId) {
+      setTasks([])
+      setHasLoadedTasks(false)
+      setIsLoadingTasks(false)
+      return
+    }
     let cancelled = false
     ;(async () => {
       setIsLoadingTasks(true)
-      const existing = await loadTasks()
+      const existing = await loadTasks(ownerUserId)
       if (cancelled) return
       const list = Array.isArray(existing) ? existing : []
       setTasks(list.length ? list : [])
@@ -123,7 +135,7 @@ export function KanbanBoard({ headerActions = null }) {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [ownerUserId])
 
   useEffect(() => {
     let hideTimer
@@ -142,7 +154,8 @@ export function KanbanBoard({ headerActions = null }) {
         ) {
           return
         }
-        void saveMessage(incomingChat)
+        const uid = ownerUserIdRef.current
+        if (uid) void saveMessage(incomingChat, uid)
         return
       }
       if (data?.type !== 'TASK_SYNC') return
@@ -158,8 +171,11 @@ export function KanbanBoard({ headerActions = null }) {
       window.clearTimeout(hideTimer)
       hideTimer = window.setTimeout(() => setSyncNotice(false), 3200)
       setTasks((prev) => {
-        const next = mergeTasksFromSync(prev, data.tasks, visibilityOptions)
-        void saveTasks(next)
+        const uid = ownerUserIdRef.current
+        const next = mergeTasksFromSync(prev, data.tasks, visibilityOptions).map((t) =>
+          uid ? { ...t, ownerUserId: uid } : t,
+        )
+        if (uid) void saveTasks(next, uid)
         return next
       })
     })
@@ -199,9 +215,12 @@ export function KanbanBoard({ headerActions = null }) {
         }
 
         try {
-          const allMeetings = await loadMeetings()
+          const uid = ownerUserIdRef.current
+          if (!uid) return
+          const allMeetings = await loadMeetings(uid)
           const projectMeetings = allMeetings.filter(
             (meeting) =>
+              meeting?.calendarType === 'general' &&
               !!meeting?.projectId &&
               memberProjectIds.includes(meeting.projectId) &&
               (!activeProject?.id || meeting.projectId === activeProject.id),
@@ -211,7 +230,7 @@ export function KanbanBoard({ headerActions = null }) {
             projectMeetings.length,
           )
           projectMeetings.forEach((meeting) => {
-            void broadcastMeetingUpdate(meeting, 'upsert', activeProject?.id)
+            void broadcastMeetingUpdate(meeting, 'upsert', meeting.projectId)
           })
         } catch (err) {
           console.error('[KanbanBoard] meeting broadcast error:', err)
@@ -220,7 +239,7 @@ export function KanbanBoard({ headerActions = null }) {
     }
     window.addEventListener('hub:peer-joined', handlePeerJoined)
     return () => window.removeEventListener('hub:peer-joined', handlePeerJoined)
-  }, [hasLoadedTasks, activeProject?.id, broadcastTasks, memberProjectIds, syncOptions])
+  }, [hasLoadedTasks, activeProject?.id, broadcastTasks, memberProjectIds, syncOptions, ownerUserId])
 
   useEffect(() => {
     const handleHubMessage = (e) => {
@@ -229,7 +248,8 @@ export function KanbanBoard({ headerActions = null }) {
         if (payload.projectId && !memberProjectIds.includes(payload.projectId)) return
         if (activeProject?.id && payload.projectId && payload.projectId !== activeProject.id)
           return
-        void saveMessage(payload)
+        const uid = ownerUserIdRef.current
+        if (uid) void saveMessage(payload, uid)
         return
       }
       const { action, tasks: incomingTasks, projectId } = payload
@@ -238,8 +258,11 @@ export function KanbanBoard({ headerActions = null }) {
       if (activeProject?.id && projectId && projectId !== activeProject.id) return
       if (Array.isArray(incomingTasks)) {
         setTasks((prev) => {
-          const next = mergeTasksFromSync(prev, incomingTasks, visibilityOptions)
-          void saveTasks(next)
+          const uid = ownerUserIdRef.current
+          const next = mergeTasksFromSync(prev, incomingTasks, visibilityOptions).map((t) =>
+            uid ? { ...t, ownerUserId: uid } : t,
+          )
+          if (uid) void saveTasks(next, uid)
           return next
         })
       }
@@ -288,6 +311,10 @@ export function KanbanBoard({ headerActions = null }) {
         ? 'general'
         : 'personal'
     setTasks((prev) => {
+      const projectId =
+        calendarType === 'general' && canCreateSharedTask && activeProject?.id
+          ? activeProject.id
+          : null
       const next = [
         {
           id: createId(),
@@ -295,8 +322,11 @@ export function KanbanBoard({ headerActions = null }) {
           createdAt: now,
           ...payload,
           calendarType,
-          projectId: activeProject?.id || payload.projectId || null,
-          teamId: activeTeam?.id || payload.teamId || null,
+          projectId,
+          teamId:
+            calendarType === 'general'
+              ? activeTeam?.id || payload.teamId || null
+              : null,
           ownerUserId: user?.id || null,
         },
         ...prev,
@@ -318,7 +348,7 @@ export function KanbanBoard({ headerActions = null }) {
     setTasks((prev) => {
       const next = prev.filter((t) => t.id !== taskId)
       broadcastTasks(next)
-      void saveTasks(next)
+      if (ownerUserId) void saveTasks(next, ownerUserId)
       return next
     })
   }

@@ -1,9 +1,9 @@
-import { getDatabase } from './database.js'
+import { getMeetingsForOwner, getMeetingsRaw, replaceMeetingsStore } from './database.js'
 
-export async function loadMeetings() {
+export async function loadMeetings(ownerUserId) {
   try {
-    const db = await getDatabase()
-    const result = await db.getAll('meetings')
+    if (!ownerUserId) return []
+    const result = await getMeetingsForOwner(ownerUserId)
     console.log('[MeetingDB] loaded:', result?.length)
     return result ?? []
   } catch (err) {
@@ -12,40 +12,49 @@ export async function loadMeetings() {
   }
 }
 
-export async function saveMeeting(meeting) {
+export async function saveMeeting(meeting, ownerUserId) {
   try {
-    const db = await getDatabase()
-    await db.put('meetings', meeting)
+    if (!meeting?.id || !ownerUserId) return
+    const all = await getMeetingsRaw()
+    const without = all.filter((m) => m.id !== meeting.id)
+    const next = [...without, { ...meeting, ownerUserId }]
+    await replaceMeetingsStore(next)
     console.log('[MeetingDB] saved:', meeting.id)
   } catch (err) {
     console.error('[MeetingDB] save error:', err)
   }
 }
 
-export async function deleteMeeting(id) {
+export async function deleteMeeting(id, ownerUserId) {
   try {
-    const db = await getDatabase()
-    await db.delete('meetings', id)
+    if (!ownerUserId) return
+    const all = await getMeetingsRaw()
+    const next = all.filter((m) => {
+      if (m.id !== id) return true
+      if (m.ownerUserId === ownerUserId) return false
+      return true
+    })
+    if (next.length === all.length) return
+    await replaceMeetingsStore(next)
     console.log('[MeetingDB] deleted:', id)
   } catch (err) {
     console.error('[MeetingDB] delete error:', err)
   }
 }
 
-export async function pruneMeetingsByProjectIds(projectIds) {
+export async function pruneMeetingsByProjectIds(projectIds, ownerUserId) {
+  if (!ownerUserId) return
   const ids = new Set(Array.isArray(projectIds) ? projectIds.filter(Boolean) : [])
   if (ids.size === 0) return
   try {
-    const db = await getDatabase()
-    const existing = (await db.getAll('meetings')) ?? []
-    const next = existing.filter((meeting) => !meeting?.projectId || !ids.has(meeting.projectId))
-    if (next.length === existing.length) return
-    const tx = db.transaction('meetings', 'readwrite')
-    await tx.store.clear()
-    for (const meeting of next) {
-      if (meeting?.id) await tx.store.put(meeting)
-    }
-    await tx.done
+    const all = await getMeetingsRaw()
+    const next = all.filter((meeting) => {
+      if (!meeting?.projectId || !ids.has(meeting.projectId)) return true
+      if (meeting.ownerUserId !== ownerUserId) return true
+      return false
+    })
+    if (next.length === all.length) return
+    await replaceMeetingsStore(next)
     console.log('[MeetingDB] pruned meetings for projects:', Array.from(ids))
   } catch (err) {
     console.error('[MeetingDB] prune error:', err)

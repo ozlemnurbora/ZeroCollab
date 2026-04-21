@@ -84,10 +84,13 @@ export function TaskDetailModal({
   }, [open, task, initialEdit])
 
   useEffect(() => {
-    if (!open || !task?.id) return
+    if (!open || !task?.id || !currentUserId) {
+      if (!open || !task?.id) setMessages([])
+      return
+    }
     let cancelled = false
     void (async () => {
-      const all = await loadMessages()
+      const all = await loadMessages(currentUserId)
       if (cancelled) return
       const filtered = (Array.isArray(all) ? all : [])
         .filter((m) => isTaskChatMessage(m, task.id, task.projectId))
@@ -97,17 +100,17 @@ export function TaskDetailModal({
     return () => {
       cancelled = true
     }
-  }, [open, task?.id, task?.projectId])
+  }, [open, task?.id, task?.projectId, currentUserId])
 
   useEffect(() => {
-    if (!open || !task?.id) return
+    if (!open || !task?.id || !currentUserId) return
     const pushIncoming = (incoming) => {
       if (!isTaskChatMessage(incoming, task.id, task.projectId)) return
       setMessages((prev) => {
         if (prev.some((m) => m.id === incoming.id)) return prev
         return [...prev, incoming].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
       })
-      void saveMessage(incoming)
+      void saveMessage({ ...incoming, ownerUserId: currentUserId }, currentUserId)
     }
 
     const offP2PMessage = on(P2P_EVENTS.MESSAGE, ({ data }) => {
@@ -125,11 +128,11 @@ export function TaskDetailModal({
       offP2PMessage()
       window.removeEventListener('hub:message', onHubMessage)
     }
-  }, [open, task?.id, task?.projectId])
+  }, [open, task?.id, task?.projectId, currentUserId])
 
   const handleSendMessage = async () => {
     const text = input.trim()
-    if (!text || !task?.id) return
+    if (!text || !task?.id || !currentUserId) return
     const message = {
       id: createMessageId(),
       channelId: taskChannelId,
@@ -140,8 +143,9 @@ export function TaskDetailModal({
       text,
       createdAt: Date.now(),
       kind: 'task-chat',
+      ownerUserId: currentUserId,
     }
-    await saveMessage(message)
+    await saveMessage(message, currentUserId)
     setMessages((prev) =>
       [...prev, message].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)),
     )

@@ -8,6 +8,7 @@ import {
   saveEvaluations,
 } from '../components/evaluation/evaluationStorage.js'
 import { useLanguage } from '../utils/LanguageContext.jsx'
+import { useAuth } from '../utils/AuthContext.jsx'
 import { loadOntologyText, loadGradeThresholds } from '../utils/ontologyLoader.js'
 
 const ANTHROPIC_API_KEY_STORAGE = 'zc-anthropic-key'
@@ -20,6 +21,8 @@ function createId() {
 
 export function EvaluationPage() {
   const { t } = useLanguage()
+  const { user } = useAuth()
+  const ownerUserId = user?.id ?? null
   const [aiCriteria, setAiCriteria] = useState([])
   const [ontologyText, setOntologyText] = useState('')
   const [totalScore, setTotalScore] = useState(null)
@@ -51,15 +54,21 @@ export function EvaluationPage() {
   }, [])
 
   useEffect(() => {
-    if (!hasLoadedHistory) return
-    void saveEvaluations(history)
-  }, [history, hasLoadedHistory])
+    if (!hasLoadedHistory || !ownerUserId) return
+    void saveEvaluations(history, ownerUserId)
+  }, [history, hasLoadedHistory, ownerUserId])
 
   useEffect(() => {
+    if (!ownerUserId) {
+      setHistory([])
+      setHasLoadedHistory(false)
+      setIsLoadingHistory(false)
+      return
+    }
     let cancelled = false
     ;(async () => {
       setIsLoadingHistory(true)
-      const existing = await loadEvaluations()
+      const existing = await loadEvaluations(ownerUserId)
       if (cancelled) return
       setHistory(Array.isArray(existing) ? existing : [])
       setHasLoadedHistory(true)
@@ -68,7 +77,7 @@ export function EvaluationPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [ownerUserId])
 
   const getGrade = (percentage) => {
     if (!gradeThresholds || gradeThresholds.length === 0) {
@@ -295,6 +304,7 @@ Respond with ONLY this JSON format, no markdown:
         max: 100,
         percentage: parsed.normalizedTotal || 0,
         overallFeedback: parsed.overallFeedback || '',
+        ...(ownerUserId ? { ownerUserId } : {}),
       }
       setHistory((prev) => [snapshot, ...prev])
     } catch (err) {

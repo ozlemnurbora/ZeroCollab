@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { loadTasks } from '../components/kanban/taskStorage.js'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
+import { useAuth } from '../utils/AuthContext.jsx'
 import {
   Line,
   LineChart,
@@ -25,6 +26,7 @@ function statusPieColor(id) {
 
 export function DashboardPage() {
   const { t } = useLanguage()
+  const { user } = useAuth()
   const { activeProject, teams } = useWorkspace()
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
@@ -35,10 +37,16 @@ export function DashboardPage() {
       : member?.name || member?.email || 'Unknown'
 
   useEffect(() => {
+    const ownerUserId = user?.id ?? null
+    if (!ownerUserId) {
+      setTasks([])
+      setIsLoadingTasks(false)
+      return
+    }
     let cancelled = false
     ;(async () => {
       setIsLoadingTasks(true)
-      const next = await loadTasks()
+      const next = await loadTasks(ownerUserId)
       if (cancelled) return
       setTasks(Array.isArray(next) ? next : [])
       setIsLoadingTasks(false)
@@ -46,7 +54,7 @@ export function DashboardPage() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [user?.id])
 
   const visibleTasks = useMemo(() => {
     if (!activeProject) return tasks

@@ -142,13 +142,19 @@ export function WorkspaceProvider({ children }) {
   }, [projects, teams, activeProject, activeTeam])
 
   useEffect(() => {
+    // Logout clears `projects` to []. That must not be interpreted as losing every membership.
+    if (!user) {
+      memberProjectIdsRef.current = new Set()
+      return
+    }
+
     const currentIds = new Set(projects.map((project) => project.id))
     const removedIds = [...memberProjectIdsRef.current].filter((id) => !currentIds.has(id))
     memberProjectIdsRef.current = currentIds
     if (removedIds.length === 0) return
-    void pruneSharedTasksByProjectIds(removedIds)
-    void pruneMeetingsByProjectIds(removedIds)
-  }, [projects])
+    void pruneSharedTasksByProjectIds(removedIds, user.id)
+    void pruneMeetingsByProjectIds(removedIds, user.id)
+  }, [projects, user])
 
   const loadProjects = useCallback(async () => {
     if (!user) return

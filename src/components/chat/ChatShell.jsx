@@ -69,6 +69,8 @@ export function ChatShell() {
   const navigate = useNavigate()
   const { t } = useLanguage()
   const { user } = useAuth()
+  const ownerUserId = user?.id ?? null
+  const ownerUserIdRef = useRef(ownerUserId)
   const { activeProject, teams } = useWorkspace()
   const [onlineMembers, setOnlineMembers] = useState([])
 
@@ -146,6 +148,10 @@ export function ChatShell() {
   }, [user, t])
   const [activeId, setActiveId] = useState('general')
   const isDirectConversation = activeId.startsWith('dm:')
+  useEffect(() => {
+    ownerUserIdRef.current = ownerUserId
+  }, [ownerUserId])
+
   const uniqueOnlineUsers = useMemo(() => {
     const byUser = new Map()
     for (const presence of onlineMembers) {
@@ -541,22 +547,28 @@ export function ChatShell() {
   }, [isCallOpen, remoteStream, callPhase])
 
   useEffect(() => {
-    if (!hasLoadedChat) return
-    void saveActiveChannelId(activeId)
-  }, [activeId, hasLoadedChat])
+    if (!hasLoadedChat || !ownerUserId) return
+    void saveActiveChannelId(activeId, ownerUserId)
+  }, [activeId, hasLoadedChat, ownerUserId])
 
   useEffect(() => {
-    if (!hasLoadedChat) return
-    void saveMessages(messages)
-  }, [messages, hasLoadedChat])
+    if (!hasLoadedChat || !ownerUserId) return
+    void saveMessages(messages, ownerUserId)
+  }, [messages, hasLoadedChat, ownerUserId])
 
   useEffect(() => {
+    if (!ownerUserId) {
+      setMessages([])
+      setHasLoadedChat(false)
+      setIsLoadingChat(false)
+      return
+    }
     let cancelled = false
     ;(async () => {
       setIsLoadingChat(true)
       const [ch, msgs, s] = await Promise.all([
-        loadActiveChannelId(),
-        loadMessages(),
+        loadActiveChannelId(ownerUserId),
+        loadMessages(ownerUserId),
         loadSettings(),
       ])
       if (cancelled) return
@@ -570,7 +582,7 @@ export function ChatShell() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [ownerUserId])
 
   useEffect(() => {
     let cancelled = false
@@ -598,9 +610,11 @@ export function ChatShell() {
       if (data.type === 'chat-message') {
         const incoming = data.payload
         if (!incoming || !incoming.id) return
+        const uid = ownerUserIdRef.current
+        const stamped = uid ? { ...incoming, ownerUserId: uid } : incoming
         setMessages((prev) => {
-          if (prev.some((m) => m.id === incoming.id)) return prev
-          return [...prev, incoming]
+          if (prev.some((m) => m.id === stamped.id)) return prev
+          return [...prev, stamped]
         })
       } else if (data.type === 'file-meta') {
         const meta = data.payload
@@ -680,6 +694,7 @@ export function ChatShell() {
           const url = URL.createObjectURL(blob)
           objectUrlsRef.current.add(url)
           setFileUrls((prev) => ({ ...prev, [transferId]: url }))
+          const uid = ownerUserIdRef.current
           const message = {
             id: transferId,
             originalTransferId: meta.id,
@@ -688,6 +703,7 @@ export function ChatShell() {
             sender: meta.sender ?? from,
             createdAt: meta.createdAt ?? Date.now(),
             kind: 'file',
+            ...(uid ? { ownerUserId: uid } : {}),
             file: {
               name: meta.name,
               size: meta.size,
@@ -826,7 +842,8 @@ export function ChatShell() {
       // For now, only react to settings changes so that local
       // message state is not overridden right after sending.
       if (detail.store === 'settings') {
-        void loadActiveChannelId().then(setActiveId)
+        const uid = ownerUserIdRef.current
+        if (uid) void loadActiveChannelId(uid).then(setActiveId)
         void loadSettings().then((s) => {
           const p = s?.profile
           setMyAvatarColor(p?.avatarColor || null)
@@ -852,9 +869,11 @@ export function ChatShell() {
     const handleHubMessage = (e) => {
       const msg = e.detail
       if (!msg || msg.action === 'task-sync') return
+      const uid = ownerUserIdRef.current
+      const stamped = uid ? { ...msg, ownerUserId: uid } : msg
       setMessages((prev) => {
-        if (prev.find((m) => m.id === msg.id)) return prev
-        return [...prev, msg]
+        if (prev.find((m) => m.id === stamped.id)) return prev
+        return [...prev, stamped]
       })
     }
 
@@ -895,7 +914,7 @@ export function ChatShell() {
       window.removeEventListener('hub:message', handleHubMessage)
       window.removeEventListener('hub:call-invite', handleCallInvite)
     }
-  }, [activeProject])
+  }, [activeProject, ownerUserId])
 
   useEffect(() => {
     const updateOnlineMembers = () => {
@@ -1011,6 +1030,7 @@ export function ChatShell() {
       sender: me,
       text,
       createdAt: now,
+      ...(ownerUserId ? { ownerUserId } : {}),
     }
     setMessages((prev) => {
       const updated = [...prev, next]
@@ -1063,6 +1083,7 @@ export function ChatShell() {
       sender,
       createdAt: now,
       kind: 'file',
+      ...(ownerUserId ? { ownerUserId } : {}),
       file: {
         name: file.name,
         size: file.size,

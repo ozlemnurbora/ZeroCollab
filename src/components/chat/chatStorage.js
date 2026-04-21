@@ -1,69 +1,75 @@
 import {
   DATABASE_META,
-  getMessages,
   getSetting,
+  getMessagesForOwner,
   putMessage,
-  putMessages,
+  replaceMessagesForOwner,
   setSetting,
 } from '../../utils/database.js'
 
-export async function loadChatUser() {
+export async function loadChatUser(ownerUserId) {
   try {
-    const v = await getSetting(DATABASE_META.settingsKeys.chatUser)
+    if (!ownerUserId) return null
+    const v = await getSetting(DATABASE_META.settingsChatUserKey(ownerUserId))
     return typeof v === 'string' && v ? v : null
   } catch {
     return null
   }
 }
 
-export async function saveChatUser(name) {
+export async function saveChatUser(name, ownerUserId) {
   try {
-    if (!name) await setSetting(DATABASE_META.settingsKeys.chatUser, null)
-    else await setSetting(DATABASE_META.settingsKeys.chatUser, name)
+    if (!ownerUserId) return
+    if (!name) await setSetting(DATABASE_META.settingsChatUserKey(ownerUserId), null)
+    else await setSetting(DATABASE_META.settingsChatUserKey(ownerUserId), name)
   } catch {
     // ignore
   }
 }
 
-export async function loadActiveChannelId() {
+export async function loadActiveChannelId(ownerUserId) {
   try {
-    const v = await getSetting(DATABASE_META.settingsKeys.chatChannel)
+    if (!ownerUserId) return 'general'
+    const v = await getSetting(DATABASE_META.settingsChatChannelKey(ownerUserId))
     return typeof v === 'string' && v ? v : 'general'
   } catch {
     return 'general'
   }
 }
 
-export async function saveActiveChannelId(id) {
+export async function saveActiveChannelId(id, ownerUserId) {
   try {
-    await setSetting(DATABASE_META.settingsKeys.chatChannel, id)
+    if (!ownerUserId) return
+    await setSetting(DATABASE_META.settingsChatChannelKey(ownerUserId), id)
   } catch {
     // ignore
   }
 }
 
-export async function loadMessages() {
+export async function loadMessages(ownerUserId) {
   try {
-    const items = await getMessages()
+    if (!ownerUserId) return []
+    const items = await getMessagesForOwner(ownerUserId)
     return Array.isArray(items) ? items : []
   } catch {
     return []
   }
 }
 
-export async function saveMessages(messages) {
+export async function saveMessages(messages, ownerUserId) {
   try {
-    await putMessages(messages)
+    if (!ownerUserId) return
+    await replaceMessagesForOwner(ownerUserId, messages)
   } catch {
     // ignore
   }
 }
 
-export async function saveMessage(message) {
+export async function saveMessage(message, ownerUserId) {
   try {
-    await putMessage(message)
+    if (!ownerUserId || !message?.id) return
+    await putMessage({ ...message, ownerUserId })
   } catch {
     // ignore
   }
 }
-
