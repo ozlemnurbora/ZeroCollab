@@ -149,7 +149,7 @@ export function MeetingRoomPage() {
           ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!isLive && !isEndedMeeting ? (
+          {!isLive ? (
             <button
               type="button"
               onClick={() => void joinMeetingSession(meeting)}
@@ -157,11 +157,6 @@ export function MeetingRoomPage() {
             >
               Join Meeting
             </button>
-          ) : null}
-          {isEndedMeeting ? (
-            <span className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
-              Meeting has ended
-            </span>
           ) : null}
           <button
             type="button"
@@ -182,6 +177,12 @@ export function MeetingRoomPage() {
           </button>
         </div>
       </header>
+
+      {isEndedMeeting ? (
+        <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+          This meeting was scheduled for an earlier time. Access is still open for continued discussion and collaboration.
+        </div>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[1fr_280px]">
         <div className="space-y-4">

@@ -30,6 +30,7 @@ export function getMeetingLifecycle(meeting, now = Date.now()) {
     status,
     startAt,
     endAt,
-    canJoin: status !== 'ended',
+    // Past schedule is informational only; valid meetings remain joinable.
+    canJoin: true,
   }
 }

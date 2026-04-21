@@ -418,11 +418,6 @@ export function MeetingSessionProvider({ children }) {
     }
 
     const lifecycle = getMeetingLifecycle(meeting)
-    if (!lifecycle.canJoin) {
-      setSessionStatus('ended')
-      setError('This meeting has already ended.')
-      return false
-    }
 
     if (inSessionRef.current && activeMeetingRef.current?.meetingId === meeting.id) {
       setSessionStatus('live')
@@ -754,19 +749,6 @@ export function MeetingSessionProvider({ children }) {
     upsertParticipant,
     wireMediaCall,
   ])
-
-  useEffect(() => {
-    if (!activeMeeting?.endAt || !inSessionRef.current) return undefined
-    const timer = window.setInterval(() => {
-      if (!inSessionRef.current || !activeMeetingRef.current?.endAt) return
-      if (Date.now() >= activeMeetingRef.current.endAt) {
-        setSessionStatus('ended')
-        setError('Meeting duration has ended.')
-        leaveMeeting({ reason: 'meeting-expired' })
-      }
-    }, 15000)
-    return () => window.clearInterval(timer)
-  }, [activeMeeting?.endAt, leaveMeeting])
 
   useEffect(() => {
     const handleBeforeUnload = () => {
