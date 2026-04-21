@@ -1,10 +1,40 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../ui/Modal.jsx'
 import { Button } from '../ui/Button.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
+import { useAuth } from '../../utils/AuthContext.jsx'
+import { loadMessages, saveMessage } from '../chat/chatStorage.js'
+import { broadcastMessage } from '../../utils/hubManager.js'
+import { on, P2P_EVENTS, sendToAllPeers } from '../../utils/p2pManager.js'
 
 function normalizeCalendarType(v) {
   return v === 'general' ? 'general' : 'personal'
+}
+
+function createMessageId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  return `msg_${Date.now()}_${Math.random().toString(16).slice(2)}`
+}
+
+function formatMessageTime(timestamp) {
+  const parsed = Number(timestamp)
+  if (!Number.isFinite(parsed)) return ''
+  try {
+    return new Date(parsed).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return ''
+  }
+}
+
+function isTaskChatMessage(message, taskId, projectId) {
+  if (!message || message.kind !== 'task-chat') return false
+  if (message.taskId !== taskId) return false
+  return (message.projectId ?? null) === (projectId ?? null)
 }
 
 export function TaskDetailModal({
@@ -17,8 +47,17 @@ export function TaskDetailModal({
   initialEdit = false,
 }) {
   const { t } = useLanguage()
+  const { user } = useAuth()
   const [isEditing, setIsEditing] = useState(!!initialEdit)
   const [form, setForm] = useState(() => (task ? { ...task } : null))
+  const [messages, setMessages] = useState([])
+  const [input, setInput] = useState('')
+  const currentUserId = user?.id || null
+  const currentUserName =
+    String(user?.user_metadata?.full_name || '').trim() ||
+    String(user?.email || '').split('@')[0] ||
+    t('chat_anonymous')
+  const taskChannelId = task?.id ? `task:${task.id}` : ''
 
   const calendarOptions = useMemo(() => {
     const base = [
@@ -36,6 +75,82 @@ export function TaskDetailModal({
     const match = calendarOptions.find((c) => c.id === id)
     return match?.name || id
   }, [calendarOptions, task])
+
+  useEffect(() => {
+    if (!open) return
+    setIsEditing(!!initialEdit)
+    setForm(task ? { ...task } : null)
+    setInput('')
+  }, [open, task, initialEdit])
+
+  useEffect(() => {
+    if (!open || !task?.id) return
+    let cancelled = false
+    void (async () => {
+      const all = await loadMessages()
+      if (cancelled) return
+      const filtered = (Array.isArray(all) ? all : [])
+        .filter((m) => isTaskChatMessage(m, task.id, task.projectId))
+        .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+      setMessages(filtered)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [open, task?.id, task?.projectId])
+
+  useEffect(() => {
+    if (!open || !task?.id) return
+    const pushIncoming = (incoming) => {
+      if (!isTaskChatMessage(incoming, task.id, task.projectId)) return
+      setMessages((prev) => {
+        if (prev.some((m) => m.id === incoming.id)) return prev
+        return [...prev, incoming].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+      })
+      void saveMessage(incoming)
+    }
+
+    const offP2PMessage = on(P2P_EVENTS.MESSAGE, ({ data }) => {
+      if (data?.type !== 'chat-message') return
+      pushIncoming(data.payload)
+    })
+    const onHubMessage = (e) => {
+      const incoming = e.detail
+      if (!incoming || incoming.action === 'task-sync') return
+      pushIncoming(incoming)
+    }
+    window.addEventListener('hub:message', onHubMessage)
+
+    return () => {
+      offP2PMessage()
+      window.removeEventListener('hub:message', onHubMessage)
+    }
+  }, [open, task?.id, task?.projectId])
+
+  const handleSendMessage = async () => {
+    const text = input.trim()
+    if (!text || !task?.id) return
+    const message = {
+      id: createMessageId(),
+      channelId: taskChannelId,
+      taskId: task.id,
+      projectId: task.projectId ?? null,
+      sender: currentUserName,
+      senderUserId: currentUserId,
+      text,
+      createdAt: Date.now(),
+      kind: 'task-chat',
+    }
+    await saveMessage(message)
+    setMessages((prev) =>
+      [...prev, message].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)),
+    )
+    setInput('')
+    sendToAllPeers({ type: 'chat-message', payload: message })
+    void broadcastMessage(message).catch((err) =>
+      console.error('[TaskDetailModal] task chat broadcast failed:', err),
+    )
+  }
 
   if (!task) {
     return (
@@ -260,6 +375,60 @@ export function TaskDetailModal({
             className="mt-1 min-h-[120px] w-full resize-y rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:opacity-70"
           />
         </div>
+
+        <section className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
+          <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">Task Chat</h3>
+          <div className="mt-3 max-h-56 space-y-2 overflow-y-auto pr-1">
+            {messages.length === 0 ? (
+              <p className="text-xs text-[rgb(var(--zc-muted2))]">
+                No messages yet for this task.
+              </p>
+            ) : (
+              messages.map((message) => {
+                const mine = currentUserId && message.senderUserId === currentUserId
+                return (
+                  <div
+                    key={message.id}
+                    className={`max-w-[92%] rounded-lg border px-3 py-2 text-sm ${
+                      mine
+                        ? 'ml-auto border-indigo-400/30 bg-indigo-500/15'
+                        : 'mr-auto border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-xs font-medium text-[rgb(var(--zc-muted))]">
+                        {message.sender || t('chat_anonymous')}
+                      </span>
+                      <span className="text-[11px] text-[rgb(var(--zc-subtle))]">
+                        {formatMessageTime(message.createdAt)}
+                      </span>
+                    </div>
+                    <p className="mt-1 whitespace-pre-wrap break-words text-[rgb(var(--zc-text))]">
+                      {message.text}
+                    </p>
+                  </div>
+                )
+              })
+            )}
+          </div>
+          <div className="mt-3 flex items-center gap-2">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  void handleSendMessage()
+                }
+              }}
+              placeholder="Write a message..."
+              className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            />
+            <Button onClick={() => void handleSendMessage()} disabled={!input.trim()}>
+              Send
+            </Button>
+          </div>
+        </section>
       </div>
     </Modal>
   )

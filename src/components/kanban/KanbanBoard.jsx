@@ -9,6 +9,7 @@ import { useLanguage } from '../../utils/LanguageContext.jsx'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import { useAuth } from '../../utils/AuthContext.jsx'
 import { loadMeetings } from '../../utils/meetingStorage.js'
+import { saveMessage } from '../chat/chatStorage.js'
 import { broadcastMeetingUpdate, broadcastTaskSync } from '../../utils/hubManager.js'
 import { on, sendToAllPeers, P2P_EVENTS } from '../../utils/p2pManager.js'
 import {
@@ -22,6 +23,15 @@ function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
     return crypto.randomUUID()
   return `task_${Date.now()}_${Math.random().toString(16).slice(2)}`
+}
+
+function isTaskChatMessage(message) {
+  return (
+    !!message &&
+    message.kind === 'task-chat' &&
+    typeof message.taskId === 'string' &&
+    message.taskId.length > 0
+  )
 }
 
 export function KanbanBoard({ headerActions = null }) {
@@ -120,6 +130,21 @@ export function KanbanBoard({ headerActions = null }) {
     let peerBroadcastTimer
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
       console.log('[KanbanBoard] message received', data)
+      if (data?.type === 'chat-message') {
+        const incomingChat = data.payload
+        if (!isTaskChatMessage(incomingChat)) return
+        if (incomingChat.projectId && !memberProjectIds.includes(incomingChat.projectId))
+          return
+        if (
+          activeProject?.id &&
+          incomingChat.projectId &&
+          incomingChat.projectId !== activeProject.id
+        ) {
+          return
+        }
+        void saveMessage(incomingChat)
+        return
+      }
       if (data?.type !== 'TASK_SYNC') return
       const incomingGeneralTasks = (Array.isArray(data.tasks) ? data.tasks : []).filter(
         (task) =>
@@ -199,7 +224,15 @@ export function KanbanBoard({ headerActions = null }) {
 
   useEffect(() => {
     const handleHubMessage = (e) => {
-      const { action, tasks: incomingTasks, projectId } = e.detail || {}
+      const payload = e.detail || {}
+      if (isTaskChatMessage(payload)) {
+        if (payload.projectId && !memberProjectIds.includes(payload.projectId)) return
+        if (activeProject?.id && payload.projectId && payload.projectId !== activeProject.id)
+          return
+        void saveMessage(payload)
+        return
+      }
+      const { action, tasks: incomingTasks, projectId } = payload
       if (action !== 'task-sync') return
       if (projectId && !memberProjectIds.includes(projectId)) return
       if (activeProject?.id && projectId && projectId !== activeProject.id) return
@@ -214,14 +247,6 @@ export function KanbanBoard({ headerActions = null }) {
     window.addEventListener('hub:message', handleHubMessage)
     return () => window.removeEventListener('hub:message', handleHubMessage)
   }, [activeProject?.id, memberProjectIds, visibilityOptions])
-
-  useEffect(() => {
-    const visible = filterTasksForVisibility(tasksRef.current, visibilityOptions)
-    if (visible.length !== tasksRef.current.length) {
-      setTasks(visible)
-      void saveTasks(visible)
-    }
-  }, [visibilityOptions])
 
   const filteredTasks = useMemo(() => {
     const visible = filterTasksForVisibility(tasks, visibilityOptions)

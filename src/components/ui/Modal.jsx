@@ -24,7 +24,7 @@ export function Modal({ open, onClose, title, children, footer }) {
 
       <div className="absolute inset-0 flex items-center justify-center p-4">
         <div
-          className="w-full max-w-lg rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg))] shadow-xl shadow-black/40"
+          className="flex max-h-[calc(100vh-2rem)] w-full max-w-lg flex-col overflow-hidden rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg))] shadow-xl shadow-black/40"
           role="dialog"
           aria-modal="true"
           aria-label={title}
@@ -45,7 +45,7 @@ export function Modal({ open, onClose, title, children, footer }) {
             </button>
           </div>
 
-          <div className="px-5 py-4">{children}</div>
+          <div className="min-h-0 overflow-y-auto px-5 py-4">{children}</div>
 
           {footer ? (
             <div className="border-t border-[rgb(var(--zc-border))] px-5 py-4">

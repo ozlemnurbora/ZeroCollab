@@ -1,4 +1,11 @@
-import { DATABASE_META, getMessages, getSetting, putMessages, setSetting } from '../../utils/database.js'
+import {
+  DATABASE_META,
+  getMessages,
+  getSetting,
+  putMessage,
+  putMessages,
+  setSetting,
+} from '../../utils/database.js'
 
 export async function loadChatUser() {
   try {
@@ -47,6 +54,14 @@ export async function loadMessages() {
 export async function saveMessages(messages) {
   try {
     await putMessages(messages)
+  } catch {
+    // ignore
+  }
+}
+
+export async function saveMessage(message) {
+  try {
+    await putMessage(message)
   } catch {
     // ignore
   }
