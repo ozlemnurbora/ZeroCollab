@@ -14,9 +14,8 @@ import {
 } from '../utils/meetingStorage.js'
 import { broadcastMeetingUpdate } from '../utils/hubManager.js'
 
-function meetingStorageProjectId(meeting, activeProject) {
-  if (meeting?.calendarType === 'general' && activeProject?.id) return activeProject.id
-  return null
+function meetingStorageProjectId(_meeting, activeProject) {
+  return activeProject?.id ?? null
 }
 
 export function TasksPage() {
@@ -38,10 +37,8 @@ export function TasksPage() {
       console.log('[Meeting] loaded from DB:', data)
       const list = Array.isArray(data) ? data : []
       const visible = list.filter((meeting) => {
-        if (meeting.calendarType === 'general') {
-          if (!meeting?.projectId) return false
-          return memberProjectIds.includes(meeting.projectId)
-        }
+        if (!meeting?.projectId || !memberProjectIds.includes(meeting.projectId)) return false
+        if (meeting.calendarType === 'general') return true
         return meeting.ownerUserId === ownerUserId
       })
       setMeetings(visible)
@@ -59,6 +56,7 @@ export function TasksPage() {
           if (!meeting.projectId || !memberProjectIds.includes(meeting.projectId)) return
         } else {
           if (!ownerUserId || meeting.ownerUserId !== ownerUserId) return
+          if (!meeting.projectId || !memberProjectIds.includes(meeting.projectId)) return
         }
         if (ownerUserId) await saveMeeting(meeting, ownerUserId)
         setMeetings((prev) => {
@@ -124,7 +122,9 @@ export function TasksPage() {
                   if (activeProject?.id && meeting.projectId !== activeProject.id) return false
                   return true
                 }
-                return meeting.ownerUserId === ownerUserId
+                if (meeting.ownerUserId !== ownerUserId) return false
+                if (activeProject?.id && meeting.projectId !== activeProject.id) return false
+                return true
               })
               .map((meeting) => (
                 <div

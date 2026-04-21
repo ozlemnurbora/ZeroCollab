@@ -87,8 +87,8 @@ export function AddTaskModal({
                 dueDate: form.dueDate || '',
                 calendarType,
                 calendarId,
-                projectId: isGeneral ? form.projectId || null : null,
-                teamId: isGeneral ? form.teamId || null : null,
+                projectId: activeProject?.id ?? null,
+                teamId: isGeneral ? form.teamId || activeTeam?.id || null : null,
               })
               onClose?.()
             }}

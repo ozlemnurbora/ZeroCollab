@@ -26,7 +26,6 @@ export async function pruneSharedTasksByProjectIds(projectIds, ownerUserId) {
   const current = await loadTasks(ownerUserId)
   const next = current.filter((task) => {
     if (!task?.projectId) return true
-    if (task.calendarType !== 'general') return true
     return !ids.has(task.projectId)
   })
   if (next.length !== current.length) {

@@ -22,8 +22,15 @@ import {
   mergeTasksFromSync,
   removeAuthorizedGeneralTaskById,
   shouldBroadcastGeneralTaskDelete,
+  taskVisibleInActiveProject,
   tasksForP2PBroadcast,
 } from '../utils/taskP2PSync.js'
+import {
+  CUSTOM_CALENDARS_STORAGE_KEY,
+  CUSTOM_CALENDARS_UPDATED_EVENT,
+  filterCustomCalendarsForScope,
+  loadCustomCalendarsFromStorage,
+} from '../utils/customCalendarStorage.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -62,15 +69,9 @@ export function CalendarPage() {
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [detailInitialEdit, setDetailInitialEdit] = useState(false)
   const [syncNotice, setSyncNotice] = useState(false)
-  const [customCalendars, setCustomCalendars] = useState(() => {
-    try {
-      if (typeof localStorage === 'undefined') return []
-      const parsed = JSON.parse(localStorage.getItem('zc-custom-calendars') || '[]')
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
-  })
+  const [customCalendars, setCustomCalendars] = useState(() =>
+    loadCustomCalendarsFromStorage(),
+  )
   const [showNewCalendarInput, setShowNewCalendarInput] = useState(false)
   const [newCalendarName, setNewCalendarName] = useState('')
   const tasksRef = useRef(tasks)
@@ -103,10 +104,30 @@ export function CalendarPage() {
     [memberProjectIds, user?.id],
   )
 
+  const visibleCustomCalendars = useMemo(
+    () =>
+      filterCustomCalendarsForScope(customCalendars, {
+        projectId: activeProject?.id ?? null,
+        ownerUserId,
+      }),
+    [customCalendars, activeProject?.id, ownerUserId],
+  )
+
   useEffect(() => {
     if (typeof localStorage === 'undefined') return
-    localStorage.setItem('zc-custom-calendars', JSON.stringify(customCalendars))
+    try {
+      localStorage.setItem(CUSTOM_CALENDARS_STORAGE_KEY, JSON.stringify(customCalendars))
+      window.dispatchEvent(new Event(CUSTOM_CALENDARS_UPDATED_EVENT))
+    } catch {
+      // ignore quota / privacy errors
+    }
   }, [customCalendars])
+
+  useEffect(() => {
+    if (activeCalendar === 'general' || activeCalendar === 'personal') return
+    if (visibleCustomCalendars.some((c) => c.id === activeCalendar)) return
+    setActiveCalendar('general')
+  }, [activeCalendar, visibleCustomCalendars])
 
   const broadcastTasks = useCallback(
     (updatedTasks) => {
@@ -155,10 +176,8 @@ export function CalendarPage() {
     loadMeetings(ownerUserId).then((data) => {
       const list = Array.isArray(data) ? data : []
       const visible = list.filter((meeting) => {
-        if (meeting.calendarType === 'general') {
-          if (!meeting?.projectId) return false
-          return memberProjectIds.includes(meeting.projectId)
-        }
+        if (!meeting?.projectId || !memberProjectIds.includes(meeting.projectId)) return false
+        if (meeting.calendarType === 'general') return true
         return meeting.ownerUserId === ownerUserId
       })
       setMeetings(visible)
@@ -175,6 +194,7 @@ export function CalendarPage() {
           if (!meeting.projectId || !memberProjectIds.includes(meeting.projectId)) return
         } else {
           if (!ownerUserId || meeting.ownerUserId !== ownerUserId) return
+          if (!meeting.projectId || !memberProjectIds.includes(meeting.projectId)) return
         }
         if (ownerUserId) await saveMeeting(meeting, ownerUserId)
         setMeetings((prev) => {
@@ -276,9 +296,8 @@ export function CalendarPage() {
   const filteredTasks = useMemo(() => {
     let list = filterTasksForVisibility(tasks, visibilityOptions)
     if (activeProject) {
-      list = list.filter(
-        (task) =>
-          task.projectId === activeProject.id || (!task.projectId && task.calendarType !== 'general'),
+      list = list.filter((task) =>
+        taskVisibleInActiveProject(task, activeProject.id, ownerUserId),
       )
     }
 
@@ -293,15 +312,22 @@ export function CalendarPage() {
 
     // Custom calendar
     return list.filter((task) => task.calendarId === activeCalendar)
-  }, [tasks, activeCalendar, activeProject, visibilityOptions])
+  }, [tasks, activeCalendar, activeProject, visibilityOptions, ownerUserId])
 
   const addCalendar = () => {
     const name = newCalendarName.trim()
     if (!name) return
+    if (!ownerUserId || !activeProject?.id) return
+    const scopedCount = filterCustomCalendarsForScope(customCalendars, {
+      projectId: activeProject.id,
+      ownerUserId,
+    }).length
     const newCal = {
       id: `custom_${Date.now()}`,
       name,
-      color: CALENDAR_COLORS[customCalendars.length % CALENDAR_COLORS.length],
+      color: CALENDAR_COLORS[scopedCount % CALENDAR_COLORS.length],
+      projectId: activeProject.id,
+      ownerUserId,
     }
     setCustomCalendars((prev) => [...prev, newCal])
     setActiveCalendar(newCal.id)
@@ -310,6 +336,7 @@ export function CalendarPage() {
   }
 
   const deleteCalendar = (id) => {
+    if (!visibleCustomCalendars.some((c) => c.id === id)) return
     setCustomCalendars((prev) => prev.filter((c) => c.id !== id))
     if (activeCalendar === id) setActiveCalendar('general')
   }
@@ -357,6 +384,7 @@ export function CalendarPage() {
         if (activeProject?.id && meeting.projectId !== activeProject.id) return false
       } else {
         if (meeting.ownerUserId !== ownerUserId) return false
+        if (activeProject?.id && meeting.projectId !== activeProject.id) return false
       }
       if (activeCalendar === 'general') return meeting.calendarType === 'general'
       if (activeCalendar === 'personal') {
@@ -445,10 +473,7 @@ export function CalendarPage() {
         ? 'general'
         : 'personal'
     setTasks((prev) => {
-      const projectId =
-        calendarType === 'general' && canCreateSharedTask && activeProject?.id
-          ? activeProject.id
-          : null
+      const projectId = activeProject?.id ? activeProject.id : null
       const next = [
         {
           id: createId(),
@@ -585,7 +610,7 @@ export function CalendarPage() {
               {t('cal_calendar_personal')}
             </button>
 
-            {customCalendars.map((cal) => (
+            {visibleCustomCalendars.map((cal) => (
               <div key={cal.id} className="group flex items-center gap-1">
                 <button
                   type="button"
@@ -655,8 +680,19 @@ export function CalendarPage() {
               ) : (
                 <button
                   type="button"
+                  disabled={!activeProject?.id || !ownerUserId}
+                  title={
+                    !activeProject?.id || !ownerUserId
+                      ? t('cal_new_calendar_need_project')
+                      : undefined
+                  }
                   onClick={() => setShowNewCalendarInput(true)}
-                  className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium text-[rgb(var(--zc-muted2))] transition hover:bg-[rgb(var(--zc-border)/0.35)] hover:text-[rgb(var(--zc-text))]"
+                  className={[
+                    'flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium transition',
+                    !activeProject?.id || !ownerUserId
+                      ? 'cursor-not-allowed text-[rgb(var(--zc-subtle))]'
+                      : 'text-[rgb(var(--zc-muted2))] hover:bg-[rgb(var(--zc-border)/0.35)] hover:text-[rgb(var(--zc-text))]',
+                  ].join(' ')}
                 >
                   <span className="text-base leading-none">+</span>
                   {t('cal_new_calendar')}
@@ -718,7 +754,7 @@ export function CalendarPage() {
             : activeCalendar,
           calendarId: activeCalendar,
         }}
-        customCalendars={customCalendars}
+        customCalendars={visibleCustomCalendars}
         activeProject={activeProject}
         activeTeam={activeTeam}
       />
@@ -733,7 +769,7 @@ export function CalendarPage() {
           deleteTask(id)
           setSelectedTaskId(null)
         }}
-        customCalendars={customCalendars}
+        customCalendars={visibleCustomCalendars}
         initialEdit={detailInitialEdit}
       />
     </section>

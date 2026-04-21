@@ -22,9 +22,11 @@ import {
   mergeTasksFromSync,
   removeAuthorizedGeneralTaskById,
   shouldBroadcastGeneralTaskDelete,
+  taskVisibleInActiveProject,
   tasksForP2PBroadcast,
 } from '../../utils/taskP2PSync.js'
 import { checkTaskReminders, startReminderChecker } from '../../utils/taskReminder.js'
+import { useScopedCustomCalendars } from '../../utils/useScopedCustomCalendars.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -56,17 +58,7 @@ export function KanbanBoard({ headerActions = null }) {
   const [draggingTaskId, setDraggingTaskId] = useState(null)
   const [dropTargetColumnId, setDropTargetColumnId] = useState(null)
   const [syncNotice, setSyncNotice] = useState(false)
-  const [customCalendars] = useState(() => {
-    try {
-      if (typeof localStorage === 'undefined') return []
-      const parsed = JSON.parse(
-        localStorage.getItem('zc-custom-calendars') || '[]',
-      )
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
-  })
+  const customCalendars = useScopedCustomCalendars(activeProject?.id ?? null, ownerUserId)
   const tasksRef = useRef(tasks)
 
   useEffect(() => {
@@ -315,11 +307,10 @@ export function KanbanBoard({ headerActions = null }) {
   const filteredTasks = useMemo(() => {
     const visible = filterTasksForVisibility(tasks, visibilityOptions)
     if (!activeProject) return visible
-    return visible.filter(
-      (task) =>
-        task.projectId === activeProject.id || (!task.projectId && task.calendarType !== 'general'),
+    return visible.filter((task) =>
+      taskVisibleInActiveProject(task, activeProject.id, ownerUserId),
     )
-  }, [tasks, activeProject, visibilityOptions])
+  }, [tasks, activeProject, visibilityOptions, ownerUserId])
 
   const tasksByColumn = useMemo(() => {
     const map = new Map(KANBAN_COLUMNS.map((c) => [c.id, []]))
@@ -352,10 +343,7 @@ export function KanbanBoard({ headerActions = null }) {
         ? 'general'
         : 'personal'
     setTasks((prev) => {
-      const projectId =
-        calendarType === 'general' && canCreateSharedTask && activeProject?.id
-          ? activeProject.id
-          : null
+      const projectId = activeProject?.id ? activeProject.id : null
       const next = [
         {
           id: createId(),

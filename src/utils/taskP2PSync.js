@@ -13,10 +13,17 @@ function isAuthorizedProjectTask(task, allowedProjectIds) {
 }
 
 function isOwnedPersonalTask(task, currentUserId) {
-  if (!task || task.calendarType === 'general') return false
-  if (task.projectId) return false
+  if (!task || isGeneralTask(task)) return false
   if (!currentUserId) return !task.ownerUserId
-  return !task.ownerUserId || task.ownerUserId === currentUserId
+  return task.ownerUserId === currentUserId
+}
+
+/** Personal/custom tasks scoped to a project the user belongs to (excludes legacy null projectId). */
+function isOwnedPersonalTaskInAllowedProjects(task, currentUserId, allowedProjectIds) {
+  if (!isOwnedPersonalTask(task, currentUserId)) return false
+  const allowed = normalizeSet(allowedProjectIds)
+  if (!task.projectId) return false
+  return allowed.has(task.projectId)
 }
 
 export function tasksForP2PBroadcast(tasks, options = {}) {
@@ -39,7 +46,7 @@ export function mergeTasksFromSync(localTasks, incomingTasks, options = {}) {
   const allowed = normalizeSet(allowedProjectIds)
 
   const personalTasks = local.filter((task) =>
-    isOwnedPersonalTask(task, currentUserId),
+    isOwnedPersonalTaskInAllowedProjects(task, currentUserId, allowedProjectIds),
   )
   const mergedGeneralById = new Map()
 
@@ -57,13 +64,21 @@ export function mergeTasksFromSync(localTasks, incomingTasks, options = {}) {
   return [...personalTasks, ...mergedGeneralById.values()]
 }
 
+/** When a project is selected: general tasks in that project, or personal/custom owned by current user in that project. */
+export function taskVisibleInActiveProject(task, activeProjectId, ownerUserId) {
+  if (!activeProjectId) return true
+  if (!task || task.projectId !== activeProjectId) return false
+  if (isGeneralTask(task)) return true
+  return !!ownerUserId && task.ownerUserId === ownerUserId
+}
+
 export function filterTasksForVisibility(tasks, options = {}) {
   const list = Array.isArray(tasks) ? tasks : []
   const { allowedProjectIds = [], currentUserId = null } = options
   const allowed = normalizeSet(allowedProjectIds)
   return list.filter(
     (task) =>
-      isOwnedPersonalTask(task, currentUserId) ||
+      isOwnedPersonalTaskInAllowedProjects(task, currentUserId, allowedProjectIds) ||
       isAuthorizedProjectTask(task, allowed),
   )
 }
