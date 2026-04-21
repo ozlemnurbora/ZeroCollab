@@ -33,6 +33,12 @@ import {
 import { CallButton } from '../call/CallButton.jsx'
 import { VideoCall } from '../call/VideoCall.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
+import {
+  dmPairChannelId,
+  participantKey,
+  shouldAcceptIncomingChatPayload,
+  userParticipatesInDmPair,
+} from './chatDmIds.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -42,12 +48,6 @@ function createId() {
 
 function createTransferId(fileId, senderPeerId) {
   return `${senderPeerId || 'unknown'}:${fileId}`
-}
-
-function dmIdFromEmail(email) {
-  const local = String(email || '').split('@')[0].trim().toLowerCase()
-  if (!local) return ''
-  return `dm:${local.replace(/\s+/g, '_')}`
 }
 
 function normalizeEmail(email) {
@@ -71,6 +71,7 @@ export function ChatShell() {
   const { user } = useAuth()
   const ownerUserId = user?.id ?? null
   const ownerUserIdRef = useRef(ownerUserId)
+  const userEmailRef = useRef(user?.email ?? '')
   const { activeProject, teams } = useWorkspace()
   const [onlineMembers, setOnlineMembers] = useState([])
 
@@ -109,25 +110,48 @@ export function ChatShell() {
   }, [teams, activeProject])
 
   const dmList = useMemo(() => {
-    if (!activeProject || !teams) return []
+    if (!activeProject || !teams || !ownerUserId) return []
+    const selfKey = participantKey(ownerUserId, user?.email)
+    const byId = new Map()
+
+    const addDm = (raw) => {
+      const memberName = memberNameFromAny(raw)
+      const email =
+        typeof raw === 'object' && raw?.email ? normalizeEmail(raw.email) : ''
+      const peerUserId =
+        typeof raw === 'object' && raw?.userId != null ? raw.userId : null
+      if (!peerUserId && !email) return
+      const peerKey = participantKey(peerUserId, email)
+      if (!peerKey || peerKey === selfKey) return
+      const id = dmPairChannelId(ownerUserId, user?.email, peerUserId, email)
+      if (!id) return
+      if (!byId.has(id))
+        byId.set(id, {
+          id,
+          type: 'dm',
+          name: memberName,
+          peerUserId,
+          peerEmail: email || null,
+          peerKey,
+        })
+    }
+
+    for (const m of activeProject.projectMembers || []) {
+      addDm(m)
+    }
+
     const projectTeamIds = activeProject.teamIds || []
     const projectTeams = teams.filter((team) => projectTeamIds.includes(team.id))
-    const members = new Set()
     projectTeams.forEach((team) => {
-      ;(team.members || []).forEach((member) => members.add(member))
+      ;(team.members || []).forEach((member) => addDm(member))
     })
-    return Array.from(members).map((member) => {
-      const memberName = memberNameFromAny(member)
-      const safeSlug = String(memberName || '')
-        .toLowerCase()
-        .replace(/\s+/g, '_')
-      return {
-        id: `dm:${safeSlug}`,
-      type: 'dm',
-        name: memberName,
-      }
-    })
-  }, [activeProject, teams])
+
+    return Array.from(byId.values()).sort((a, b) =>
+      String(a.name || '').localeCompare(String(b.name || ''), undefined, {
+        sensitivity: 'base',
+      }),
+    )
+  }, [activeProject, teams, user?.email, ownerUserId])
 
   const allConversations = useMemo(
     () => [...dynamicChannels, ...dmList],
@@ -152,6 +176,10 @@ export function ChatShell() {
     ownerUserIdRef.current = ownerUserId
   }, [ownerUserId])
 
+  useEffect(() => {
+    userEmailRef.current = user?.email ?? ''
+  }, [user?.email])
+
   const uniqueOnlineUsers = useMemo(() => {
     const byUser = new Map()
     for (const presence of onlineMembers) {
@@ -166,19 +194,24 @@ export function ChatShell() {
     }
     return Array.from(byUser.values())
   }, [onlineMembers])
+  const activeDmEntry = useMemo(
+    () => (isDirectConversation ? dmList.find((d) => d.id === activeId) : null),
+    [activeId, isDirectConversation, dmList],
+  )
+
   const activeDmPresence = useMemo(() => {
-    if (!isDirectConversation) return null
+    if (!isDirectConversation || !activeDmEntry?.peerKey) return null
     return (
       uniqueOnlineUsers.find((presence) => {
-        const presenceDmId = dmIdFromEmail(presence?.userEmail || '')
+        const pk = participantKey(presence?.userId, presence?.userEmail)
         return (
-          presenceDmId === activeId &&
+          pk === activeDmEntry.peerKey &&
           presence.peerId &&
           presence.peerId !== getPeerId()
         )
       }) ?? null
     )
-  }, [activeId, isDirectConversation, uniqueOnlineUsers])
+  }, [activeId, activeDmEntry, isDirectConversation, uniqueOnlineUsers])
   const directTargetPeerId = activeDmPresence?.peerId ?? ''
   const [messages, setMessages] = useState([])
   const [myAvatarColor, setMyAvatarColor] = useState(null)
@@ -611,6 +644,7 @@ export function ChatShell() {
         const incoming = data.payload
         if (!incoming || !incoming.id) return
         const uid = ownerUserIdRef.current
+        if (!shouldAcceptIncomingChatPayload(incoming, uid, userEmailRef.current)) return
         const stamped = uid ? { ...incoming, ownerUserId: uid } : incoming
         setMessages((prev) => {
           if (prev.some((m) => m.id === stamped.id)) return prev
@@ -619,6 +653,13 @@ export function ChatShell() {
       } else if (data.type === 'file-meta') {
         const meta = data.payload
         if (!meta || !meta.id) return
+        const uid = ownerUserIdRef.current
+        if (
+          meta.channelId?.startsWith('dm:') &&
+          !shouldAcceptIncomingChatPayload(meta, uid, userEmailRef.current)
+        ) {
+          return
+        }
         const senderPeerId = meta.senderPeerId || from
         const transferId = createTransferId(meta.id, senderPeerId)
         const totalChunks = Number.isFinite(meta.totalChunks) ? meta.totalChunks : 0
@@ -870,6 +911,7 @@ export function ChatShell() {
       const msg = e.detail
       if (!msg || msg.action === 'task-sync' || msg.action === 'task-delete') return
       const uid = ownerUserIdRef.current
+      if (!shouldAcceptIncomingChatPayload(msg, uid, userEmailRef.current)) return
       const stamped = uid ? { ...msg, ownerUserId: uid } : msg
       setMessages((prev) => {
         if (prev.find((m) => m.id === stamped.id)) return prev
@@ -931,13 +973,15 @@ export function ChatShell() {
         }
       }
 
-      const allowedDmIds = new Set(dmList.map((dm) => dm.id))
-      const selfDmId = dmIdFromEmail(user?.email || '')
-      if (selfDmId) allowedDmIds.add(selfDmId)
+      const allowedPeerKeys = new Set(
+        dmList.map((dm) => dm.peerKey).filter(Boolean),
+      )
+      const selfPk = participantKey(ownerUserId, user?.email)
+      if (selfPk) allowedPeerKeys.add(selfPk)
       const filtered = Array.from(byUser.values()).filter((presence) => {
         if (!activeProject) return true
-        const dmId = dmIdFromEmail(presence?.userEmail || '')
-        return allowedDmIds.has(dmId)
+        const pk = participantKey(presence?.userId, presence?.userEmail)
+        return pk && allowedPeerKeys.has(pk)
       })
       setOnlineMembers(filtered)
     }
@@ -950,7 +994,7 @@ export function ChatShell() {
       window.removeEventListener('hub:peer-left', updateOnlineMembers)
       window.removeEventListener('hub:presence-sync', updateOnlineMembers)
     }
-  }, [activeProject, dmList, user?.email])
+  }, [activeProject, dmList, user?.email, ownerUserId])
 
   useEffect(() => {
     const handleHubCallResponse = async (e) => {
@@ -1011,18 +1055,26 @@ export function ChatShell() {
 
   const activeMessages = useMemo(
     () =>
-      messages.filter(
-        (m) =>
-          m.channelId === activeId &&
-          (m.projectId === activeProject?.id ||
-            (!m.projectId && !activeProject)),
-      ),
-    [messages, activeId, activeProject],
+      messages.filter((m) => {
+        if (m.channelId !== activeId) return false
+        if (
+          activeId.startsWith('dm::') &&
+          ownerUserId &&
+          !userParticipatesInDmPair(activeId, ownerUserId, user?.email)
+        ) {
+          return false
+        }
+        return (
+          m.projectId === activeProject?.id || (!m.projectId && !activeProject)
+        )
+      }),
+    [messages, activeId, activeProject, ownerUserId, user?.email],
   )
 
   const sendMessage = (text) => {
     console.log('[ChatShell] sendMessage', { text, activeId, me })
     const now = Date.now()
+    const peer = activeDmEntry
     const next = {
       id: createId(),
       channelId: activeId,
@@ -1031,6 +1083,10 @@ export function ChatShell() {
       text,
       createdAt: now,
       ...(ownerUserId ? { ownerUserId } : {}),
+      ...(ownerUserId ? { senderUserId: ownerUserId } : {}),
+      ...(user?.email ? { senderEmail: user.email } : {}),
+      ...(peer?.peerUserId != null ? { recipientUserId: peer.peerUserId } : {}),
+      ...(peer?.peerEmail ? { recipientEmail: peer.peerEmail } : {}),
     }
     setMessages((prev) => {
       const updated = [...prev, next]
@@ -1067,6 +1123,7 @@ export function ChatShell() {
     const channelId = activeId
     const projectId = activeProject?.id || null
     const sender = me
+    const peer = activeDmEntry
     const maxSize = 50 * 1024 * 1024
     if (file.size > maxSize) {
       alert(t('composer_file_too_large'))
@@ -1084,6 +1141,10 @@ export function ChatShell() {
       createdAt: now,
       kind: 'file',
       ...(ownerUserId ? { ownerUserId } : {}),
+      ...(ownerUserId ? { senderUserId: ownerUserId } : {}),
+      ...(user?.email ? { senderEmail: user.email } : {}),
+      ...(peer?.peerUserId != null ? { recipientUserId: peer.peerUserId } : {}),
+      ...(peer?.peerEmail ? { recipientEmail: peer.peerEmail } : {}),
       file: {
         name: file.name,
         size: file.size,
@@ -1121,6 +1182,10 @@ export function ChatShell() {
         type: file.type,
         totalChunks,
         senderPeerId,
+        ...(ownerUserId ? { senderUserId: ownerUserId } : {}),
+        ...(user?.email ? { senderEmail: user.email } : {}),
+        ...(peer?.peerUserId != null ? { recipientUserId: peer.peerUserId } : {}),
+        ...(peer?.peerEmail ? { recipientEmail: peer.peerEmail } : {}),
       },
     })
 

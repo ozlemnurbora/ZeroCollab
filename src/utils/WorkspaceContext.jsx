@@ -14,6 +14,7 @@ import {
   fetchMyProjects,
   fetchMyTeams,
   fetchProjectTeams,
+  fetchProjectMembers,
   fetchTeamMembers,
   removeMemberFromTeam,
   createProject,
@@ -162,8 +163,11 @@ export function WorkspaceProvider({ children }) {
       const myProjects = await fetchMyProjects(user.id)
       const projectsWithTeams = await Promise.all(
         myProjects.map(async (p) => {
-          const teamIds = await fetchProjectTeams(p.id)
-          return { ...p, teamIds }
+          const [teamIds, projectMembers] = await Promise.all([
+            fetchProjectTeams(p.id),
+            fetchProjectMembers(p.id),
+          ])
+          return { ...p, teamIds, projectMembers }
         }),
       )
       setProjects(projectsWithTeams)
