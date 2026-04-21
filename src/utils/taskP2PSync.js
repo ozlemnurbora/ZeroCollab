@@ -67,3 +67,34 @@ export function filterTasksForVisibility(tasks, options = {}) {
       isAuthorizedProjectTask(task, allowed),
   )
 }
+
+/** General/shared task deleted locally — safe to tell peers (same scope as project task sync). */
+export function shouldBroadcastGeneralTaskDelete(task, allowedProjectIds = []) {
+  if (!task?.id || !task.projectId) return false
+  if (!isGeneralTask(task)) return false
+  return normalizeSet(allowedProjectIds).has(task.projectId)
+}
+
+/** Incoming TASK_DELETE payload is for a project we are allowed to sync. */
+export function canApplyIncomingTaskDelete(payload, allowedProjectIds = []) {
+  const { taskId, projectId } = payload || {}
+  const allowed = normalizeSet(allowedProjectIds)
+  return !!(taskId && projectId && allowed.has(projectId))
+}
+
+/** Remove one general project task by id after an authorized delete event. */
+export function removeAuthorizedGeneralTaskById(
+  tasks,
+  taskId,
+  projectId,
+  allowedProjectIds = [],
+) {
+  if (!canApplyIncomingTaskDelete({ taskId, projectId }, allowedProjectIds)) {
+    return Array.isArray(tasks) ? tasks : []
+  }
+  const list = Array.isArray(tasks) ? tasks : []
+  return list.filter(
+    (t) =>
+      !(t.id === taskId && t.projectId === projectId && isGeneralTask(t)),
+  )
+}

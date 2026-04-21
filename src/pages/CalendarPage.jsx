@@ -14,10 +14,14 @@ import { Button } from '../components/ui/Button.jsx'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
+import { broadcastTaskDelete } from '../utils/hubManager.js'
 import { on, sendToAllPeers, P2P_EVENTS } from '../utils/p2pManager.js'
 import {
+  canApplyIncomingTaskDelete,
   filterTasksForVisibility,
   mergeTasksFromSync,
+  removeAuthorizedGeneralTaskById,
+  shouldBroadcastGeneralTaskDelete,
   tasksForP2PBroadcast,
 } from '../utils/taskP2PSync.js'
 
@@ -193,6 +197,23 @@ export function CalendarPage() {
     let hideTimer
     let peerBroadcastTimer
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
+      if (data?.type === 'TASK_DELETE') {
+        const { taskId, projectId } = data
+        if (!canApplyIncomingTaskDelete({ taskId, projectId }, memberProjectIds)) return
+        setTasks((prev) => {
+          const uid = ownerUserIdRef.current
+          const next = removeAuthorizedGeneralTaskById(
+            prev,
+            taskId,
+            projectId,
+            memberProjectIds,
+          )
+          if (next.length === prev.length) return prev
+          if (uid) void saveTasks(next, uid)
+          return next
+        })
+        return
+      }
       if (data?.type !== 'TASK_SYNC') return
       const incomingGeneralTasks = (Array.isArray(data.tasks) ? data.tasks : []).filter(
         (task) =>
@@ -227,6 +248,30 @@ export function CalendarPage() {
       unsubPeer()
     }
   }, [broadcastTasks, activeProject?.id, memberProjectIds, visibilityOptions, ownerUserId])
+
+  useEffect(() => {
+    const handleHubMessage = (e) => {
+      const payload = e.detail || {}
+      if (payload.action !== 'task-delete') return
+      const { taskId, projectId } = payload
+      if (!canApplyIncomingTaskDelete({ taskId, projectId }, memberProjectIds)) return
+      if (activeProject?.id && projectId && projectId !== activeProject.id) return
+      setTasks((prev) => {
+        const uid = ownerUserIdRef.current
+        const next = removeAuthorizedGeneralTaskById(
+          prev,
+          taskId,
+          projectId,
+          memberProjectIds,
+        )
+        if (next.length === prev.length) return prev
+        if (uid) void saveTasks(next, uid)
+        return next
+      })
+    }
+    window.addEventListener('hub:message', handleHubMessage)
+    return () => window.removeEventListener('hub:message', handleHubMessage)
+  }, [activeProject?.id, memberProjectIds])
 
   const filteredTasks = useMemo(() => {
     let list = filterTasksForVisibility(tasks, visibilityOptions)
@@ -434,12 +479,21 @@ export function CalendarPage() {
   }
 
   const deleteTask = (taskId) => {
+    const removed = tasksRef.current.find((t) => t.id === taskId) ?? null
     setTasks((prev) => {
       const next = prev.filter((t) => t.id !== taskId)
       broadcastTasks(next)
       if (ownerUserId) void saveTasks(next, ownerUserId)
       return next
     })
+    if (removed && shouldBroadcastGeneralTaskDelete(removed, memberProjectIds)) {
+      sendToAllPeers({
+        type: 'TASK_DELETE',
+        taskId: removed.id,
+        projectId: removed.projectId,
+      })
+      void broadcastTaskDelete(removed.id, removed.projectId)
+    }
   }
 
   useEffect(() => {

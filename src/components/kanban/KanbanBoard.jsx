@@ -10,11 +10,18 @@ import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import { useAuth } from '../../utils/AuthContext.jsx'
 import { loadMeetings } from '../../utils/meetingStorage.js'
 import { saveMessage } from '../chat/chatStorage.js'
-import { broadcastMeetingUpdate, broadcastTaskSync } from '../../utils/hubManager.js'
+import {
+  broadcastMeetingUpdate,
+  broadcastTaskDelete,
+  broadcastTaskSync,
+} from '../../utils/hubManager.js'
 import { on, sendToAllPeers, P2P_EVENTS } from '../../utils/p2pManager.js'
 import {
+  canApplyIncomingTaskDelete,
   filterTasksForVisibility,
   mergeTasksFromSync,
+  removeAuthorizedGeneralTaskById,
+  shouldBroadcastGeneralTaskDelete,
   tasksForP2PBroadcast,
 } from '../../utils/taskP2PSync.js'
 import { checkTaskReminders, startReminderChecker } from '../../utils/taskReminder.js'
@@ -158,6 +165,23 @@ export function KanbanBoard({ headerActions = null }) {
         if (uid) void saveMessage(incomingChat, uid)
         return
       }
+      if (data?.type === 'TASK_DELETE') {
+        const { taskId, projectId } = data
+        if (!canApplyIncomingTaskDelete({ taskId, projectId }, memberProjectIds)) return
+        setTasks((prev) => {
+          const uid = ownerUserIdRef.current
+          const next = removeAuthorizedGeneralTaskById(
+            prev,
+            taskId,
+            projectId,
+            memberProjectIds,
+          )
+          if (next.length === prev.length) return prev
+          if (uid) void saveTasks(next, uid)
+          return next
+        })
+        return
+      }
       if (data?.type !== 'TASK_SYNC') return
       const incomingGeneralTasks = (Array.isArray(data.tasks) ? data.tasks : []).filter(
         (task) =>
@@ -252,7 +276,24 @@ export function KanbanBoard({ headerActions = null }) {
         if (uid) void saveMessage(payload, uid)
         return
       }
-      const { action, tasks: incomingTasks, projectId } = payload
+      const { action, tasks: incomingTasks, projectId, taskId } = payload
+      if (action === 'task-delete') {
+        if (!canApplyIncomingTaskDelete({ taskId, projectId }, memberProjectIds)) return
+        if (activeProject?.id && projectId && projectId !== activeProject.id) return
+        setTasks((prev) => {
+          const uid = ownerUserIdRef.current
+          const next = removeAuthorizedGeneralTaskById(
+            prev,
+            taskId,
+            projectId,
+            memberProjectIds,
+          )
+          if (next.length === prev.length) return prev
+          if (uid) void saveTasks(next, uid)
+          return next
+        })
+        return
+      }
       if (action !== 'task-sync') return
       if (projectId && !memberProjectIds.includes(projectId)) return
       if (activeProject?.id && projectId && projectId !== activeProject.id) return
@@ -345,12 +386,21 @@ export function KanbanBoard({ headerActions = null }) {
   }
 
   const deleteTask = (taskId) => {
+    const removed = tasksRef.current.find((t) => t.id === taskId) ?? null
     setTasks((prev) => {
       const next = prev.filter((t) => t.id !== taskId)
       broadcastTasks(next)
       if (ownerUserId) void saveTasks(next, ownerUserId)
       return next
     })
+    if (removed && shouldBroadcastGeneralTaskDelete(removed, memberProjectIds)) {
+      sendToAllPeers({
+        type: 'TASK_DELETE',
+        taskId: removed.id,
+        projectId: removed.projectId,
+      })
+      void broadcastTaskDelete(removed.id, removed.projectId)
+    }
   }
 
   const total = filteredTasks.length

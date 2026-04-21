@@ -868,7 +868,7 @@ export function ChatShell() {
   useEffect(() => {
     const handleHubMessage = (e) => {
       const msg = e.detail
-      if (!msg || msg.action === 'task-sync') return
+      if (!msg || msg.action === 'task-sync' || msg.action === 'task-delete') return
       const uid = ownerUserIdRef.current
       const stamped = uid ? { ...msg, ownerUserId: uid } : msg
       setMessages((prev) => {

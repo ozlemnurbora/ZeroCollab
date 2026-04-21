@@ -119,7 +119,8 @@ export function TaskDetailModal({
     })
     const onHubMessage = (e) => {
       const incoming = e.detail
-      if (!incoming || incoming.action === 'task-sync') return
+      if (!incoming || incoming.action === 'task-sync' || incoming.action === 'task-delete')
+        return
       pushIncoming(incoming)
     }
     window.addEventListener('hub:message', onHubMessage)

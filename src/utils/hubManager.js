@@ -280,6 +280,21 @@ export async function broadcastTaskSync(tasks, projectId) {
   console.log('[Hub] broadcast task sync:', tasks.length)
 }
 
+export async function broadcastTaskDelete(taskId, projectId) {
+  if (!activeChannel || !taskId || !projectId) return
+  await activeChannel.send({
+    type: 'broadcast',
+    event: 'message',
+    payload: {
+      action: 'task-delete',
+      taskId,
+      projectId,
+      senderId: currentUserId,
+    },
+  })
+  console.log('[Hub] broadcast task delete:', taskId)
+}
+
 export async function broadcastMeetingSync(meeting, action, projectId) {
   if (!activeChannel) return
   await activeChannel.send({
