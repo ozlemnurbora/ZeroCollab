@@ -43,6 +43,16 @@ export function EvaluationPage() {
   const [uploadedFiles, setUploadedFiles] = useState([])
   const [fileContents, setFileContents] = useState('')
   const [gradeThresholds, setGradeThresholds] = useState(null)
+  const [evalLogs, setEvalLogs] = useState([])
+  const [evalProgress, setEvalProgress] = useState(0)
+
+  const addLog = (message, type = 'info') => {
+    console.log(`[Evaluation] ${message}`)
+    setEvalLogs((prev) => [
+      ...prev,
+      { message, type, time: new Date().toLocaleTimeString() },
+    ])
+  }
 
   useEffect(() => {
     loadOntologyText().then((text) => {
@@ -103,85 +113,137 @@ export function EvaluationPage() {
     e.target.value = ''
     setUploadedFiles(files.map((f) => f.name))
 
-    const contents = []
+    const SKIP_DIRS = [
+      'node_modules',
+      '.git',
+      'dist',
+      'dev-dist',
+      'build',
+      '.next',
+      '__pycache__',
+      '.cache',
+      'coverage',
+    ]
+    const SOURCE_EXTENSIONS = [
+      '.js',
+      '.jsx',
+      '.ts',
+      '.tsx',
+      '.py',
+      '.ttl',
+      '.md',
+      '.html',
+      '.css',
+      '.json',
+      '.txt',
+      '.vue',
+      '.svelte',
+    ]
+    // Priority: source code first, config last
+    const PRIORITY = {
+      '.jsx': 10,
+      '.tsx': 10,
+      '.js': 9,
+      '.ts': 9,
+      '.py': 9,
+      '.ttl': 8,
+      '.md': 7,
+      '.html': 6,
+      '.css': 5,
+      '.json': 4,
+      '.txt': 3,
+    }
+
+    const allChunks = [] // { path, content, priority }
+
+    const getPriority = (path) => {
+      const ext = path.slice(path.lastIndexOf('.')).toLowerCase()
+      return PRIORITY[ext] || 1
+    }
+
+    const processText = (path, content) => {
+      // Split into chunks of ~800 chars with overlap
+      const chunkSize = 800
+      const overlap = 100
+      if (content.length <= chunkSize) {
+        allChunks.push({ path, content, priority: getPriority(path) })
+      } else {
+        for (let i = 0; i < content.length; i += chunkSize - overlap) {
+          const chunk = content.slice(i, i + chunkSize)
+          if (chunk.trim().length > 50) {
+            allChunks.push({
+              path: `${path}#chunk${Math.floor(i / chunkSize)}`,
+              content: chunk,
+              priority: getPriority(path),
+            })
+          }
+        }
+      }
+    }
+
+    const shouldSkip = (path) => {
+      return SKIP_DIRS.some(
+        (dir) =>
+          path.includes(`/${dir}/`) ||
+          path.includes(`\\${dir}\\`) ||
+          path.startsWith(`${dir}/`),
+      )
+    }
 
     for (const file of files) {
       if (file.name.toLowerCase().endsWith('.zip')) {
         try {
           const JSZip = (await import('jszip')).default
           const zip = await JSZip.loadAsync(file)
-          const zipContents = []
-
-          const textExtensions = [
-            '.js',
-            '.jsx',
-            '.ts',
-            '.tsx',
-            '.html',
-            '.css',
-            '.json',
-            '.md',
-            '.txt',
-            '.py',
-            '.ttl',
-          ]
-
           const filePromises = []
           zip.forEach((relativePath, zipEntry) => {
-            if (!zipEntry.dir) {
-              const lastDot = relativePath.lastIndexOf('.')
-              const ext =
-                lastDot >= 0
-                  ? `.${relativePath.slice(lastDot + 1).toLowerCase()}`
-                  : ''
-              if (
-                textExtensions.includes(ext) &&
-                !relativePath.includes('node_modules') &&
-                !relativePath.includes('.git')
-              ) {
-                filePromises.push(
-                  zipEntry
-                    .async('text')
-                    .then((content) => {
-                      const truncated =
-                        content.length > 1500
-                          ? `${content.slice(0, 1500)}...[truncated]`
-                          : content
-                      zipContents.push(`\n=== ${relativePath} ===\n${truncated}`)
-                    })
-                    .catch(() => {}),
-                )
-              }
-            }
+            if (zipEntry.dir) return
+            if (shouldSkip(relativePath)) return
+            const lastDot = relativePath.lastIndexOf('.')
+            const ext =
+              lastDot >= 0
+                ? `.${relativePath.slice(lastDot + 1).toLowerCase()}`
+                : ''
+            if (!SOURCE_EXTENSIONS.includes(ext)) return
+            filePromises.push(
+              zipEntry
+                .async('text')
+                .then((content) => {
+                  processText(relativePath, content)
+                })
+                .catch(() => {}),
+            )
           })
-
           await Promise.all(filePromises)
-
-          const allZipContent = zipContents.join('\n')
-          const limitedContent =
-            allZipContent.length > 15000
-              ? `${allZipContent.slice(0, 15000)}\n...[content truncated to fit AI context]`
-              : allZipContent
-
-          contents.push(`\n\n=== ZIP: ${file.name} ===\n${limitedContent}`)
         } catch (err) {
           console.error('ZIP read error:', err)
-          contents.push(`[ZIP file: ${file.name} - could not read contents]`)
         }
       } else {
         try {
           const text = await file.text()
-          const truncated =
-            text.length > 2000
-              ? `${text.slice(0, 2000)}...[truncated]`
-              : text
-          contents.push(`\n\n=== FILE: ${file.name} ===\n${truncated}`)
-        } catch {
-          contents.push(`[Binary file: ${file.name}]`)
-        }
+          processText(file.name, text)
+        } catch {}
       }
     }
-    setFileContents(contents.join('\n'))
+
+    // Sort by priority (highest first)
+    allChunks.sort((a, b) => b.priority - a.priority)
+
+    // Store chunks for RAG use
+    window._evalChunks = allChunks
+    console.log(`[RAG] Total chunks: ${allChunks.length}`)
+
+    // Also create a summary for display
+    const fileNames = [...new Set(allChunks.map((c) => c.path.split('#')[0]))]
+    console.log(`[RAG] Files indexed: ${fileNames.length}`)
+
+    // Build initial context (top priority files, up to 8000 chars)
+    const topChunks = allChunks.slice(0, 40)
+    const initialContext = topChunks
+      .map((c) => `=== ${c.path} ===\n${c.content}`)
+      .join('\n\n')
+    setFileContents(initialContext)
+    setUploadedFiles([`${fileNames.length} files indexed (${allChunks.length} chunks)`])
   }
 
   const runAiEvaluation = async () => {
@@ -194,12 +256,53 @@ export function EvaluationPage() {
       return
     }
 
+    // RAG: get relevant chunks for evaluation
+    const getRelevantChunks = (maxChars = 12000) => {
+      const chunks = window._evalChunks || []
+      if (chunks.length === 0) return ''
+
+      // Always use same order: sorted by priority (already sorted in handleFileUpload)
+      // No keyword scoring - deterministic selection
+      let result = ''
+      const usedFiles = new Set()
+
+      // First pass: get one chunk from each unique file (highest priority files first)
+      for (const chunk of chunks) {
+        const filePath = chunk.path.split('#')[0]
+        if (!usedFiles.has(filePath)) {
+          if (result.length + chunk.content.length > maxChars * 0.7) continue
+          result += `\n=== ${filePath} ===\n${chunk.content}\n`
+          usedFiles.add(filePath)
+        }
+      }
+
+      // Second pass: add more chunks from important files if space remains
+      for (const chunk of chunks) {
+        if (result.length >= maxChars) break
+        if (!chunk.path.includes('#chunk')) continue
+        if (result.length + chunk.content.length > maxChars) break
+        result += `\n${chunk.content}\n`
+      }
+      return result
+    }
+
+    // Build RAG context - get relevant code for key evaluation areas
+    const ragContext = getRelevantChunks(12000)
+    const chunkCount = (window._evalChunks || []).length
+    addLog(
+      `Step 2/4: RAG indexed ${chunkCount} chunks, selected most relevant sections`,
+      'info',
+    )
+    setEvalProgress(30)
+
     const projectContext = [
       projectInfo ? `Project Description:\n${projectInfo}` : '',
-      fileContents ? `\nProject Files:\n${fileContents}` : '',
-    ]
-      .filter(Boolean)
-      .join('\n')
+      ragContext
+        ? `\nProject Source Code (most relevant sections):\n${ragContext}`
+        : fileContents
+          ? `\nProject Files:\n${fileContents}`
+          : '',
+    ].filter(Boolean).join('\n')
 
     if (!projectContext.trim()) {
       alert(t('eval_no_project'))
@@ -207,7 +310,13 @@ export function EvaluationPage() {
     }
 
     setIsEvaluating(true)
+    setEvalLogs([])
+    setEvalProgress(0)
+    addLog('Step 1/4: Loading ontology and project context...', 'info')
+    setEvalProgress(15)
     try {
+      addLog('Step 3/4: Sending to AI for evaluation...', 'info')
+      setEvalProgress(45)
       const response = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
         headers: {
@@ -219,6 +328,7 @@ export function EvaluationPage() {
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
           max_tokens: 3500,
+          temperature: 0.1,
           messages: [
             {
               role: 'user',
@@ -272,12 +382,27 @@ Respond with ONLY this JSON format, no markdown:
       })
 
       const data = await response.json()
+      addLog('Step 4/4: Processing AI response...', 'info')
+      setEvalProgress(80)
       if (!response.ok)
         throw new Error(`API error ${response.status}: ${JSON.stringify(data)}`)
 
       const text = data.content?.[0]?.text || ''
-      const clean = text.replace(/```json|```/g, '').trim()
+      const jsonStart = text.indexOf('{')
+      const jsonEnd = text.lastIndexOf('}')
+      if (jsonStart === -1 || jsonEnd === -1)
+        throw new Error('Invalid JSON response from AI')
+      const clean = text.slice(jsonStart, jsonEnd + 1)
       const parsed = JSON.parse(clean)
+      setEvalProgress(100)
+      const criteriaCount = Object.keys(parsed.criteria || {}).length
+      const newDimCount = Object.values(parsed.criteria || {}).filter(
+        (v) => v.isNewDimension,
+      ).length
+      addLog(
+        `Evaluation complete! ${criteriaCount} dimensions (${newDimCount} new). Score: ${parsed.normalizedTotal}/100`,
+        'success',
+      )
 
       const newCriteria = Object.entries(parsed.criteria || {}).map(
         ([key, val]) => ({
@@ -309,6 +434,7 @@ Respond with ONLY this JSON format, no markdown:
       setHistory((prev) => [snapshot, ...prev])
     } catch (err) {
       console.error('[EvaluationPage] AI error:', err)
+      addLog(`Failed: ${err.message}`, 'error')
       alert(`AI evaluation failed: ${err.message}`)
     } finally {
       setIsEvaluating(false)
@@ -381,6 +507,54 @@ Respond with ONLY this JSON format, no markdown:
                 {isEvaluating ? t('eval_ai_loading') : t('eval_submit_project')}
               </Button>
             </div>
+            {(isEvaluating || evalLogs.length > 0) && (
+              <div className="mt-4 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-muted2))]">
+                    Evaluation Log
+                  </p>
+                  {evalProgress > 0 && evalProgress < 100 && (
+                    <span className="text-xs text-indigo-300">
+                      {evalProgress}%
+                    </span>
+                  )}
+                </div>
+                {evalProgress > 0 && (
+                  <div className="mb-2 h-1.5 w-full rounded-full bg-[rgb(var(--zc-border))]">
+                    <div
+                      className="h-1.5 rounded-full bg-indigo-500 transition-all duration-500"
+                      style={{ width: `${evalProgress}%` }}
+                    />
+                  </div>
+                )}
+                <div className="space-y-1 max-h-36 overflow-y-auto">
+                  {evalLogs.map((log, i) => (
+                    <div key={i} className="flex items-start gap-2 text-xs">
+                      <span className="shrink-0 text-[rgb(var(--zc-subtle))]">
+                        {log.time}
+                      </span>
+                      <span
+                        className={
+                          log.type === 'error'
+                            ? 'text-rose-400'
+                            : log.type === 'success'
+                              ? 'text-emerald-400'
+                              : 'text-[rgb(var(--zc-muted))]'
+                        }
+                      >
+                        {log.message}
+                      </span>
+                    </div>
+                  ))}
+                  {isEvaluating && (
+                    <div className="flex items-center gap-2 text-xs text-indigo-300">
+                      <span className="animate-pulse">●</span>
+                      <span>Processing...</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

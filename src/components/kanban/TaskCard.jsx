@@ -22,10 +22,15 @@ export function TaskCard({
   return (
     <div
       className={[
-        'group rounded-lg border bg-[rgb(var(--zc-panel)/0.6)] p-3 shadow-sm transition',
+        'group rounded-lg border-y border-r bg-[rgb(var(--zc-panel)/0.6)] p-3 shadow-sm transition cursor-pointer',
         'border-[rgb(var(--zc-border))] hover:border-[rgb(var(--zc-border)/0.85)] hover:bg-[rgb(var(--zc-panel)/0.8)]',
         'active:scale-[0.99]',
         isDragging ? 'opacity-60 ring-2 ring-indigo-500/40' : '',
+        task.status === 'done'
+          ? 'border-l-2 border-l-emerald-500/70'
+          : task.status === 'in_progress'
+            ? 'border-l-2 border-l-amber-500/70'
+            : 'border-l-2 border-l-indigo-500/70',
       ].join(' ')}
       draggable
       onDragStart={(e) => onDragStart?.(e, task.id)}
@@ -45,6 +50,11 @@ export function TaskCard({
           <p className="min-w-0 truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
             {task.title}
           </p>
+          {overdue && (
+            <span className="shrink-0 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">
+              Overdue
+            </span>
+          )}
           <span className="ml-2 flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
               type="button"
@@ -79,10 +89,14 @@ export function TaskCard({
             {truncate(task.description, 60)}
           </p>
         ) : null}
-        <p className="mt-1 text-xs text-[rgb(var(--zc-muted))]">
-          <span className="text-[rgb(var(--zc-muted2))]">{t('task_assignee')}:</span>{' '}
-          {task.assignee}
-        </p>
+        <div className="mt-2 flex items-center gap-1.5">
+          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-[9px] font-semibold text-indigo-300">
+            {(task.assignee || '?').slice(0, 2).toUpperCase()}
+          </div>
+          <span className="text-xs text-[rgb(var(--zc-muted))] truncate">
+            {task.assignee}
+          </span>
+        </div>
       </div>
 
       <div className="mt-3 flex items-center justify-between">

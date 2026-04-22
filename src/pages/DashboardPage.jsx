@@ -210,21 +210,35 @@ export function DashboardPage() {
           title={t('dash_total_tasks')}
           value={stats.total}
           helper={t('dash_total_tasks_help')}
+          color="text-indigo-400"
+          barColor="bg-indigo-500"
+          barWidth={stats.total > 0 ? 100 : 0}
         />
         <SummaryCard
           title={t('dash_in_progress')}
           value={stats.inProgress}
           helper={t('dash_in_progress_help')}
+          color="text-amber-400"
+          barColor="bg-amber-500"
+          barWidth={
+            stats.total > 0
+              ? Math.round((stats.inProgress / stats.total) * 100)
+              : 0
+          }
         />
         <SummaryCard
           title={t('dash_completed')}
           value={stats.done}
           helper={t('dash_completed_help')}
+          color="text-emerald-400"
+          barColor="bg-emerald-500"
+          barWidth={stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0}
         />
         <SummaryCard
           title={t('dash_team_members')}
           value={projectMembers.length}
           helper={projectMembers.join(', ') || t('dash_no_members')}
+          color="text-violet-400"
         />
       </div>
 
@@ -445,14 +459,27 @@ export function DashboardPage() {
   )
 }
 
-function SummaryCard({ title, value, helper }) {
+function SummaryCard({
+  title,
+  value,
+  helper,
+  color = 'text-[rgb(var(--zc-text))]',
+  barColor = '',
+  barWidth = 0,
+}) {
   return (
     <div className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-4">
       <p className="text-sm font-medium text-[rgb(var(--zc-muted))]">{title}</p>
-      <p className="mt-2 text-3xl font-semibold tracking-tight text-[rgb(var(--zc-text))]">
-        {value}
-      </p>
+      <p className={`mt-2 text-3xl font-semibold tracking-tight ${color}`}>{value}</p>
       <p className="mt-2 text-xs text-[rgb(var(--zc-subtle))]">{helper}</p>
+      {barColor && (
+        <div className="mt-3 h-1 w-full rounded-full bg-[rgb(var(--zc-border))]">
+          <div
+            className={`h-1 rounded-full transition-all ${barColor}`}
+            style={{ width: `${Math.min(barWidth, 100)}%` }}
+          />
+        </div>
+      )}
     </div>
   )
 }

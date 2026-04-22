@@ -221,6 +221,11 @@ export function SidebarLayout() {
                             className={`h-2 w-2 shrink-0 rounded-full ${project.color}`}
                           />
                           <span className="truncate text-sm">{project.name}</span>
+                          {activeProject?.id === project.id && (
+                            <span className="ml-auto shrink-0 rounded-full bg-indigo-500/20 px-1.5 py-0.5 text-[9px] font-medium text-indigo-300">
+                              active
+                            </span>
+                          )}
                         </div>
                         {project.teamIds && project.teamIds.length > 0 ? (
                           <div className="ml-4 mt-0.5 flex flex-wrap gap-1">
