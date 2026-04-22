@@ -344,9 +344,10 @@ export function KanbanBoard({ headerActions = null }) {
         : 'personal'
     setTasks((prev) => {
       const projectId = activeProject?.id ? activeProject.id : null
+      const id = typeof payload?.id === 'string' && payload.id.trim() ? payload.id.trim() : createId()
       const next = [
         {
-          id: createId(),
+          id,
           status: 'todo',
           createdAt: now,
           ...payload,
@@ -358,7 +359,7 @@ export function KanbanBoard({ headerActions = null }) {
               : null,
           ownerUserId: user?.id || null,
         },
-        ...prev,
+        ...(Array.isArray(prev) ? prev.filter((t) => t?.id !== id) : []),
       ]
       broadcastTasks(next)
       return next

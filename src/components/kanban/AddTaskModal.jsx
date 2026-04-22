@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '../ui/Button.jsx'
 import { Modal } from '../ui/Modal.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
@@ -12,6 +12,11 @@ const initialForm = {
   calendarId: 'personal',
   projectId: '',
   teamId: '',
+}
+
+function createTaskId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
+  return `task_${Date.now()}_${Math.random().toString(16).slice(2)}`
 }
 
 function createInitialForm(initialValues, activeProject, activeTeam) {
@@ -41,6 +46,12 @@ export function AddTaskModal({
     createInitialForm(initialValues, activeProject, activeTeam),
   )
   const [touched, setTouched] = useState(false)
+  const draftIdRef = useRef(createTaskId())
+
+  useEffect(() => {
+    if (!open) return
+    draftIdRef.current = createTaskId()
+  }, [open])
 
   const errors = useMemo(() => {
     const next = {}
@@ -80,6 +91,7 @@ export function AddTaskModal({
               const calendarType = calendarId === 'general' ? 'general' : 'personal'
               const isGeneral = calendarType === 'general'
               onCreate?.({
+                id: draftIdRef.current,
                 title: form.title.trim(),
                 description: form.description.trim(),
                 assignee: form.assignee.trim(),
