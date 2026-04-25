@@ -4,6 +4,7 @@ import { Button } from '../ui/Button.jsx'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import { useAuth } from '../../utils/AuthContext.jsx'
 import { sendTeamInvitation } from '../../utils/invitationManager.js'
+import { getRoleLabel } from '../../utils/roleOntology.js'
 
 export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLeave }) {
   const { selectTeam, kickTeamMember } = useWorkspace()
@@ -278,7 +279,7 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
                           {memberName}
                         </span>
                         <span className="text-[10px] text-[rgb(var(--zc-subtle))]">
-                          {isManager ? 'Manager' : 'Member'}
+                          {getRoleLabel(isManager ? 'manager' : 'member', 'en')}
                         </span>
                       </div>
                     </div>

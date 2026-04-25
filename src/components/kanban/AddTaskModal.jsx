@@ -7,6 +7,7 @@ const initialForm = {
   title: '',
   description: '',
   assignee: '',
+  priority: 'must',
   startDate: '',
   dueDate: '',
   calendarId: 'personal',
@@ -112,6 +113,7 @@ export function AddTaskModal({
                 title: form.title.trim(),
                 description: form.description.trim(),
                 assignee: form.assignee.trim(),
+                priority: form.priority || 'must',
                 startDate: form.startDate || '',
                 dueDate: form.dueDate || '',
                 calendarType,
@@ -160,6 +162,22 @@ export function AddTaskModal({
           {touched && errors.title ? (
             <p className="mt-1 text-xs text-rose-300">{errors.title}</p>
           ) : null}
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
+            Priority
+          </label>
+          <select
+            className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            value={form.priority || 'must'}
+            onChange={(e) => setForm((s) => ({ ...s, priority: e.target.value }))}
+          >
+            <option value="must">Must-have</option>
+            <option value="should">Should-have</option>
+            <option value="could">Could-have</option>
+            <option value="wont">Won’t-have</option>
+          </select>
         </div>
 
         <div>

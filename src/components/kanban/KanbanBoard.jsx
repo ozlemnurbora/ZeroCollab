@@ -53,6 +53,7 @@ export function KanbanBoard({ headerActions = null }) {
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
   const [hasLoadedTasks, setHasLoadedTasks] = useState(false)
   const [isAddOpen, setIsAddOpen] = useState(false)
+  const [priorityFilter, setPriorityFilter] = useState('all')
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [detailInitialEdit, setDetailInitialEdit] = useState(false)
   const [draggingTaskId, setDraggingTaskId] = useState(null)
@@ -306,20 +307,34 @@ export function KanbanBoard({ headerActions = null }) {
 
   const filteredTasks = useMemo(() => {
     const visible = filterTasksForVisibility(tasks, visibilityOptions)
-    if (!activeProject) return visible
-    return visible.filter((task) =>
+    const withPriority = visible.map((task) =>
+      task?.priority ? task : { ...task, priority: 'must' },
+    )
+    const byPriority =
+      priorityFilter === 'all'
+        ? withPriority
+        : withPriority.filter((task) => task.priority === priorityFilter)
+    if (!activeProject) return byPriority
+    const scoped = byPriority.filter((task) =>
       taskVisibleInActiveProject(task, activeProject.id, ownerUserId),
     )
-  }, [tasks, activeProject, visibilityOptions, ownerUserId])
+    return scoped
+  }, [tasks, activeProject, visibilityOptions, ownerUserId, priorityFilter])
 
   const tasksByColumn = useMemo(() => {
+    const priorityOrder = { must: 0, should: 1, could: 2, wont: 3 }
     const map = new Map(KANBAN_COLUMNS.map((c) => [c.id, []]))
     for (const task of filteredTasks) {
       const col = map.get(task.status) ?? map.get('todo')
       col.push(task)
     }
     for (const [, colTasks] of map.entries()) {
-      colTasks.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+      colTasks.sort((a, b) => {
+        const ap = priorityOrder[a.priority || 'must'] ?? 0
+        const bp = priorityOrder[b.priority || 'must'] ?? 0
+        if (ap !== bp) return ap - bp
+        return (b.createdAt ?? 0) - (a.createdAt ?? 0)
+      })
     }
     return map
   }, [filteredTasks])
@@ -425,6 +440,18 @@ export function KanbanBoard({ headerActions = null }) {
         </div>
         <div className="flex items-center gap-2">
           {headerActions}
+          <select
+            className="h-9 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            value={priorityFilter}
+            onChange={(e) => setPriorityFilter(e.target.value)}
+            aria-label="Filter"
+          >
+            <option value="all">all</option>
+            <option value="must">must</option>
+            <option value="should">should</option>
+            <option value="could">could</option>
+            <option value="wont">wont</option>
+          </select>
           <Button onClick={() => setIsAddOpen(true)}>{t('kanban_add_task')}</Button>
         </div>
       </div>

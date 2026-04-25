@@ -18,6 +18,15 @@ export function TaskCard({
   const { t, locale } = useLanguage()
   const overdue = isOverdue(task.dueDate)
   const dueLabel = formatDueDate(task.dueDate, locale)
+  const priority = task.priority || 'must'
+  const priorityMeta =
+    priority === 'must'
+      ? { label: 'Must-have', classes: 'bg-red-500/20 text-red-400' }
+      : priority === 'should'
+        ? { label: 'Should-have', classes: 'bg-yellow-500/20 text-yellow-400' }
+        : priority === 'could'
+          ? { label: 'Could-have', classes: 'bg-green-500/20 text-green-400' }
+          : { label: 'Won’t-have', classes: 'bg-gray-500/20 text-gray-400' }
 
   return (
     <div
@@ -50,6 +59,14 @@ export function TaskCard({
           <p className="min-w-0 truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
             {task.title}
           </p>
+          <span
+            className={[
+              'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+              priorityMeta.classes,
+            ].join(' ')}
+          >
+            {priorityMeta.label}
+          </span>
           {overdue && (
             <span className="shrink-0 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">
               Overdue
