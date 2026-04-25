@@ -32,6 +32,7 @@ export function ProjectDetailModal({
     project?.teamIds || [],
   )
   const [isEditing, setIsEditing] = useState(false)
+  const [teamAssignError, setTeamAssignError] = useState('')
   const [projectMembers, setProjectMembers] = useState([])
   const [membersLoading, setMembersLoading] = useState(false)
 
@@ -129,9 +130,22 @@ export function ProjectDetailModal({
   const showYouSuffix = !!user?.id && ownerUserId && ownerUserId === user.id
 
   const toggleTeam = (teamId) => {
-    setSelectedTeamIds((prev) =>
-      prev.includes(teamId) ? prev.filter((id) => id !== teamId) : [...prev, teamId],
-    )
+    setTeamAssignError('')
+    setSelectedTeamIds((prev) => {
+      const isRemoving = prev.includes(teamId)
+      if (isRemoving) return prev.filter((id) => id !== teamId)
+
+      const team = (teams || []).find((t) => t.id === teamId)
+      const memberCount = Array.isArray(team?.members) ? team.members.length : 0
+      if (memberCount < 3) {
+        setTeamAssignError(
+          'Team must have at least 3 members before assigning to a project.',
+        )
+        return prev
+      }
+
+      return [...prev, teamId]
+    })
   }
 
   const handleSave = () => {
@@ -302,6 +316,9 @@ export function ProjectDetailModal({
               <label className="mb-2 block text-sm font-medium text-[rgb(var(--zc-muted))]">
                 Assign Teams
               </label>
+              {teamAssignError ? (
+                <p className="mb-2 text-xs text-rose-400">{teamAssignError}</p>
+              ) : null}
               <div className="space-y-1">
                 {teams?.length === 0 && (
                   <p className="text-xs text-[rgb(var(--zc-subtle))]">

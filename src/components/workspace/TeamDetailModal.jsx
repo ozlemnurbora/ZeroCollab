@@ -12,6 +12,7 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
   const [members, setMembers] = useState(team?.members || [])
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteStatus, setInviteStatus] = useState('')
+  const [inviteError, setInviteError] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [memberRemoveError, setMemberRemoveError] = useState('')
   const [removingMemberKey, setRemovingMemberKey] = useState('')
@@ -90,8 +91,38 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
     setIsEditing(false)
   }
 
+  const normalizedMemberKey = (m) => {
+    if (typeof m === 'string') return m.trim().toLowerCase()
+    return (m?.email || m?.userId || m?.name || '').toString().trim().toLowerCase()
+  }
+
+  const uniqueMemberCount = (() => {
+    const set = new Set()
+    for (const m of members || []) {
+      const k = normalizedMemberKey(m)
+      if (k) set.add(k)
+    }
+    return Math.max(1, set.size)
+  })()
+
+  const canActivateTeam = uniqueMemberCount >= 3
+
   const handleInvite = async () => {
     if (!inviteEmail.trim() || !user?.email) return
+    setInviteError('')
+
+    const email = inviteEmail.trim().toLowerCase()
+    const existingKeys = new Set((members || []).map(normalizedMemberKey).filter(Boolean))
+    if (existingKeys.has(email)) {
+      setInviteError('This user is already a member.')
+      return
+    }
+
+    if (uniqueMemberCount + 1 > 9) {
+      setInviteError('Team can have maximum 9 members.')
+      return
+    }
+
     try {
       setInviteStatus('sending')
       await sendTeamInvitation(
@@ -100,7 +131,7 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
         null,
         null,
         user.email,
-        inviteEmail.trim()
+        email
       )
       setInviteStatus('sent')
       setInviteEmail('')
@@ -151,9 +182,16 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
               <>
                 <Button
                   onClick={() => {
+                    if (!canActivateTeam) return
                     selectTeam(team)
                     onClose?.()
                   }}
+                  disabled={!canActivateTeam}
+                  title={
+                    !canActivateTeam
+                      ? 'Add at least 3 members before activating this team.'
+                      : undefined
+                  }
                 >
                   Set as Active Team
                 </Button>
@@ -188,6 +226,11 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
           <p className="mb-2 text-sm font-medium text-[rgb(var(--zc-muted))]">
             Members ({members.length})
           </p>
+          {uniqueMemberCount < 3 ? (
+            <p className="mb-2 text-xs text-amber-300">
+              Team should have at least 3 members.
+            </p>
+          ) : null}
           <div className="mb-3 space-y-1">
             {members.length === 0 && (
               <p className="text-xs text-[rgb(var(--zc-subtle))]">No members yet.</p>
@@ -274,11 +317,19 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
                 />
                 <Button
                   onClick={handleInvite}
-                  disabled={!inviteEmail.trim() || !user?.email || inviteStatus === 'sending'}
+                  disabled={
+                    !inviteEmail.trim() ||
+                    !user?.email ||
+                    inviteStatus === 'sending' ||
+                    uniqueMemberCount >= 9
+                  }
                 >
                   {inviteStatus === 'sending' ? 'Sending...' : 'Invite'}
                 </Button>
               </div>
+              {inviteError ? (
+                <p className="mt-1 text-xs text-rose-400">{inviteError}</p>
+              ) : null}
               {inviteStatus === 'sent' && (
                 <p className="mt-1 text-xs text-emerald-400">✓ Invitation sent!</p>
               )}

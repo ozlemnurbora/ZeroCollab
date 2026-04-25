@@ -46,11 +46,17 @@ export function AddTaskModal({
     createInitialForm(initialValues, activeProject, activeTeam),
   )
   const [touched, setTouched] = useState(false)
+  const [teamScopeError, setTeamScopeError] = useState('')
   const draftIdRef = useRef(createTaskId())
 
   useEffect(() => {
     if (!open) return
     draftIdRef.current = createTaskId()
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    setTeamScopeError('')
   }, [open])
 
   const errors = useMemo(() => {
@@ -60,7 +66,7 @@ export function AddTaskModal({
     return next
   }, [form, t])
 
-  const canSubmit = Object.keys(errors).length === 0
+  const canSubmit = Object.keys(errors).length === 0 && !teamScopeError
 
   const calendarOptions = useMemo(() => {
     const base = [
@@ -90,6 +96,17 @@ export function AddTaskModal({
               const calendarId = form.calendarId || 'personal'
               const calendarType = calendarId === 'general' ? 'general' : 'personal'
               const isGeneral = calendarType === 'general'
+              if (isGeneral && activeTeam) {
+                const memberCount = Array.isArray(activeTeam.members)
+                  ? activeTeam.members.length
+                  : 0
+                if (memberCount < 3) {
+                  setTeamScopeError(
+                    'Team must have at least 3 members before creating team-scoped tasks.',
+                  )
+                  return
+                }
+              }
               onCreate?.({
                 id: draftIdRef.current,
                 title: form.title.trim(),
@@ -111,6 +128,9 @@ export function AddTaskModal({
       }
     >
       <div className="grid gap-4">
+        {teamScopeError ? (
+          <p className="text-xs text-rose-300">{teamScopeError}</p>
+        ) : null}
         {activeProject && (
           <div className="flex items-center gap-2 rounded-lg bg-[rgb(var(--zc-border)/0.3)] px-3 py-2 text-xs">
             <span className={`h-2 w-2 rounded-full ${activeProject.color}`} />
