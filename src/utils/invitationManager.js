@@ -1,5 +1,55 @@
 import { supabase } from './supabase.js'
 
+function buildPairingCode() {
+  const digits = Math.floor(100000 + Math.random() * 900000)
+  return `ZC-${digits}`
+}
+
+function normalizePairingCode(code) {
+  return (code || '').toString().trim().toUpperCase().replace(/\s+/g, '')
+}
+
+async function addUserToTeamLinkedProjects(teamId, user) {
+  const { data: projectTeams, error: projectTeamsError } = await supabase
+    .from('project_teams')
+    .select('project_id')
+    .eq('team_id', teamId)
+
+  if (projectTeamsError) throw projectTeamsError
+  if (!projectTeams || projectTeams.length === 0) return
+
+  for (const pt of projectTeams) {
+    const { data: existingPm, error: pmSelErr } = await supabase
+      .from('project_members')
+      .select('role, member_source')
+      .eq('project_id', pt.project_id)
+      .eq('user_id', user.id)
+      .maybeSingle()
+
+    if (pmSelErr) {
+      console.error('[InvitationManager] project_members lookup:', pmSelErr)
+      continue
+    }
+    if (existingPm?.role === 'owner') continue
+    if (existingPm?.member_source === 'direct') continue
+
+    const { error: pmError } = await supabase.from('project_members').upsert(
+      {
+        project_id: pt.project_id,
+        user_id: user.id,
+        user_email: user.email,
+        role: 'member',
+        member_source: 'team',
+      },
+      { onConflict: 'project_id,user_id' },
+    )
+
+    if (pmError) {
+      console.error('[InvitationManager] project member insert error:', pmError)
+    }
+  }
+}
+
 export async function sendProjectInvitation(projectId, projectName, inviterEmail, inviteeEmail) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) throw new Error('Not authenticated')
@@ -189,4 +239,94 @@ export function subscribeToTeamMemberChanges(teamIds, onMemberAccepted) {
     .subscribe()
 
   return () => supabase.removeChannel(channel)
+}
+
+export async function generateTeamPairingCode(teamId) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+  if (!teamId) throw new Error('Team ID is required')
+
+  const { data: team, error: teamError } = await supabase
+    .from('teams')
+    .select('owner_id')
+    .eq('id', teamId)
+    .single()
+
+  if (teamError) throw teamError
+  if (!team || team.owner_id !== user.id) {
+    throw new Error('Only the team owner can generate pairing code.')
+  }
+
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+  let attempts = 0
+  while (attempts < 5) {
+    attempts += 1
+    const code = buildPairingCode()
+    const { error } = await supabase.from('team_pairing_codes').insert({
+      team_id: teamId,
+      code,
+      created_by: user.id,
+      expires_at: expiresAt,
+    })
+
+    if (!error) return code
+    if (error?.code !== '23505') throw error
+  }
+
+  throw new Error('Could not generate a unique pairing code. Please try again.')
+}
+
+export async function getTeamPairingCode(teamId) {
+  if (!teamId) return null
+
+  const nowIso = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('team_pairing_codes')
+    .select('code, expires_at, created_at')
+    .eq('team_id', teamId)
+    .or(`expires_at.is.null,expires_at.gt.${nowIso}`)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  return data || null
+}
+
+export async function joinTeamWithCode(rawCode) {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Not authenticated')
+
+  const code = normalizePairingCode(rawCode)
+  if (!code) throw new Error('Please enter a valid pairing code.')
+
+  const nowIso = new Date().toISOString()
+  const { data: pairingRow, error: pairingError } = await supabase
+    .from('team_pairing_codes')
+    .select('team_id, code, expires_at')
+    .eq('code', code)
+    .or(`expires_at.is.null,expires_at.gt.${nowIso}`)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (pairingError) throw pairingError
+  if (!pairingRow) {
+    throw new Error('Pairing code is invalid or expired.')
+  }
+
+  const { error: teamMemberError } = await supabase.from('team_members').upsert(
+    {
+      team_id: pairingRow.team_id,
+      user_id: user.id,
+      user_email: user.email,
+      display_name: user.email ? user.email.split('@')[0] : 'member',
+    },
+    { onConflict: 'team_id,user_id' },
+  )
+
+  if (teamMemberError) throw teamMemberError
+
+  await addUserToTeamLinkedProjects(pairingRow.team_id, user)
+  return { teamId: pairingRow.team_id, code: pairingRow.code }
 }

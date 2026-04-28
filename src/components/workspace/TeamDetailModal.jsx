@@ -3,7 +3,11 @@ import { Modal } from '../ui/Modal.jsx'
 import { Button } from '../ui/Button.jsx'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import { useAuth } from '../../utils/AuthContext.jsx'
-import { sendTeamInvitation } from '../../utils/invitationManager.js'
+import {
+  sendTeamInvitation,
+  generateTeamPairingCode,
+  getTeamPairingCode,
+} from '../../utils/invitationManager.js'
 import { getRoleLabel } from '../../utils/roleOntology.js'
 
 export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLeave }) {
@@ -14,9 +18,16 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteStatus, setInviteStatus] = useState('')
   const [inviteError, setInviteError] = useState('')
+  const [pairingCode, setPairingCode] = useState('')
+  const [pairingCodeStatus, setPairingCodeStatus] = useState('')
+  const [pairingCodeError, setPairingCodeError] = useState('')
   const [isEditing, setIsEditing] = useState(false)
   const [memberRemoveError, setMemberRemoveError] = useState('')
   const [removingMemberKey, setRemovingMemberKey] = useState('')
+  const isOwner =
+    !!user?.id &&
+    !!team &&
+    (team.owner_id === user.id || team.ownerId === user.id)
 
   useEffect(() => {
     if (!team) return
@@ -35,10 +46,31 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
     return () => window.clearTimeout(resetEditTimer)
   }, [open])
 
-  if (!team) return null
+  useEffect(() => {
+    if (!open || !team?.id || !isOwner) return
 
-  const isOwner =
-    !!user?.id && (team.owner_id === user.id || team.ownerId === user.id)
+    let cancelled = false
+    void (async () => {
+      try {
+        const activeCode = await getTeamPairingCode(team.id)
+        if (!cancelled) {
+          setPairingCode(activeCode?.code || '')
+          setPairingCodeError('')
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setPairingCode('')
+          setPairingCodeError(err?.message || 'Failed to load pairing code.')
+        }
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [open, team?.id, isOwner])
+
+  if (!team) return null
 
   const removeMemberLocallyAfterSuccess = (member) => {
     setMembers((prev) => {
@@ -141,6 +173,35 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
       console.error('[TeamInvite] error:', err)
       setInviteStatus('error')
       setTimeout(() => setInviteStatus(''), 3000)
+    }
+  }
+
+  const handleGeneratePairingCode = async () => {
+    if (!isOwner) return
+
+    try {
+      setPairingCodeStatus('generating')
+      setPairingCodeError('')
+      const code = await generateTeamPairingCode(team.id)
+      setPairingCode(code)
+      setPairingCodeStatus('generated')
+      window.setTimeout(() => setPairingCodeStatus(''), 3000)
+    } catch (err) {
+      console.error('[TeamDetailModal] generate pairing code error:', err)
+      setPairingCodeStatus('')
+      setPairingCodeError(err?.message || 'Failed to generate pairing code.')
+    }
+  }
+
+  const handleCopyPairingCode = async () => {
+    if (!pairingCode) return
+    try {
+      await navigator.clipboard.writeText(pairingCode)
+      setPairingCodeStatus('copied')
+      window.setTimeout(() => setPairingCodeStatus(''), 2000)
+    } catch (err) {
+      console.error('[TeamDetailModal] copy pairing code error:', err)
+      setPairingCodeError('Could not copy code.')
     }
   }
 
@@ -301,6 +362,46 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
           </div>
           {isEditing && memberRemoveError ? (
             <p className="mt-1 text-xs text-rose-400">{memberRemoveError}</p>
+          ) : null}
+          {isEditing && isOwner ? (
+            <div className="mt-3 border-t border-[rgb(var(--zc-border))] pt-3">
+              <p className="text-xs font-medium text-[rgb(var(--zc-muted))] mb-2">
+                Team Pairing Code
+              </p>
+              <div className="flex items-center gap-2">
+                <Button
+                  onClick={handleGeneratePairingCode}
+                  disabled={pairingCodeStatus === 'generating'}
+                >
+                  {pairingCodeStatus === 'generating'
+                    ? 'Generating...'
+                    : 'Generate Pairing Code'}
+                </Button>
+                {pairingCode ? (
+                  <>
+                    <code className="rounded bg-[rgb(var(--zc-border)/0.3)] px-2 py-1 text-xs text-[rgb(var(--zc-text))]">
+                      {pairingCode}
+                    </code>
+                    <button
+                      type="button"
+                      onClick={() => void handleCopyPairingCode()}
+                      className="rounded border border-[rgb(var(--zc-border))] px-2 py-1 text-[10px] text-[rgb(var(--zc-muted))] hover:text-[rgb(var(--zc-text))]"
+                    >
+                      Copy
+                    </button>
+                  </>
+                ) : null}
+              </div>
+              {pairingCodeStatus === 'generated' ? (
+                <p className="mt-1 text-xs text-emerald-400">✓ Pairing code generated.</p>
+              ) : null}
+              {pairingCodeStatus === 'copied' ? (
+                <p className="mt-1 text-xs text-emerald-400">✓ Copied.</p>
+              ) : null}
+              {pairingCodeError ? (
+                <p className="mt-1 text-xs text-rose-400">{pairingCodeError}</p>
+              ) : null}
+            </div>
           ) : null}
           {isEditing && isOwner ? (
             <div className="mt-3 border-t border-[rgb(var(--zc-border))] pt-3">
