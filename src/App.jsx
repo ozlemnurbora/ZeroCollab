@@ -8,6 +8,7 @@ import { connectToPeer, initP2P } from './utils/p2pManager.js'
 import { requestNotificationPermission } from './utils/taskReminder.js'
 import { SidebarLayout } from './layouts/SidebarLayout.jsx'
 import { DashboardPage } from './pages/DashboardPage.jsx'
+import { ProjectOverviewPage } from './pages/ProjectOverviewPage.jsx'
 import { TasksPage } from './pages/TasksPage.jsx'
 import { CalendarPage } from './pages/CalendarPage.jsx'
 import { ChatPage } from './pages/ChatPage.jsx'
@@ -35,6 +36,7 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<SidebarLayout />}>
         <Route index element={<DashboardPage />} />
+        <Route path="project-overview" element={<ProjectOverviewPage />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="chat" element={<ChatPage />} />

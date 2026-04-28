@@ -17,6 +17,8 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
+import { Button } from '../components/ui/Button.jsx'
+import { SprintCreationModal } from '../components/workspace/SprintCreationModal.jsx'
 
 function statusPieColor(id) {
   if (id === 'done') return '#22c55e'
@@ -27,9 +29,17 @@ function statusPieColor(id) {
 export function DashboardPage() {
   const { t } = useLanguage()
   const { user } = useAuth()
-  const { activeProject, teams } = useWorkspace()
+  const {
+    activeProject,
+    teams,
+    activeSprint,
+    createProjectSprint,
+    completeProjectSprint,
+  } = useWorkspace()
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
+  const [createSprintOpen, setCreateSprintOpen] = useState(false)
+  const [sprintActionError, setSprintActionError] = useState('')
 
   const memberNameFromAny = (member) =>
     typeof member === 'string'
@@ -178,6 +188,15 @@ export function DashboardPage() {
     }
   }, [visibleTasks, t, projectMembers])
 
+  const sprintDateRange = useMemo(() => {
+    if (!activeSprint?.start_date || !activeSprint?.end_date) return ''
+    const start = new Date(activeSprint.start_date)
+    const end = new Date(activeSprint.end_date)
+    const fmt = (d) =>
+      d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    return `${fmt(start)} → ${fmt(end)}`
+  }, [activeSprint])
+
   return (
     <section>
       <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
@@ -204,6 +223,61 @@ export function DashboardPage() {
           {t('loading_tasks')}
         </div>
       ) : null}
+
+      <div className="mt-6">
+        <Panel title="Active Sprint" subtitle="Current sprint details">
+          {activeSprint ? (
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
+                Sprint {activeSprint.sprint_number}
+              </p>
+              <p className="text-sm text-[rgb(var(--zc-muted))]">
+                Goal: {activeSprint.sprint_goal || '—'}
+              </p>
+              <p className="text-sm text-[rgb(var(--zc-muted))]">{sprintDateRange}</p>
+              <p className="text-sm text-[rgb(var(--zc-muted))]">
+                Duration: {activeSprint.duration_weeks} week
+                {activeSprint.duration_weeks > 1 ? 's' : ''}
+              </p>
+              <p className="text-sm text-[rgb(var(--zc-muted))]">
+                Status: {activeSprint.status === 'active' ? 'Active' : 'Completed'}
+              </p>
+              {sprintActionError ? (
+                <p className="text-xs text-rose-400">{sprintActionError}</p>
+              ) : null}
+              <div className="pt-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setSprintActionError('')
+                    void completeProjectSprint(activeSprint.id).catch((err) =>
+                      setSprintActionError(err?.message || 'Failed to complete sprint.'),
+                    )
+                  }}
+                >
+                  Complete Sprint
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm text-[rgb(var(--zc-muted2))]">No active sprint</p>
+              {sprintActionError ? (
+                <p className="text-xs text-rose-400">{sprintActionError}</p>
+              ) : null}
+              <Button
+                onClick={() => {
+                  setSprintActionError('')
+                  setCreateSprintOpen(true)
+                }}
+                disabled={!activeProject}
+              >
+                Create Sprint
+              </Button>
+            </div>
+          )}
+        </Panel>
+      </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <SummaryCard
@@ -241,6 +315,22 @@ export function DashboardPage() {
           color="text-violet-400"
         />
       </div>
+
+      <SprintCreationModal
+        open={createSprintOpen}
+        onClose={() => setCreateSprintOpen(false)}
+        onCreate={async (payload) => {
+          try {
+            await createProjectSprint(payload)
+            setSprintActionError('')
+          } catch (err) {
+            const message =
+              err?.message || 'Only one active sprint is allowed per project.'
+            setSprintActionError(message)
+            throw err
+          }
+        }}
+      />
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <Panel title={t('dash_recent_tasks')} subtitle={t('dash_recent_tasks_sub')}>

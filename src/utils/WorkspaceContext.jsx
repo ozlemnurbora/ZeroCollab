@@ -29,6 +29,10 @@ import {
   subscribeToMyTeams,
   updateTeamRecord,
   updateTeamMemberRole as dbUpdateTeamMemberRole,
+  fetchProjectSprints,
+  getActiveSprint,
+  createSprint as dbCreateSprint,
+  completeSprint as dbCompleteSprint,
 } from './workspaceDB.js'
 
 const WorkspaceContext = createContext(null)
@@ -128,6 +132,8 @@ export function WorkspaceProvider({ children }) {
       return null
     }
   })
+  const [projectSprints, setProjectSprints] = useState([])
+  const [activeSprint, setActiveSprint] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
 
   const projectsRef = useRef(projects)
@@ -216,6 +222,26 @@ export function WorkspaceProvider({ children }) {
     }
   }, [user])
 
+  const loadProjectSprints = useCallback(async (projectId) => {
+    if (!user || !projectId) {
+      setProjectSprints([])
+      setActiveSprint(null)
+      return
+    }
+    try {
+      const [all, active] = await Promise.all([
+        fetchProjectSprints(projectId),
+        getActiveSprint(projectId),
+      ])
+      setProjectSprints(Array.isArray(all) ? all : [])
+      setActiveSprint(active || null)
+    } catch (err) {
+      console.error('[WorkspaceContext] loadProjectSprints error:', err)
+      setProjectSprints([])
+      setActiveSprint(null)
+    }
+  }, [user])
+
   useEffect(() => {
     if (!user) {
       const resetTimer = window.setTimeout(() => {
@@ -274,6 +300,15 @@ export function WorkspaceProvider({ children }) {
     }
     void connectToProjectHub(activeProject.id, user.id, user.email)
   }, [activeProject, user])
+
+  useEffect(() => {
+    if (!activeProject?.id || !user) {
+      setProjectSprints([])
+      setActiveSprint(null)
+      return
+    }
+    void loadProjectSprints(activeProject.id)
+  }, [activeProject?.id, user, loadProjectSprints])
 
   useEffect(() => {
     const handleProjectDeleted = () => {
@@ -440,6 +475,25 @@ export function WorkspaceProvider({ children }) {
     await loadTeams()
   }
 
+  const createProjectSprint = async ({ durationWeeks, sprintGoal }) => {
+    if (!user || !activeProject?.id) return null
+    const created = await dbCreateSprint(
+      activeProject.id,
+      durationWeeks,
+      sprintGoal,
+      user.id,
+    )
+    await loadProjectSprints(activeProject.id)
+    return created
+  }
+
+  const completeProjectSprint = async (sprintId) => {
+    if (!user || !activeProject?.id || !sprintId) return null
+    const updated = await dbCompleteSprint(sprintId)
+    await loadProjectSprints(activeProject.id)
+    return updated
+  }
+
   return (
     <WorkspaceContext.Provider
       value={{
@@ -448,6 +502,8 @@ export function WorkspaceProvider({ children }) {
         teams,
         activeProject,
         activeTeam,
+        projectSprints,
+        activeSprint,
         isLoading,
         selectProject,
         selectTeam,
@@ -459,6 +515,9 @@ export function WorkspaceProvider({ children }) {
         updateTeams,
         kickTeamMember,
         updateTeamMemberRole,
+        loadProjectSprints,
+        createProjectSprint,
+        completeProjectSprint,
         reloadProjects: loadProjects,
         reloadTeams: loadTeams,
       }}

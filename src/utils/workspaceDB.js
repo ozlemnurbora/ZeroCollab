@@ -11,6 +11,11 @@ function mapProjectFromMemberRow(row) {
     ...p,
     ownerId: p.owner_id,
     description: p.description ?? '',
+    goal: p.goal ?? '',
+    phase: p.phase ?? 'planning',
+    status: p.status ?? 'active',
+    startDate: p.start_date ?? '',
+    targetEndDate: p.target_end_date ?? '',
     role: row.role,
     memberSource,
     teamIds: [],
@@ -75,6 +80,11 @@ export async function createProject(project, userId, userEmail) {
     name: project.name,
     color: project.color,
     description: project.description || null,
+    goal: project.goal || null,
+    phase: project.phase || 'planning',
+    status: project.status || 'active',
+    start_date: project.startDate || null,
+    target_end_date: project.targetEndDate || null,
     owner_id: userId,
   })
 
@@ -144,6 +154,11 @@ export async function updateProject(project, userId) {
       name: project.name,
       color: project.color,
       description: project.description || null,
+      goal: project.goal || null,
+      phase: project.phase || 'planning',
+      status: project.status || 'active',
+      start_date: project.startDate || null,
+      target_end_date: project.targetEndDate || null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', project.id)
@@ -254,6 +269,107 @@ export async function fetchProjectTeams(projectId) {
 
   if (error) return []
   return (data || []).map((row) => row.team_id)
+}
+
+// ─── SPRINTS ───
+
+function createSprintId() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID()
+  return `sprint_${Date.now()}_${Math.random().toString(16).slice(2)}`
+}
+
+function toIsoDate(d) {
+  return d.toISOString().slice(0, 10)
+}
+
+export async function fetchProjectSprints(projectId) {
+  if (!projectId) return []
+  const { data, error } = await supabase
+    .from('sprints')
+    .select('*')
+    .eq('project_id', projectId)
+    .order('sprint_number', { ascending: false })
+
+  if (error) throw error
+  return data || []
+}
+
+export async function getActiveSprint(projectId) {
+  if (!projectId) return null
+  const { data, error } = await supabase
+    .from('sprints')
+    .select('*')
+    .eq('project_id', projectId)
+    .eq('status', 'active')
+    .order('sprint_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (error) throw error
+  return data || null
+}
+
+export async function createSprint(projectId, durationWeeks, sprintGoal, createdBy) {
+  if (!projectId) throw new Error('Project is required for sprint creation.')
+  const duration = Number(durationWeeks || 0)
+  if (!Number.isFinite(duration) || duration < 1) {
+    throw new Error('Sprint duration must be at least 1 week.')
+  }
+
+  const active = await getActiveSprint(projectId)
+  if (active) {
+    throw new Error('Only one active sprint is allowed per project.')
+  }
+
+  const { data: latest, error: latestError } = await supabase
+    .from('sprints')
+    .select('sprint_number')
+    .eq('project_id', projectId)
+    .order('sprint_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (latestError) throw latestError
+
+  const sprintNumber = (latest?.sprint_number || 0) + 1
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(start)
+  end.setDate(end.getDate() + duration * 7)
+
+  const payload = {
+    id: createSprintId(),
+    project_id: projectId,
+    sprint_number: sprintNumber,
+    duration_weeks: duration,
+    start_date: toIsoDate(start),
+    end_date: toIsoDate(end),
+    sprint_goal: sprintGoal || null,
+    status: 'active',
+    created_by: createdBy || null,
+  }
+
+  const { data, error } = await supabase
+    .from('sprints')
+    .insert(payload)
+    .select('*')
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function completeSprint(sprintId) {
+  if (!sprintId) throw new Error('Sprint id is required.')
+  const { data, error } = await supabase
+    .from('sprints')
+    .update({ status: 'completed' })
+    .eq('id', sprintId)
+    .select('*')
+    .maybeSingle()
+
+  if (error) throw error
+  return data || null
 }
 
 // ─── TEAMS ───

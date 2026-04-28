@@ -29,6 +29,13 @@ export function ProjectDetailModal({
   const [inviteStatus, setInviteStatus] = useState('')
   const [name, setName] = useState(project?.name || '')
   const [description, setDescription] = useState(project?.description || '')
+  const [goal, setGoal] = useState(project?.goal || '')
+  const [phase, setPhase] = useState(project?.phase || 'planning')
+  const [projectStatus, setProjectStatus] = useState(project?.status || 'active')
+  const [startDate, setStartDate] = useState(project?.startDate || project?.start_date || '')
+  const [targetEndDate, setTargetEndDate] = useState(
+    project?.targetEndDate || project?.target_end_date || '',
+  )
   const [selectedTeamIds, setSelectedTeamIds] = useState(
     project?.teamIds || [],
   )
@@ -43,6 +50,11 @@ export function ProjectDetailModal({
     const syncTimer = window.setTimeout(() => {
       setName(project.name || '')
       setDescription(project.description || '')
+      setGoal(project.goal || '')
+      setPhase(project.phase || 'planning')
+      setProjectStatus(project.status || 'active')
+      setStartDate(project.startDate || project.start_date || '')
+      setTargetEndDate(project.targetEndDate || project.target_end_date || '')
       setSelectedTeamIds(project.teamIds || [])
     }, 0)
     return () => window.clearTimeout(syncTimer)
@@ -156,6 +168,10 @@ export function ProjectDetailModal({
     )
     : 'direct_member'
   const canManageProjectRoles = isOwner || isAdminRole(currentUserProjectRole)
+  const canEditProjectOverview =
+    isOwner ||
+    isAdminRole(currentUserProjectRole) ||
+    currentUserProjectRole === 'project_manager'
 
   const toggleTeam = (teamId) => {
     setTeamAssignError('')
@@ -177,7 +193,17 @@ export function ProjectDetailModal({
   }
 
   const handleSave = () => {
-    onUpdate?.({ ...project, name, description, teamIds: selectedTeamIds })
+    onUpdate?.({
+      ...project,
+      name,
+      description,
+      goal,
+      phase,
+      status: projectStatus,
+      startDate,
+      targetEndDate,
+      teamIds: selectedTeamIds,
+    })
     setIsEditing(false)
   }
 
@@ -289,6 +315,11 @@ export function ProjectDetailModal({
                   onClick={() => {
                     setName(project.name || '')
                     setDescription(project.description || '')
+                    setGoal(project.goal || '')
+                    setPhase(project.phase || 'planning')
+                    setProjectStatus(project.status || 'active')
+                    setStartDate(project.startDate || project.start_date || '')
+                    setTargetEndDate(project.targetEndDate || project.target_end_date || '')
                     setSelectedTeamIds(project.teamIds || [])
                     setIsEditing(false)
                   }}
@@ -310,7 +341,7 @@ export function ProjectDetailModal({
                 <Button variant="secondary" onClick={onClose}>
                   Close
                 </Button>
-                {isOwner ? (
+                {canEditProjectOverview ? (
                   <Button onClick={() => setIsEditing(true)}>Edit</Button>
                 ) : null}
               </>
@@ -398,7 +429,7 @@ export function ProjectDetailModal({
           ) : null}
         </div>
 
-        {isEditing && isOwner ? (
+        {isEditing && canEditProjectOverview ? (
           <>
             <div>
               <label className="mb-1 block text-sm font-medium text-[rgb(var(--zc-muted))]">
@@ -421,6 +452,71 @@ export function ProjectDetailModal({
                 rows={3}
                 className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
               />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-[rgb(var(--zc-muted))]">
+                Project Goal
+              </label>
+              <textarea
+                value={goal}
+                onChange={(e) => setGoal(e.target.value)}
+                rows={2}
+                className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[rgb(var(--zc-muted))]">
+                  Phase
+                </label>
+                <select
+                  value={phase}
+                  onChange={(e) => setPhase(e.target.value)}
+                  className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                >
+                  <option value="planning">Planning</option>
+                  <option value="development">Development</option>
+                  <option value="testing">Testing</option>
+                  <option value="deployment">Deployment</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[rgb(var(--zc-muted))]">
+                  Status
+                </label>
+                <select
+                  value={projectStatus}
+                  onChange={(e) => setProjectStatus(e.target.value)}
+                  className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                >
+                  <option value="active">Active</option>
+                  <option value="on_hold">On Hold</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[rgb(var(--zc-muted))]">
+                  Start Date
+                </label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-[rgb(var(--zc-muted))]">
+                  Target End Date
+                </label>
+                <input
+                  type="date"
+                  value={targetEndDate}
+                  onChange={(e) => setTargetEndDate(e.target.value)}
+                  className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
+              </div>
             </div>
             <div>
               <label className="mb-2 block text-sm font-medium text-[rgb(var(--zc-muted))]">
@@ -457,11 +553,22 @@ export function ProjectDetailModal({
           </>
         ) : (
           <>
+            {project.goal ? (
+              <p className="text-sm text-[rgb(var(--zc-muted))]">
+                Goal: {project.goal}
+              </p>
+            ) : null}
             {project.description ? (
               <p className="text-sm text-[rgb(var(--zc-muted))]">
                 {project.description}
               </p>
             ) : null}
+            <div className="grid grid-cols-1 gap-2 text-xs text-[rgb(var(--zc-subtle))] sm:grid-cols-2">
+              <p>Phase: {project.phase || 'planning'}</p>
+              <p>Status: {project.status || 'active'}</p>
+              <p>Start Date: {project.startDate || project.start_date || '—'}</p>
+              <p>Target End: {project.targetEndDate || project.target_end_date || '—'}</p>
+            </div>
             <div>
               <p className="mb-2 text-sm font-medium text-[rgb(var(--zc-muted))]">
                 Assigned Teams
