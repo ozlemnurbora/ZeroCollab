@@ -19,6 +19,21 @@ export function TaskCard({
   const overdue = isOverdue(task.dueDate)
   const dueLabel = formatDueDate(task.dueDate, locale)
   const priority = task.priority || 'must'
+  const itemType = task.itemType || 'task'
+  const backlogState = task.backlogState || 'new'
+  const backlogStateLabelMap = {
+    new: 'New',
+    refined: 'Refined',
+    ready: 'Ready',
+  }
+  const backlogStateLabel = backlogStateLabelMap[backlogState] || 'New'
+  const itemTypeLabelMap = {
+    epic: 'Epic',
+    feature: 'Feature',
+    user_story: 'User Story',
+    task: 'Task',
+  }
+  const itemTypeLabel = itemTypeLabelMap[itemType] || 'Task'
   const priorityMeta =
     priority === 'must'
       ? { label: 'Must-have', classes: 'bg-red-500/20 text-red-400' }
@@ -59,19 +74,6 @@ export function TaskCard({
           <p className="min-w-0 truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
             {task.title}
           </p>
-          <span
-            className={[
-              'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
-              priorityMeta.classes,
-            ].join(' ')}
-          >
-            {priorityMeta.label}
-          </span>
-          {overdue && (
-            <span className="shrink-0 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">
-              Overdue
-            </span>
-          )}
           <span className="ml-2 flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
               type="button"
@@ -100,6 +102,27 @@ export function TaskCard({
               ✕
             </button>
           </span>
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          <span className="shrink-0 rounded-full bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-medium text-indigo-300">
+            {itemTypeLabel}
+          </span>
+          <span className="shrink-0 rounded-full bg-slate-500/20 px-1.5 py-0.5 text-[10px] font-medium text-slate-300">
+            {backlogStateLabel}
+          </span>
+          <span
+            className={[
+              'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+              priorityMeta.classes,
+            ].join(' ')}
+          >
+            {priorityMeta.label}
+          </span>
+          {overdue && (
+            <span className="shrink-0 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">
+              Overdue
+            </span>
+          )}
         </div>
         {task.description ? (
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">

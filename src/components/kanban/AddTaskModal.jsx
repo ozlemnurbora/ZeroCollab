@@ -8,6 +8,12 @@ const initialForm = {
   description: '',
   assignee: '',
   priority: 'must',
+  itemType: 'task',
+  userStoryRole: '',
+  userStoryCapability: '',
+  userStoryBenefit: '',
+  acceptanceCriteria: '',
+  backlogState: 'new',
   startDate: '',
   dueDate: '',
   calendarId: 'personal',
@@ -64,6 +70,11 @@ export function AddTaskModal({
     const next = {}
     if (!form.title.trim()) next.title = t('error_title_required')
     if (!form.assignee.trim()) next.assignee = t('error_assignee_required')
+    if (form.itemType === 'user_story') {
+      if (!form.userStoryRole.trim()) next.userStoryRole = 'Role is required.'
+      if (!form.userStoryCapability.trim()) next.userStoryCapability = 'Capability is required.'
+      if (!form.userStoryBenefit.trim()) next.userStoryBenefit = 'Benefit is required.'
+    }
     return next
   }, [form, t])
 
@@ -114,6 +125,16 @@ export function AddTaskModal({
                 description: form.description.trim(),
                 assignee: form.assignee.trim(),
                 priority: form.priority || 'must',
+                itemType: form.itemType || 'task',
+                backlogState: 'new',
+                acceptanceCriteria: form.acceptanceCriteria.trim(),
+                userStoryRole: form.userStoryRole.trim(),
+                userStoryCapability: form.userStoryCapability.trim(),
+                userStoryBenefit: form.userStoryBenefit.trim(),
+                userStoryText:
+                  form.itemType === 'user_story'
+                    ? `As a ${form.userStoryRole.trim()}, I want ${form.userStoryCapability.trim()}, so that ${form.userStoryBenefit.trim()}.`
+                    : '',
                 startDate: form.startDate || '',
                 dueDate: form.dueDate || '',
                 calendarType,
@@ -147,6 +168,75 @@ export function AddTaskModal({
             )}
           </div>
         )}
+
+        <div>
+          <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
+            Item Type
+          </label>
+          <select
+            className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            value={form.itemType || 'task'}
+            onChange={(e) => setForm((s) => ({ ...s, itemType: e.target.value }))}
+          >
+            <option value="epic">Epic</option>
+            <option value="feature">Feature</option>
+            <option value="user_story">User Story</option>
+            <option value="task">Task</option>
+          </select>
+        </div>
+
+        {form.itemType === 'user_story' ? (
+          <div className="grid gap-4">
+            <div>
+              <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
+                As a [role]
+              </label>
+              <input
+                className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                value={form.userStoryRole}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, userStoryRole: e.target.value }))
+                }
+                onBlur={() => setTouched(true)}
+              />
+              {touched && errors.userStoryRole ? (
+                <p className="mt-1 text-xs text-rose-300">{errors.userStoryRole}</p>
+              ) : null}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
+                I want [capability]
+              </label>
+              <input
+                className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                value={form.userStoryCapability}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, userStoryCapability: e.target.value }))
+                }
+                onBlur={() => setTouched(true)}
+              />
+              {touched && errors.userStoryCapability ? (
+                <p className="mt-1 text-xs text-rose-300">{errors.userStoryCapability}</p>
+              ) : null}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
+                So that [benefit]
+              </label>
+              <input
+                className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                value={form.userStoryBenefit}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, userStoryBenefit: e.target.value }))
+                }
+                onBlur={() => setTouched(true)}
+              />
+              {touched && errors.userStoryBenefit ? (
+                <p className="mt-1 text-xs text-rose-300">{errors.userStoryBenefit}</p>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         <div>
           <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
@@ -207,6 +297,20 @@ export function AddTaskModal({
             value={form.description}
             onChange={(e) =>
               setForm((s) => ({ ...s, description: e.target.value }))
+            }
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
+            Acceptance Criteria
+          </label>
+          <textarea
+            className="mt-1 min-h-[96px] w-full resize-y rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            placeholder={'- Criterion 1\n- Criterion 2\n- Criterion 3'}
+            value={form.acceptanceCriteria}
+            onChange={(e) =>
+              setForm((s) => ({ ...s, acceptanceCriteria: e.target.value }))
             }
           />
         </div>

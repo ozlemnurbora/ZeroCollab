@@ -37,12 +37,26 @@ export async function fetchMyProjects(userId) {
 export async function fetchProjectMembers(projectId) {
   const { data, error } = await supabase
     .from('project_members')
-    .select('user_id, user_email, role, member_source')
+    .select('user_id, user_email, role, member_source, custom_role')
     .eq('project_id', projectId)
 
   if (error) {
-    console.error('[WorkspaceDB] fetchProjectMembers error:', error)
-    return []
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('project_members')
+      .select('user_id, user_email, role, member_source')
+      .eq('project_id', projectId)
+    if (fallbackError) {
+      console.error('[WorkspaceDB] fetchProjectMembers error:', fallbackError)
+      return []
+    }
+    return (fallbackData || []).map((row) => ({
+      userId: row.user_id,
+      email: row.user_email,
+      name: row.user_email ? row.user_email.split('@')[0] : 'Unknown',
+      role: row.role,
+      memberSource: row.member_source,
+      customRole: null,
+    }))
   }
 
   return (data || []).map((row) => ({
@@ -51,6 +65,7 @@ export async function fetchProjectMembers(projectId) {
     name: row.user_email ? row.user_email.split('@')[0] : 'Unknown',
     role: row.role,
     memberSource: row.member_source,
+    customRole: row.custom_role ?? null,
   }))
 }
 
@@ -268,15 +283,44 @@ export async function fetchMyTeams(userId) {
 export async function fetchTeamMembers(teamId) {
   const { data, error } = await supabase
     .from('team_members')
-    .select('user_id, user_email, display_name')
+    .select('user_id, user_email, display_name, custom_role')
     .eq('team_id', teamId)
 
-  if (error) return []
+  if (error) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('team_members')
+      .select('user_id, user_email, display_name')
+      .eq('team_id', teamId)
+    if (fallbackError) return []
+    return (fallbackData || []).map((row) => ({
+      userId: row.user_id,
+      email: row.user_email,
+      name: row.display_name || row.user_email.split('@')[0],
+      customRole: null,
+    }))
+  }
   return (data || []).map((row) => ({
     userId: row.user_id,
     email: row.user_email,
     name: row.display_name || row.user_email.split('@')[0],
+    customRole: row.custom_role || null,
   }))
+}
+
+export async function updateTeamMemberRole(teamId, userId, customRole) {
+  const { data, error } = await supabase
+    .from('team_members')
+    .update({ custom_role: customRole })
+    .eq('team_id', teamId)
+    .eq('user_id', userId)
+    .select('user_id')
+
+  if (error) throw error
+  if (!data || data.length === 0) {
+    console.warn(
+      `[WorkspaceDB] updateTeamMemberRole updated 0 rows for team_id=${teamId}, user_id=${userId}`,
+    )
+  }
 }
 
 export async function removeMemberFromTeam(teamId, targetUserId, currentUserId) {

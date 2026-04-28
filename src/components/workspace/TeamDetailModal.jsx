@@ -8,10 +8,16 @@ import {
   generateTeamPairingCode,
   getTeamPairingCode,
 } from '../../utils/invitationManager.js'
-import { getRoleLabel } from '../../utils/roleOntology.js'
+import { logRoleChange } from '../../utils/roleAudit.js'
+import {
+  getRoleLabel,
+  isAdminRole,
+  isManagerRole,
+  normalizeTeamRole,
+} from '../../utils/roleOntology.js'
 
 export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLeave }) {
-  const { selectTeam, kickTeamMember } = useWorkspace()
+  const { selectTeam, kickTeamMember, updateTeamMemberRole, reloadTeams } = useWorkspace()
   const { user } = useAuth()
   const [name, setName] = useState(team?.name || '')
   const [members, setMembers] = useState(team?.members || [])
@@ -24,6 +30,7 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
   const [isEditing, setIsEditing] = useState(false)
   const [memberRemoveError, setMemberRemoveError] = useState('')
   const [removingMemberKey, setRemovingMemberKey] = useState('')
+  const [roleUpdateError, setRoleUpdateError] = useState('')
   const isOwner =
     !!user?.id &&
     !!team &&
@@ -124,6 +131,21 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
     setIsEditing(false)
   }
 
+  const resolveMemberRole = (member, memberUserId) => {
+    const isTeamOwner = !!memberUserId && memberUserId === (team.owner_id || team.ownerId)
+    return normalizeTeamRole(member?.role, isTeamOwner, member?.customRole)
+  }
+
+  const getTeamRoleBadgeClass = (role) => {
+    if (isAdminRole(role)) {
+      return 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+    }
+    if (isManagerRole(role)) {
+      return 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+    }
+    return 'bg-slate-500/20 text-slate-300 border border-slate-500/30'
+  }
+
   const normalizedMemberKey = (m) => {
     if (typeof m === 'string') return m.trim().toLowerCase()
     return (m?.email || m?.userId || m?.name || '').toString().trim().toLowerCase()
@@ -203,6 +225,58 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
       console.error('[TeamDetailModal] copy pairing code error:', err)
       setPairingCodeError('Could not copy code.')
     }
+  }
+
+  const currentUserMember = (members || []).find((m) => {
+    if (!m || typeof m === 'string') return false
+    return m.userId === user?.id
+  })
+  const currentUserTeamRole = normalizeTeamRole(
+    currentUserMember?.role,
+    user?.id && user.id === (team.owner_id || team.ownerId),
+    currentUserMember?.customRole,
+  )
+  const canManageRoles = isOwner || isAdminRole(currentUserTeamRole)
+
+  const handleTeamRoleChange = async (member, newRole) => {
+    if (!member?.userId) return
+    const targetIsOwner = member.userId === (team.owner_id || team.ownerId)
+    if (targetIsOwner) return
+    if (!canManageRoles) return
+
+    const oldRole = resolveMemberRole(member, member.userId)
+    if (oldRole === newRole) return
+
+    setRoleUpdateError('')
+
+    const selectedCustomRole = newRole === 'team_manager' ? 'team_manager' : null
+
+    try {
+      await updateTeamMemberRole(team.id, member.userId, selectedCustomRole)
+    } catch (error) {
+      setRoleUpdateError(error?.message || 'Failed to update team role.')
+      return
+    }
+
+    setMembers((prev) =>
+      (prev || []).map((m) => {
+        if (!m || typeof m === 'string') return m
+        if (m.userId !== member.userId) return m
+        return { ...m, customRole: selectedCustomRole }
+      }),
+    )
+    if (typeof reloadTeams === 'function') {
+      await reloadTeams()
+    }
+
+    await logRoleChange({
+      entityType: 'team',
+      entityId: team.id,
+      targetUserId: member.userId,
+      changedBy: user.id,
+      oldRole,
+      newRole,
+    })
   }
 
   return (
@@ -316,19 +390,22 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
 
               const memberInitial = memberName?.[0]?.toUpperCase() || '?'
 
-              const isManager =
-                !!memberUserId &&
-                (team.owner_id === memberUserId || team.ownerId === memberUserId)
+              const resolvedRole =
+                typeof member === 'string'
+                  ? 'team_member'
+                  : resolveMemberRole(member, memberUserId)
+
+              const isTeamAdmin = resolvedRole === 'team_admin'
 
               const canKick =
-                isEditing && isOwner && !!memberUserId && !isManager
+                isEditing && isOwner && !!memberUserId && !isTeamAdmin
 
               const isRemoving = removingMemberKey === memberKey
 
               return (
                 <div
                   key={memberKey}
-                  className="flex items-center justify-between rounded-lg bg-[rgb(var(--zc-border)/0.3)] px-3 py-2"
+                  className="flex items-center justify-between gap-3 rounded-lg bg-[rgb(var(--zc-border)/0.3)] px-3 py-2"
                 >
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-indigo-500/30 text-xs font-medium text-indigo-300">
@@ -339,27 +416,52 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
                         <span className="text-sm text-[rgb(var(--zc-text))] truncate">
                           {memberName}
                         </span>
-                        <span className="text-[10px] text-[rgb(var(--zc-subtle))]">
-                          {getRoleLabel(isManager ? 'manager' : 'member', 'en')}
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] ${getTeamRoleBadgeClass(resolvedRole)}`}
+                        >
+                          {getRoleLabel(resolvedRole, 'en')}
                         </span>
                       </div>
                     </div>
                   </div>
-                  {canKick ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleKickMember(member, memberKey, memberUserId)}
-                      className="text-xs text-rose-400 hover:text-rose-300"
-                      aria-label="Remove member"
-                      disabled={isRemoving}
-                    >
-                      {isRemoving ? '…' : '✕'}
-                    </button>
-                  ) : null}
+                  <div className="flex items-center gap-2">
+                    {canManageRoles &&
+                    !!memberUserId &&
+                    !isTeamAdmin ? (
+                      <select
+                        value={resolvedRole}
+                        onChange={(e) => {
+                          void handleTeamRoleChange(member, e.target.value)
+                        }}
+                        className="rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 py-1 text-xs text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                      >
+                        <option value="team_manager">
+                          {getRoleLabel('team_manager', 'en')}
+                        </option>
+                        <option value="team_member">
+                          {getRoleLabel('team_member', 'en')}
+                        </option>
+                      </select>
+                    ) : null}
+                    {canKick ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleKickMember(member, memberKey, memberUserId)}
+                        className="text-xs text-rose-400 hover:text-rose-300"
+                        aria-label="Remove member"
+                        disabled={isRemoving}
+                      >
+                        {isRemoving ? '…' : '✕'}
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
               )
             })}
           </div>
+          {roleUpdateError ? (
+            <p className="mt-1 text-xs text-rose-400">{roleUpdateError}</p>
+          ) : null}
           {isEditing && memberRemoveError ? (
             <p className="mt-1 text-xs text-rose-400">{memberRemoveError}</p>
           ) : null}

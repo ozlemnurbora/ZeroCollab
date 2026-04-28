@@ -321,6 +321,7 @@ export async function joinTeamWithCode(rawCode) {
       user_id: user.id,
       user_email: user.email,
       display_name: user.email ? user.email.split('@')[0] : 'member',
+      custom_role: null,
     },
     { onConflict: 'team_id,user_id' },
   )

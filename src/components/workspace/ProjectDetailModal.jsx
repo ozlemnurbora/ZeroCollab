@@ -5,13 +5,14 @@ import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import { sendProjectInvitation } from '../../utils/invitationManager.js'
 import { useAuth } from '../../utils/AuthContext.jsx'
 import { fetchProjectMembers } from '../../utils/workspaceDB.js'
-
-function memberTypeLabel(member) {
-  if (member.role === 'owner') return 'Manager'
-  if (member.memberSource === 'team') return 'Team Member'
-  if (member.memberSource === 'direct') return 'Direct Member'
-  return 'Member'
-}
+import { supabase } from '../../utils/supabase.js'
+import { logRoleChange } from '../../utils/roleAudit.js'
+import {
+  getRoleLabel,
+  isAdminRole,
+  isManagerRole,
+  normalizeProjectRole,
+} from '../../utils/roleOntology.js'
 
 export function ProjectDetailModal({
   open,
@@ -35,6 +36,7 @@ export function ProjectDetailModal({
   const [teamAssignError, setTeamAssignError] = useState('')
   const [projectMembers, setProjectMembers] = useState([])
   const [membersLoading, setMembersLoading] = useState(false)
+  const [roleUpdateError, setRoleUpdateError] = useState('')
 
   useEffect(() => {
     if (!project) return
@@ -129,6 +131,32 @@ export function ProjectDetailModal({
     'Unknown'
   const showYouSuffix = !!user?.id && ownerUserId && ownerUserId === user.id
 
+  const getProjectRoleBadgeClass = (role) => {
+    if (isAdminRole(role)) {
+      return 'bg-violet-500/20 text-violet-300 border border-violet-500/30'
+    }
+    if (isManagerRole(role)) {
+      return 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+    }
+    if (role === 'team_member') {
+      return 'bg-sky-500/20 text-sky-300 border border-sky-500/30'
+    }
+    return 'bg-slate-500/20 text-slate-300 border border-slate-500/30'
+  }
+
+  const getNormalizedProjectRole = (member) =>
+    normalizeProjectRole(member?.role, member?.memberSource, member?.customRole)
+
+  const currentProjectMember = projectMembers.find((m) => m.userId === user?.id)
+  const currentUserProjectRole = user?.id
+    ? normalizeProjectRole(
+      user.id === ownerUserId ? 'owner' : currentProjectMember?.role,
+      currentProjectMember?.memberSource,
+      currentProjectMember?.customRole,
+    )
+    : 'direct_member'
+  const canManageProjectRoles = isOwner || isAdminRole(currentUserProjectRole)
+
   const toggleTeam = (teamId) => {
     setTeamAssignError('')
     setSelectedTeamIds((prev) => {
@@ -172,6 +200,55 @@ export function ProjectDetailModal({
       setInviteStatus('error')
       setTimeout(() => setInviteStatus(''), 3000)
     }
+  }
+
+  const handleProjectRoleChange = async (member, newRole) => {
+    if (!member?.userId) return
+    if (!canManageProjectRoles) return
+    if (member.userId === ownerUserId) return
+    if (member.memberSource === 'team') return
+
+    const oldRole = getNormalizedProjectRole(member)
+    if (oldRole === newRole) return
+
+    setRoleUpdateError('')
+
+    const payload =
+      newRole === 'direct_member'
+        ? { role: 'member', member_source: 'direct', custom_role: null }
+        : { role: 'member', custom_role: 'project_manager' }
+
+    const { error } = await supabase
+      .from('project_members')
+      .update(payload)
+      .eq('project_id', project.id)
+      .eq('user_id', member.userId)
+
+    if (error) {
+      setRoleUpdateError(error.message || 'Failed to update project role.')
+      return
+    }
+
+    setProjectMembers((prev) =>
+      (prev || []).map((m) => {
+        if (m.userId !== member.userId) return m
+        return {
+          ...m,
+          role: payload.role,
+          memberSource: payload.member_source ?? m.memberSource,
+          customRole: payload.custom_role ?? null,
+        }
+      }),
+    )
+
+    await logRoleChange({
+      entityType: 'project',
+      entityId: project.id,
+      targetUserId: member.userId,
+      changedBy: user.id,
+      oldRole,
+      newRole,
+    })
   }
 
   return (
@@ -250,7 +327,7 @@ export function ProjectDetailModal({
             {showYouSuffix ? ' (You)' : ''}
           </span>
           <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
-            Manager
+            {getRoleLabel('project_admin', 'en')}
           </span>
         </div>
 
@@ -272,20 +349,53 @@ export function ProjectDetailModal({
                 })
                 .map((member) => {
                   const key = member.userId || member.email || member.name
+                  const normalizedRole =
+                    member.userId === ownerUserId
+                      ? 'project_admin'
+                      : getNormalizedProjectRole(member)
+                  const isOwnerMember = member.userId === ownerUserId
+                  const isTeamInherited = member.memberSource === 'team'
+                  const canEditRole =
+                    canManageProjectRoles &&
+                    !isOwnerMember &&
+                    !isTeamInherited
                   return (
                     <li
                       key={key}
-                      className="flex flex-wrap items-baseline justify-between gap-2 rounded-lg bg-[rgb(var(--zc-border)/0.25)] px-3 py-2 text-sm"
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-[rgb(var(--zc-border)/0.25)] px-3 py-2 text-sm"
                     >
                       <span className="text-[rgb(var(--zc-text))]">{member.name}</span>
-                      <span className="text-[10px] text-[rgb(var(--zc-subtle))]">
-                        {memberTypeLabel(member)}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] ${getProjectRoleBadgeClass(normalizedRole)}`}
+                        >
+                          {getRoleLabel(normalizedRole, 'en')}
+                        </span>
+                        {canEditRole ? (
+                          <select
+                            value={normalizedRole}
+                            onChange={(e) => {
+                              void handleProjectRoleChange(member, e.target.value)
+                            }}
+                            className="rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 py-1 text-xs text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                          >
+                            <option value="project_manager">
+                              {getRoleLabel('project_manager', 'en')}
+                            </option>
+                            <option value="direct_member">
+                              {getRoleLabel('direct_member', 'en')}
+                            </option>
+                          </select>
+                        ) : null}
+                      </div>
                     </li>
                   )
                 })}
             </ul>
           )}
+          {roleUpdateError ? (
+            <p className="mt-1 text-xs text-rose-400">{roleUpdateError}</p>
+          ) : null}
         </div>
 
         {isEditing && isOwner ? (

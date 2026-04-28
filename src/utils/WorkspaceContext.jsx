@@ -28,6 +28,7 @@ import {
   subscribeToMyProjects,
   subscribeToMyTeams,
   updateTeamRecord,
+  updateTeamMemberRole as dbUpdateTeamMemberRole,
 } from './workspaceDB.js'
 
 const WorkspaceContext = createContext(null)
@@ -433,6 +434,12 @@ export function WorkspaceProvider({ children }) {
     await loadProjects()
   }
 
+  const updateTeamMemberRole = async (teamId, userId, customRole) => {
+    if (!user) return
+    await dbUpdateTeamMemberRole(teamId, userId, customRole)
+    await loadTeams()
+  }
+
   return (
     <WorkspaceContext.Provider
       value={{
@@ -451,6 +458,7 @@ export function WorkspaceProvider({ children }) {
         updateProjects,
         updateTeams,
         kickTeamMember,
+        updateTeamMemberRole,
         reloadProjects: loadProjects,
         reloadTeams: loadTeams,
       }}
