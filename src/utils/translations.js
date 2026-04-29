@@ -73,6 +73,7 @@ export const TRANSLATIONS = {
     chart_remaining: 'Remaining',
     status_todo: 'To Do',
     status_in_progress: 'In Progress',
+    status_in_review: 'In Review',
     status_done: 'Done',
 
     // Kanban
@@ -83,6 +84,7 @@ export const TRANSLATIONS = {
     kanban_drop_here: 'Drop a task here',
     kanban_col_todo: 'To Do',
     kanban_col_in_progress: 'In Progress',
+    kanban_col_in_review: 'In Review',
     kanban_col_done: 'Done',
     task_assignee: 'Assignee',
     task_due: 'Due',
@@ -428,6 +430,7 @@ export const TRANSLATIONS = {
     chart_remaining: 'Kalan',
     status_todo: 'Yapılacaklar',
     status_in_progress: 'Devam ediyor',
+    status_in_review: 'İncelemede',
     status_done: 'Tamamlandı',
 
     kanban_hint: 'Görevleri sütunlar arasında sürükleyin. Depolama:',
@@ -437,6 +440,7 @@ export const TRANSLATIONS = {
     kanban_drop_here: 'Görevi buraya bırakın',
     kanban_col_todo: 'Yapılacaklar',
     kanban_col_in_progress: 'Devam ediyor',
+    kanban_col_in_review: 'İncelemede',
     kanban_col_done: 'Tamamlandı',
     task_assignee: 'Atanan',
     task_due: 'Bitiş',

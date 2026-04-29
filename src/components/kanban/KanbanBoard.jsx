@@ -27,6 +27,7 @@ import {
 } from '../../utils/taskP2PSync.js'
 import { checkTaskReminders, startReminderChecker } from '../../utils/taskReminder.js'
 import { useScopedCustomCalendars } from '../../utils/useScopedCustomCalendars.js'
+import { getSprintRemainingDays } from '../../utils/sprintDateUtils.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -48,12 +49,13 @@ export function KanbanBoard({ headerActions = null }) {
   const { user } = useAuth()
   const ownerUserId = user?.id ?? null
   const ownerUserIdRef = useRef(ownerUserId)
-  const { activeProject, activeTeam, memberProjectIds = [] } = useWorkspace()
+  const { activeProject, activeTeam, activeSprint, memberProjectIds = [] } = useWorkspace()
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
   const [hasLoadedTasks, setHasLoadedTasks] = useState(false)
   const [isAddOpen, setIsAddOpen] = useState(false)
   const [priorityFilter, setPriorityFilter] = useState('all')
+  const [boardView, setBoardView] = useState('all')
   const [selectedTaskId, setSelectedTaskId] = useState(null)
   const [detailInitialEdit, setDetailInitialEdit] = useState(false)
   const [draggingTaskId, setDraggingTaskId] = useState(null)
@@ -61,6 +63,12 @@ export function KanbanBoard({ headerActions = null }) {
   const [syncNotice, setSyncNotice] = useState(false)
   const customCalendars = useScopedCustomCalendars(activeProject?.id ?? null, ownerUserId)
   const tasksRef = useRef(tasks)
+
+  const hasActiveSprint = !!activeSprint?.id
+
+  const sprintRemainingDays = useMemo(() => {
+    return getSprintRemainingDays(activeSprint?.end_date)
+  }, [activeSprint?.end_date])
 
   useEffect(() => {
     tasksRef.current = tasks
@@ -305,21 +313,45 @@ export function KanbanBoard({ headerActions = null }) {
     return () => window.removeEventListener('hub:message', handleHubMessage)
   }, [activeProject?.id, memberProjectIds, visibilityOptions])
 
-  const filteredTasks = useMemo(() => {
+  const visibleProjectTasks = useMemo(() => {
     const visible = filterTasksForVisibility(tasks, visibilityOptions)
     const withPriority = visible.map((task) =>
       task?.priority ? task : { ...task, priority: 'must' },
     )
-    const byPriority =
-      priorityFilter === 'all'
-        ? withPriority
-        : withPriority.filter((task) => task.priority === priorityFilter)
-    if (!activeProject) return byPriority
-    const scoped = byPriority.filter((task) =>
+    if (!activeProject) return withPriority
+    const scoped = withPriority.filter((task) =>
       taskVisibleInActiveProject(task, activeProject.id, ownerUserId),
     )
     return scoped
-  }, [tasks, activeProject, visibilityOptions, ownerUserId, priorityFilter])
+  }, [tasks, activeProject, visibilityOptions, ownerUserId])
+
+  const sprintTasks = useMemo(() => {
+    if (!activeSprint?.id) return []
+    return visibleProjectTasks.filter((task) => task?.sprintId === activeSprint.id)
+  }, [visibleProjectTasks, activeSprint?.id])
+
+  const backlogTasks = useMemo(() => {
+    const allowed = new Set(['epic', 'feature', 'user_story', 'task'])
+    return visibleProjectTasks.filter((task) => {
+      if (!task) return false
+      const sprintId = task.sprintId
+      const isBacklog = sprintId == null || sprintId === ''
+      if (!isBacklog) return false
+      const itemType = task.itemType || 'task'
+      return allowed.has(itemType)
+    })
+  }, [visibleProjectTasks])
+
+  const boardScopedTasks = useMemo(() => {
+    if (boardView === 'active_sprint') return hasActiveSprint ? sprintTasks : []
+    if (boardView === 'backlog') return backlogTasks
+    return visibleProjectTasks
+  }, [boardView, hasActiveSprint, sprintTasks, backlogTasks, visibleProjectTasks])
+
+  const filteredTasks = useMemo(() => {
+    if (priorityFilter === 'all') return boardScopedTasks
+    return boardScopedTasks.filter((task) => task.priority === priorityFilter)
+  }, [boardScopedTasks, priorityFilter])
 
   const tasksByColumn = useMemo(() => {
     const priorityOrder = { must: 0, should: 1, could: 2, wont: 3 }
@@ -442,6 +474,16 @@ export function KanbanBoard({ headerActions = null }) {
           {headerActions}
           <select
             className="h-9 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            value={boardView}
+            onChange={(e) => setBoardView(e.target.value)}
+            aria-label="Board view"
+          >
+            <option value="all">All Tasks</option>
+            <option value="active_sprint">Active Sprint</option>
+            <option value="backlog">Backlog</option>
+          </select>
+          <select
+            className="h-9 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
             value={priorityFilter}
             onChange={(e) => setPriorityFilter(e.target.value)}
             aria-label="Filter"
@@ -456,10 +498,101 @@ export function KanbanBoard({ headerActions = null }) {
         </div>
       </div>
 
-      <div className="mt-5 grid gap-4 lg:grid-cols-3">
+      {boardView === 'active_sprint' && hasActiveSprint ? (
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <section className="rounded-xl border border-indigo-500/25 bg-indigo-500/10 p-5 lg:col-span-2">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-xs uppercase tracking-wide text-indigo-200/80">
+                  Active Sprint #{activeSprint.sprint_number}
+                </p>
+                <p className="mt-1 text-lg font-semibold text-[rgb(var(--zc-text))]">
+                  {activeSprint.sprint_goal || '—'}
+                </p>
+              </div>
+              <div className="shrink-0 inline-flex items-center gap-2 rounded-full bg-[rgb(var(--zc-bg)/0.35)] px-3 py-1 text-xs">
+                <span className="text-[rgb(var(--zc-muted))]">Status</span>
+                <span className="font-medium text-[rgb(var(--zc-text))]">
+                  {activeSprint.status || 'active'}
+                </span>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
+                <p className="text-xs text-[rgb(var(--zc-subtle))]">Dates</p>
+                <p className="text-[rgb(var(--zc-text))]">
+                  {activeSprint.start_date} → {activeSprint.end_date}
+                </p>
+              </div>
+              <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
+                <p className="text-xs text-[rgb(var(--zc-subtle))]">Remaining days</p>
+                <p className="text-[rgb(var(--zc-text))]">
+                  {sprintRemainingDays == null ? '—' : sprintRemainingDays}
+                </p>
+              </div>
+              <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
+                <p className="text-xs text-[rgb(var(--zc-subtle))]">Sprint items</p>
+                <p className="text-[rgb(var(--zc-text))]">{sprintTasks.length}</p>
+              </div>
+              <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
+                <p className="text-xs text-[rgb(var(--zc-subtle))]">Project</p>
+                <p className="truncate text-[rgb(var(--zc-text))]">
+                  {activeProject?.name || '—'}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5">
+            <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">Burndown</h3>
+            <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+              Completion based on Done items.
+            </p>
+            {(() => {
+              const totalItems = sprintTasks.length
+              const doneItems = sprintTasks.filter((t) => t?.status === 'done').length
+              const remainingItems = Math.max(0, totalItems - doneItems)
+              const pct = totalItems === 0 ? 0 : Math.round((doneItems / totalItems) * 100)
+              return (
+                <div className="mt-4 space-y-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[rgb(var(--zc-muted))]">Total</span>
+                    <span className="text-[rgb(var(--zc-text))]">{totalItems}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[rgb(var(--zc-muted))]">Remaining</span>
+                    <span className="text-[rgb(var(--zc-text))]">{remainingItems}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[rgb(var(--zc-muted))]">Done</span>
+                    <span className="text-[rgb(var(--zc-text))]">{doneItems}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[rgb(var(--zc-muted))]">Completion</span>
+                    <span className="text-[rgb(var(--zc-text))]">{pct}%</span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-[rgb(var(--zc-border)/0.6)]">
+                    <div
+                      className="h-full rounded-full bg-emerald-500/80 transition-[width]"
+                      style={{ width: `${pct}%` }}
+                      aria-label={`Completion ${pct}%`}
+                    />
+                  </div>
+                </div>
+              )
+            })()}
+          </section>
+        </div>
+      ) : null}
+
+      <div className="mt-5 grid gap-4 lg:grid-cols-4">
         {isLoadingTasks ? (
-          <div className="lg:col-span-3 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
+          <div className="lg:col-span-4 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
             {t('loading_tasks')}
+          </div>
+        ) : boardView === 'active_sprint' && !hasActiveSprint ? (
+          <div className="lg:col-span-4 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
+            No active sprint. Create one from Project Overview.
           </div>
         ) : (
           columnsWithTitles.map((column) => (

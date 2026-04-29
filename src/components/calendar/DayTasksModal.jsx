@@ -23,6 +23,7 @@ export function DayTasksModal({
   const statusLabel = (status) => {
     if (status === 'done') return t('status_done')
     if (status === 'in_progress') return t('status_in_progress')
+    if (status === 'in_review') return t('status_in_review')
     return t('status_todo')
   }
 

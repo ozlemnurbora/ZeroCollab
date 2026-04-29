@@ -24,6 +24,11 @@ export function KanbanColumn({
       text: 'text-amber-400',
       count: 'bg-amber-500/15 text-amber-300 ring-amber-500/20',
     },
+    in_review: {
+      bar: 'bg-violet-500',
+      text: 'text-violet-400',
+      count: 'bg-violet-500/15 text-violet-300 ring-violet-500/20',
+    },
     done: {
       bar: 'bg-emerald-500',
       text: 'text-emerald-400',

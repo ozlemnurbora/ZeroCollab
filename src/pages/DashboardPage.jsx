@@ -22,6 +22,7 @@ import { Button } from '../components/ui/Button.jsx'
 function statusPieColor(id) {
   if (id === 'done') return '#22c55e'
   if (id === 'in_progress') return '#6366f1'
+  if (id === 'in_review') return '#a855f7'
   return '#4b5563'
 }
 
@@ -98,6 +99,7 @@ export function DashboardPage() {
   const stats = useMemo(() => {
     const total = visibleTasks.length
     const inProgress = visibleTasks.filter((task) => task.status === 'in_progress').length
+    const inReview = visibleTasks.filter((task) => task.status === 'in_review').length
     const done = visibleTasks.filter((task) => task.status === 'done').length
 
     const recent = [...visibleTasks]
@@ -109,9 +111,10 @@ export function DashboardPage() {
       count: visibleTasks.filter((task) => task.assignee === name).length,
     }))
 
-    const todo = visibleTasks.filter(
-      (task) => task.status !== 'in_progress' && task.status !== 'done',
-    ).length
+    const todo = visibleTasks.filter((task) => {
+      const s = task.status
+      return s !== 'in_progress' && s !== 'in_review' && s !== 'done'
+    }).length
 
     const createdByDay = new Map()
     const completedByDay = new Map()
@@ -161,6 +164,7 @@ export function DashboardPage() {
     const statusPie = [
       { id: 'todo', name: t('status_todo'), value: todo },
       { id: 'in_progress', name: t('status_in_progress'), value: inProgress },
+      { id: 'in_review', name: t('status_in_review'), value: inReview },
       { id: 'done', name: t('status_done'), value: done },
     ]
 
@@ -172,6 +176,7 @@ export function DashboardPage() {
     return {
       total,
       inProgress,
+      inReview,
       done,
       recent,
       workload,
@@ -514,6 +519,8 @@ function StatusPill({ status, t }) {
       ? t('status_done')
       : status === 'in_progress'
         ? t('status_in_progress')
+        : status === 'in_review'
+          ? t('status_in_review')
         : t('status_todo')
 
   const classes =
@@ -521,6 +528,8 @@ function StatusPill({ status, t }) {
       ? 'bg-emerald-500/10 text-emerald-200 ring-emerald-500/30'
       : status === 'in_progress'
         ? 'bg-indigo-500/10 text-indigo-200 ring-indigo-500/30'
+        : status === 'in_review'
+          ? 'bg-violet-500/10 text-violet-200 ring-violet-500/30'
         : 'bg-[rgb(var(--zc-panel)/0.5)] text-[rgb(var(--zc-muted))] ring-[rgb(var(--zc-border))]'
 
   return (

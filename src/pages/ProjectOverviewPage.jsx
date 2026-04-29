@@ -4,6 +4,7 @@ import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { SprintCreationModal } from '../components/workspace/SprintCreationModal.jsx'
+import { getSprintRemainingDays } from '../utils/sprintDateUtils.js'
 
 function fmtDate(value) {
   if (!value) return '—'
@@ -77,12 +78,7 @@ export function ProjectOverviewPage() {
   }, [projectForOverview?.projectMembers])
 
   const remainingDays = useMemo(() => {
-    if (!activeSprint?.end_date) return null
-    const end = new Date(activeSprint.end_date)
-    const now = new Date()
-    now.setHours(0, 0, 0, 0)
-    const diff = Math.ceil((end.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
-    return diff
+    return getSprintRemainingDays(activeSprint?.end_date)
   }, [activeSprint?.end_date])
 
   if (!activeProject) {

@@ -535,6 +535,7 @@ export function TaskDetailModal({
             >
               <option value="todo">{t('status_todo')}</option>
               <option value="in_progress">{t('status_in_progress')}</option>
+              <option value="in_review">{t('status_in_review')}</option>
               <option value="done">{t('status_done')}</option>
             </select>
           ) : (
@@ -543,7 +544,9 @@ export function TaskDetailModal({
                 ? t('status_done')
                 : value.status === 'in_progress'
                   ? t('status_in_progress')
-                  : t('status_todo')}
+                  : value.status === 'in_review'
+                    ? t('status_in_review')
+                    : t('status_todo')}
             </p>
           )}
         </div>

@@ -23,6 +23,7 @@ const PRIORITY_LABELS = {
 const STATUS_LABELS = {
   todo: 'To Do',
   in_progress: 'In Progress',
+  in_review: 'In Review',
   done: 'Done',
 }
 

@@ -54,6 +54,8 @@ export function TaskCard({
           ? 'border-l-2 border-l-emerald-500/70'
           : task.status === 'in_progress'
             ? 'border-l-2 border-l-amber-500/70'
+            : task.status === 'in_review'
+              ? 'border-l-2 border-l-violet-500/70'
             : 'border-l-2 border-l-indigo-500/70',
       ].join(' ')}
       draggable
