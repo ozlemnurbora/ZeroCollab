@@ -146,13 +146,12 @@ export function KanbanBoard({ headerActions = null }) {
     return () => {
       cancelled = true
     }
-  }, [ownerUserId])
+  }, [ownerUserId, activeProject?.id])
 
   useEffect(() => {
     let hideTimer
     let peerBroadcastTimer
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
-      console.log('[KanbanBoard] message received', data)
       if (data?.type === 'chat-message') {
         const incomingChat = data.payload
         if (!isTaskChatMessage(incomingChat)) return
@@ -200,15 +199,15 @@ export function KanbanBoard({ headerActions = null }) {
       hideTimer = window.setTimeout(() => setSyncNotice(false), 3200)
       setTasks((prev) => {
         const uid = ownerUserIdRef.current
-        const next = mergeTasksFromSync(prev, data.tasks, visibilityOptions).map((t) =>
-          uid ? { ...t, ownerUserId: uid } : t,
-        )
+        const nextBase = mergeTasksFromSync(prev, incomingGeneralTasks, visibilityOptions)
+        if (incomingGeneralTasks.length === 0) return prev
+        if (prev.length > 0 && nextBase.length === 0) return prev
+        const next = nextBase.map((t) => (uid ? { ...t, ownerUserId: uid } : t))
         if (uid) void saveTasks(next, uid)
         return next
       })
     })
     const unsubPeer = on(P2P_EVENTS.PEER_CONNECTED, () => {
-      console.log('[KanbanBoard] peer connected, broadcasting tasks')
       window.clearTimeout(peerBroadcastTimer)
       peerBroadcastTimer = window.setTimeout(() => {
         broadcastTasks(tasksRef.current)
@@ -302,11 +301,12 @@ export function KanbanBoard({ headerActions = null }) {
       if (projectId && !memberProjectIds.includes(projectId)) return
       if (activeProject?.id && projectId && projectId !== activeProject.id) return
       if (Array.isArray(incomingTasks)) {
+        if (incomingTasks.length === 0) return
         setTasks((prev) => {
           const uid = ownerUserIdRef.current
-          const next = mergeTasksFromSync(prev, incomingTasks, visibilityOptions).map((t) =>
-            uid ? { ...t, ownerUserId: uid } : t,
-          )
+          const nextBase = mergeTasksFromSync(prev, incomingTasks, visibilityOptions)
+          if (prev.length > 0 && nextBase.length === 0) return prev
+          const next = nextBase.map((t) => (uid ? { ...t, ownerUserId: uid } : t))
           if (uid) void saveTasks(next, uid)
           return next
         })
