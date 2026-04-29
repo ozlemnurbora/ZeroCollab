@@ -27,7 +27,9 @@ import {
 } from '../../utils/taskP2PSync.js'
 import { checkTaskReminders, startReminderChecker } from '../../utils/taskReminder.js'
 import { useScopedCustomCalendars } from '../../utils/useScopedCustomCalendars.js'
-import { getSprintRemainingDays } from '../../utils/sprintDateUtils.js'
+import {
+  getSprintRemainingDays,
+} from '../../utils/sprintDateUtils.js'
 import { getNormalizedTaskStatus, isTaskInActiveSprint } from '../../utils/sprintTaskUtils.js'
 
 function createId() {
@@ -557,30 +559,41 @@ export function KanbanBoard({ headerActions = null }) {
               const remainingItems = Math.max(0, totalItems - doneItems)
               const pct = totalItems === 0 ? 0 : Math.round((doneItems / totalItems) * 100)
               return (
-                <div className="mt-4 space-y-3 text-sm">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[rgb(var(--zc-muted))]">Total</span>
-                    <span className="text-[rgb(var(--zc-text))]">{totalItems}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[rgb(var(--zc-muted))]">Remaining</span>
-                    <span className="text-[rgb(var(--zc-text))]">{remainingItems}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[rgb(var(--zc-muted))]">Done</span>
-                    <span className="text-[rgb(var(--zc-text))]">{doneItems}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[rgb(var(--zc-muted))]">Completion</span>
-                    <span className="text-[rgb(var(--zc-text))]">{pct}%</span>
-                  </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-[rgb(var(--zc-border)/0.6)]">
-                    <div
-                      className="h-full rounded-full bg-emerald-500/80 transition-[width]"
-                      style={{ width: `${pct}%` }}
-                      aria-label={`Completion ${pct}%`}
-                    />
-                  </div>
+                <div className="mt-4 space-y-4 text-sm">
+                  {totalItems === 0 ? (
+                    <div className="rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
+                      No sprint items yet. Add ready items from Sprint Planning.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-2 gap-2 text-sm">
+                        <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
+                          <p className="text-xs text-[rgb(var(--zc-subtle))]">Total</p>
+                          <p className="text-[rgb(var(--zc-text))]">{totalItems}</p>
+                        </div>
+                        <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
+                          <p className="text-xs text-[rgb(var(--zc-subtle))]">Remaining</p>
+                          <p className="text-[rgb(var(--zc-text))]">{remainingItems}</p>
+                        </div>
+                        <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
+                          <p className="text-xs text-[rgb(var(--zc-subtle))]">Done</p>
+                          <p className="text-[rgb(var(--zc-text))]">{doneItems}</p>
+                        </div>
+                        <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
+                          <p className="text-xs text-[rgb(var(--zc-subtle))]">Completion</p>
+                          <p className="text-[rgb(var(--zc-text))]">{pct}%</p>
+                        </div>
+                      </div>
+
+                      <div className="h-2 overflow-hidden rounded-full bg-[rgb(var(--zc-border)/0.6)]">
+                        <div
+                          className="h-full rounded-full bg-emerald-500/80 transition-[width]"
+                          style={{ width: `${pct}%` }}
+                          aria-label={`Completion ${pct}%`}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               )
             })()}

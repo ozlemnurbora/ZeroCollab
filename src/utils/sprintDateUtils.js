@@ -14,6 +14,17 @@ function parseYmdToLocalMidnight(dateStr) {
   return dt
 }
 
+export function getLocalMidnightMsFromYmd(dateStr) {
+  const dt = parseYmdToLocalMidnight(dateStr)
+  return dt ? dt.getTime() : null
+}
+
+export function getTodayLocalMidnightMs() {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return today.getTime()
+}
+
 /**
  * Date-based remaining days until sprint end date.
  * Normalizes both today and end date to LOCAL midnight before calculating.
@@ -21,9 +32,8 @@ function parseYmdToLocalMidnight(dateStr) {
 export function getSprintRemainingDays(endDateYmd) {
   const end = parseYmdToLocalMidnight(endDateYmd)
   if (!end) return null
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const remaining = Math.ceil((end.getTime() - today.getTime()) / MS_PER_DAY)
+  const todayMs = getTodayLocalMidnightMs()
+  const remaining = Math.ceil((end.getTime() - todayMs) / MS_PER_DAY)
   return Math.max(0, remaining)
 }
 
