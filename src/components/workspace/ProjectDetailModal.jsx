@@ -23,7 +23,7 @@ export function ProjectDetailModal({
   onDelete,
   onLeave,
 }) {
-  const { selectProject } = useWorkspace()
+  const { selectProject, reloadProjects } = useWorkspace()
   const { user } = useAuth()
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteStatus, setInviteStatus] = useState('')
@@ -232,17 +232,21 @@ export function ProjectDetailModal({
     if (!member?.userId) return
     if (!canManageProjectRoles) return
     if (member.userId === ownerUserId) return
-    if (member.memberSource === 'team') return
 
     const oldRole = getNormalizedProjectRole(member)
     if (oldRole === newRole) return
 
     setRoleUpdateError('')
 
+    const nextCustomRole =
+      newRole === 'project_manager' ? 'project_manager' : null
+
     const payload =
       newRole === 'direct_member'
-        ? { role: 'member', member_source: 'direct', custom_role: null }
-        : { role: 'member', custom_role: 'project_manager' }
+        ? { member_source: 'direct', custom_role: null }
+        : newRole === 'team_member'
+          ? { member_source: 'team', custom_role: null }
+          : { custom_role: 'project_manager' }
 
     const { error } = await supabase
       .from('project_members')
@@ -260,9 +264,8 @@ export function ProjectDetailModal({
         if (m.userId !== member.userId) return m
         return {
           ...m,
-          role: payload.role,
           memberSource: payload.member_source ?? m.memberSource,
-          customRole: payload.custom_role ?? null,
+          customRole: nextCustomRole,
         }
       }),
     )
@@ -275,6 +278,9 @@ export function ProjectDetailModal({
       oldRole,
       newRole,
     })
+
+    // Ensure ProjectOverviewPage re-computes Project Managers immediately.
+    await reloadProjects?.()
   }
 
   return (
@@ -385,11 +391,9 @@ export function ProjectDetailModal({
                       ? 'project_admin'
                       : getNormalizedProjectRole(member)
                   const isOwnerMember = member.userId === ownerUserId
-                  const isTeamInherited = member.memberSource === 'team'
                   const canEditRole =
                     canManageProjectRoles &&
-                    !isOwnerMember &&
-                    !isTeamInherited
+                    !isOwnerMember
                   return (
                     <li
                       key={key}
@@ -413,9 +417,15 @@ export function ProjectDetailModal({
                             <option value="project_manager">
                               {getRoleLabel('project_manager', 'en')}
                             </option>
-                            <option value="direct_member">
-                              {getRoleLabel('direct_member', 'en')}
-                            </option>
+                            {member.memberSource === 'team' ? (
+                              <option value="team_member">
+                                {getRoleLabel('team_member', 'en')}
+                              </option>
+                            ) : (
+                              <option value="direct_member">
+                                {getRoleLabel('direct_member', 'en')}
+                              </option>
+                            )}
                           </select>
                         ) : null}
                       </div>

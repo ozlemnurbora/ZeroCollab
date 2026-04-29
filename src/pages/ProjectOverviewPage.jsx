@@ -12,7 +12,7 @@ function fmtDate(value) {
 
 export function ProjectOverviewPage() {
   const { user } = useAuth()
-  const { activeProject, teams, activeSprint } = useWorkspace()
+  const { activeProject, teams, activeSprint, projects } = useWorkspace()
   const [tasks, setTasks] = useState([])
 
   useEffect(() => {
@@ -48,17 +48,22 @@ export function ProjectOverviewPage() {
     return (teams || []).filter((team) => activeProject.teamIds.includes(team.id))
   }, [activeProject?.teamIds, teams])
 
+  const projectForOverview = useMemo(() => {
+    if (!activeProject?.id) return activeProject
+    return (projects || []).find((p) => p.id === activeProject.id) || activeProject
+  }, [projects, activeProject])
+
   const projectAdmin = useMemo(() => {
-    if (!activeProject?.projectMembers?.length) return '—'
-    const owner = activeProject.projectMembers.find((m) => m.role === 'owner')
+    if (!projectForOverview?.projectMembers?.length) return '—'
+    const owner = projectForOverview.projectMembers.find((m) => m.role === 'owner')
     return owner?.name || owner?.email || '—'
-  }, [activeProject?.projectMembers])
+  }, [projectForOverview?.projectMembers])
 
   const projectManagers = useMemo(() => {
-    const members = activeProject?.projectMembers || []
+    const members = projectForOverview?.projectMembers || []
     const managers = members.filter((m) => m.customRole === 'project_manager')
     return managers.map((m) => m.name || m.email).filter(Boolean)
-  }, [activeProject?.projectMembers])
+  }, [projectForOverview?.projectMembers])
 
   const remainingDays = useMemo(() => {
     if (!activeSprint?.end_date) return null
