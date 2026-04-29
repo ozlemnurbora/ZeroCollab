@@ -72,3 +72,4 @@ export function SprintCreationModal({ open, onClose, onCreate }) {
     </Modal>
   )
 }
+

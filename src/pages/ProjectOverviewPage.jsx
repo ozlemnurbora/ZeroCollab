@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { loadTasks } from '../components/kanban/taskStorage.js'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
+import { Button } from '../components/ui/Button.jsx'
+import { SprintCreationModal } from '../components/workspace/SprintCreationModal.jsx'
 
 function fmtDate(value) {
   if (!value) return '—'
@@ -12,8 +14,17 @@ function fmtDate(value) {
 
 export function ProjectOverviewPage() {
   const { user } = useAuth()
-  const { activeProject, teams, activeSprint, projects } = useWorkspace()
+  const {
+    activeProject,
+    teams,
+    activeSprint,
+    projects,
+    createProjectSprint,
+    completeProjectSprint,
+  } = useWorkspace()
   const [tasks, setTasks] = useState([])
+  const [createSprintOpen, setCreateSprintOpen] = useState(false)
+  const [sprintActionError, setSprintActionError] = useState('')
 
   useEffect(() => {
     if (!user?.id) {
@@ -159,41 +170,92 @@ export function ProjectOverviewPage() {
           <h2 className="text-lg font-semibold text-[rgb(var(--zc-text))]">Sprint Summary</h2>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">Current delivery cycle</p>
           {activeSprint ? (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
-                <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Active Sprint</p>
-                <p className="mt-1 text-sm font-medium text-[rgb(var(--zc-text))]">
-                  Sprint {activeSprint.sprint_number}
-                </p>
+            <div className="mt-4 space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
+                  <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+                    Active Sprint
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-[rgb(var(--zc-text))]">
+                    Sprint {activeSprint.sprint_number}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
+                  <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+                    Status
+                  </p>
+                  <p className="mt-1 text-sm font-medium text-[rgb(var(--zc-text))]">
+                    {activeSprint.status}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
+                  <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+                    Duration
+                  </p>
+                  <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
+                    {activeSprint.duration_weeks} week
+                    {activeSprint.duration_weeks > 1 ? 's' : ''}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
+                  <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+                    Remaining Days
+                  </p>
+                  <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
+                    {remainingDays ?? '—'}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3 sm:col-span-2">
+                  <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+                    Dates
+                  </p>
+                  <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
+                    {fmtDate(activeSprint.start_date)} → {fmtDate(activeSprint.end_date)}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3 sm:col-span-2">
+                  <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+                    Sprint Goal
+                  </p>
+                  <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
+                    {activeSprint.sprint_goal || '—'}
+                  </p>
+                </div>
               </div>
-              <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
-                <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Status</p>
-                <p className="mt-1 text-sm font-medium text-[rgb(var(--zc-text))]">
-                  {activeSprint.status}
-                </p>
-              </div>
-              <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3 sm:col-span-2">
-                <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Sprint Goal</p>
-                <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
-                  {activeSprint.sprint_goal || '—'}
-                </p>
-              </div>
-              <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
-                <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Dates</p>
-                <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
-                  {fmtDate(activeSprint.start_date)} → {fmtDate(activeSprint.end_date)}
-                </p>
-              </div>
-              <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
-                <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Remaining Days</p>
-                <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
-                  {remainingDays ?? '—'}
-                </p>
+              {sprintActionError ? (
+                <p className="text-xs text-rose-400">{sprintActionError}</p>
+              ) : null}
+              <div className="pt-1">
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setSprintActionError('')
+                    void completeProjectSprint(activeSprint.id).catch((err) =>
+                      setSprintActionError(
+                        err?.message || 'Failed to complete sprint.',
+                      ),
+                    )
+                  }}
+                >
+                  Complete Sprint
+                </Button>
               </div>
             </div>
           ) : (
             <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
-              No active sprint
+              <p className="mb-2">No active sprint.</p>
+              {sprintActionError ? (
+                <p className="mb-2 text-xs text-rose-400">{sprintActionError}</p>
+              ) : null}
+              <Button
+                onClick={() => {
+                  setSprintActionError('')
+                  setCreateSprintOpen(true)
+                }}
+                disabled={!activeProject}
+              >
+                Create Sprint
+              </Button>
             </div>
           )}
         </section>
@@ -233,6 +295,22 @@ export function ProjectOverviewPage() {
           </div>
         </section>
       </div>
+
+      <SprintCreationModal
+        open={createSprintOpen}
+        onClose={() => setCreateSprintOpen(false)}
+        onCreate={async (payload) => {
+          try {
+            await createProjectSprint(payload)
+            setSprintActionError('')
+          } catch (err) {
+            const message =
+              err?.message || 'Only one active sprint is allowed per project.'
+            setSprintActionError(message)
+            throw err
+          }
+        }}
+      />
 
       <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5">
         <h2 className="text-lg font-semibold text-[rgb(var(--zc-text))]">Team Summary</h2>
