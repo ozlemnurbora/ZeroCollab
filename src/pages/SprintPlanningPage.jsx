@@ -33,6 +33,10 @@ function getStoryPoints(task) {
   return null
 }
 
+function isSprintCompatibleItemType(itemType) {
+  return itemType === 'task' || itemType === 'user_story'
+}
+
 export function SprintPlanningPage() {
   const { user } = useAuth()
   const { activeProject, activeSprint, memberProjectIds = [] } = useWorkspace()
@@ -71,7 +75,19 @@ export function SprintPlanningPage() {
         (t) =>
           t.backlogState === 'ready' &&
           (t.sprintId == null || t.sprintId === '') &&
+          isSprintCompatibleItemType(t.itemType || 'task') &&
           t.status !== 'done',
+      ),
+    [projectTasks],
+  )
+
+  const hasReadyNonSprintItems = useMemo(
+    () =>
+      projectTasks.some(
+        (t) =>
+          t.backlogState === 'ready' &&
+          (t.sprintId == null || t.sprintId === '') &&
+          (t.itemType === 'epic' || t.itemType === 'feature'),
       ),
     [projectTasks],
   )
@@ -162,8 +178,13 @@ export function SprintPlanningPage() {
         Sprint Planning
       </h2>
       <p className="text-sm text-[rgb(var(--zc-muted2))]">
-        Only backlog items marked Ready can be committed to the sprint.
+        Only Ready User Stories and Tasks can be committed to the sprint.
       </p>
+      {hasReadyNonSprintItems ? (
+        <p className="text-xs text-[rgb(var(--zc-subtle))]">
+          Epics and Features are used for backlog organization and cannot be committed directly to a sprint.
+        </p>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
