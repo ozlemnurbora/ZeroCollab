@@ -28,6 +28,7 @@ import {
 import { checkTaskReminders, startReminderChecker } from '../../utils/taskReminder.js'
 import { useScopedCustomCalendars } from '../../utils/useScopedCustomCalendars.js'
 import { getSprintRemainingDays } from '../../utils/sprintDateUtils.js'
+import { getNormalizedTaskStatus, isTaskInActiveSprint } from '../../utils/sprintTaskUtils.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -326,9 +327,11 @@ export function KanbanBoard({ headerActions = null }) {
   }, [tasks, activeProject, visibilityOptions, ownerUserId])
 
   const sprintTasks = useMemo(() => {
-    if (!activeSprint?.id) return []
-    return visibleProjectTasks.filter((task) => task?.sprintId === activeSprint.id)
-  }, [visibleProjectTasks, activeSprint?.id])
+    if (!activeProject?.id || !activeSprint?.id) return []
+    return visibleProjectTasks.filter((task) =>
+      isTaskInActiveSprint(task, activeProject.id, activeSprint.id),
+    )
+  }, [visibleProjectTasks, activeProject?.id, activeSprint?.id])
 
   const backlogTasks = useMemo(() => {
     const allowed = new Set(['epic', 'feature', 'user_story', 'task'])
@@ -550,7 +553,7 @@ export function KanbanBoard({ headerActions = null }) {
             </p>
             {(() => {
               const totalItems = sprintTasks.length
-              const doneItems = sprintTasks.filter((t) => t?.status === 'done').length
+              const doneItems = sprintTasks.filter((t) => getNormalizedTaskStatus(t) === 'done').length
               const remainingItems = Math.max(0, totalItems - doneItems)
               const pct = totalItems === 0 ? 0 : Math.round((doneItems / totalItems) * 100)
               return (

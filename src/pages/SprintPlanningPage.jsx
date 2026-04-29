@@ -5,6 +5,7 @@ import { loadTasks, saveTasks } from '../components/kanban/taskStorage.js'
 import { tasksForP2PBroadcast } from '../utils/taskP2PSync.js'
 import { broadcastTaskSync } from '../utils/hubManager.js'
 import { sendToAllPeers } from '../utils/p2pManager.js'
+import { isTaskInActiveSprint } from '../utils/sprintTaskUtils.js'
 
 const ITEM_TYPE_LABELS = {
   epic: 'Epic',
@@ -97,8 +98,10 @@ export function SprintPlanningPage() {
     () =>
       !activeSprint?.id
         ? []
-        : projectTasks.filter((t) => t.sprintId === activeSprint.id),
-    [projectTasks, activeSprint?.id],
+        : projectTasks.filter((t) =>
+          isTaskInActiveSprint(t, activeProject?.id, activeSprint.id),
+        ),
+    [projectTasks, activeProject?.id, activeSprint?.id],
   )
 
   const canPlan = !!user?.id && !!activeProject?.id && !!activeSprint?.id
