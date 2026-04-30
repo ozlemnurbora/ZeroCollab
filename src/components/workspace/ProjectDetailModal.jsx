@@ -7,6 +7,7 @@ import { useAuth } from '../../utils/AuthContext.jsx'
 import { fetchProjectMembers } from '../../utils/workspaceDB.js'
 import { supabase } from '../../utils/supabase.js'
 import { logRoleChange } from '../../utils/roleAudit.js'
+import { ConfirmDialog } from '../common/ConfirmDialog.jsx'
 import {
   getRoleLabel,
   isAdminRole,
@@ -23,7 +24,7 @@ export function ProjectDetailModal({
   onDelete,
   onLeave,
 }) {
-  const { selectProject, reloadProjects } = useWorkspace()
+  const { selectProject, reloadProjects, removeDirectProjectMember } = useWorkspace()
   const { user } = useAuth()
   const [inviteEmail, setInviteEmail] = useState('')
   const [inviteStatus, setInviteStatus] = useState('')
@@ -44,6 +45,12 @@ export function ProjectDetailModal({
   const [projectMembers, setProjectMembers] = useState([])
   const [membersLoading, setMembersLoading] = useState(false)
   const [roleUpdateError, setRoleUpdateError] = useState('')
+  const [confirmAction, setConfirmAction] = useState(null)
+  const [confirmLoading, setConfirmLoading] = useState(false)
+  const [pendingTeamRemoval, setPendingTeamRemoval] = useState(null)
+  const [pendingTeamRemovalLoading, setPendingTeamRemovalLoading] = useState(false)
+  const [pendingDirectMemberRemoval, setPendingDirectMemberRemoval] = useState(null)
+  const [pendingDirectMemberRemovalLoading, setPendingDirectMemberRemovalLoading] = useState(false)
 
   useEffect(() => {
     if (!project) return
@@ -168,19 +175,27 @@ export function ProjectDetailModal({
     )
     : 'direct_member'
   const canManageProjectRoles = isOwner || isAdminRole(currentUserProjectRole)
+  const canManageProjectMembers =
+    isOwner || isAdminRole(currentUserProjectRole) || currentUserProjectRole === 'project_manager'
   const canEditProjectOverview =
     isOwner ||
     isAdminRole(currentUserProjectRole) ||
     currentUserProjectRole === 'project_manager'
 
-  const toggleTeam = (teamId) => {
+  const toggleTeam = (team) => {
+    const teamId = team?.id || ''
+    if (!teamId) return
     setTeamAssignError('')
     setSelectedTeamIds((prev) => {
       const isRemoving = prev.includes(teamId)
-      if (isRemoving) return prev.filter((id) => id !== teamId)
+      if (isRemoving) {
+        // Prevent immediate unassign via checkbox; require confirmation.
+        setPendingTeamRemoval(team)
+        return prev
+      }
 
-      const team = (teams || []).find((t) => t.id === teamId)
-      const memberCount = Array.isArray(team?.members) ? team.members.length : 0
+      const resolvedTeam = team || (teams || []).find((t) => t.id === teamId)
+      const memberCount = Array.isArray(resolvedTeam?.members) ? resolvedTeam.members.length : 0
       if (memberCount < 3) {
         setTeamAssignError(
           'Team must have at least 3 members before assigning to a project.',
@@ -190,6 +205,33 @@ export function ProjectDetailModal({
 
       return [...prev, teamId]
     })
+  }
+
+  const confirmRemoveTeamFromProject = async () => {
+    if (!pendingTeamRemoval?.id) return
+    try {
+      setPendingTeamRemovalLoading(true)
+      // Exact existing "remove" behavior: update selectedTeamIds (actual persistence stays in Save).
+      setSelectedTeamIds((prev) => prev.filter((id) => id !== pendingTeamRemoval.id))
+    } finally {
+      setPendingTeamRemovalLoading(false)
+      setPendingTeamRemoval(null)
+    }
+  }
+
+  const confirmRemoveDirectMember = async () => {
+    if (!pendingDirectMemberRemoval?.userId) return
+    try {
+      setPendingDirectMemberRemovalLoading(true)
+      const ok = await removeDirectProjectMember?.(project.id, pendingDirectMemberRemoval.userId)
+      if (ok) {
+        setProjectMembers((prev) => (prev || []).filter((m) => m?.userId !== pendingDirectMemberRemoval.userId))
+        await reloadProjects?.()
+      }
+    } finally {
+      setPendingDirectMemberRemovalLoading(false)
+      setPendingDirectMemberRemoval(null)
+    }
   }
 
   const handleSave = () => {
@@ -283,6 +325,26 @@ export function ProjectDetailModal({
     await reloadProjects?.()
   }
 
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return
+    try {
+      setConfirmLoading(true)
+      if (confirmAction.type === 'deleteProject') {
+        onDelete?.(project.id)
+        onClose?.()
+        return
+      }
+      if (confirmAction.type === 'leaveProject') {
+        onLeave?.(project.id)
+        onClose?.()
+        return
+      }
+    } finally {
+      setConfirmLoading(false)
+      setConfirmAction(null)
+    }
+  }
+
   return (
     <Modal
       open={open}
@@ -294,8 +356,12 @@ export function ProjectDetailModal({
             <Button
               variant="danger"
               onClick={() => {
-                onDelete?.(project.id)
-                onClose?.()
+                setConfirmAction({
+                  type: 'deleteProject',
+                  title: 'Delete project',
+                  message: 'Are you sure you want to delete this project?',
+                  confirmText: 'Yes, delete',
+                })
               }}
             >
               Delete Project
@@ -304,8 +370,13 @@ export function ProjectDetailModal({
             <Button
               variant="danger"
               onClick={() => {
-                onLeave?.(project.id)
-                onClose?.()
+                setConfirmAction({
+                  type: 'leaveProject',
+                  title: 'Leave project?',
+                  message:
+                    'Are you sure you want to leave this project? You may lose access to its tasks, meetings, and project data.',
+                  confirmText: 'Yes, leave',
+                })
               }}
             >
               Leave Project
@@ -391,6 +462,15 @@ export function ProjectDetailModal({
                       ? 'project_admin'
                       : getNormalizedProjectRole(member)
                   const isOwnerMember = member.userId === ownerUserId
+                  const source = member?.memberSource || ''
+                  const isDirectMember = source === 'direct'
+                  const isTeamMember = source === 'team'
+                  const canRemoveThisMember =
+                    canManageProjectMembers &&
+                    isDirectMember &&
+                    !isOwnerMember &&
+                    !!member.userId &&
+                    member.userId !== user?.id
                   const canEditRole =
                     canManageProjectRoles &&
                     !isOwnerMember
@@ -406,6 +486,18 @@ export function ProjectDetailModal({
                         >
                           {getRoleLabel(normalizedRole, 'en')}
                         </span>
+                        {canRemoveThisMember && !isTeamMember ? (
+                          <button
+                            type="button"
+                            className="text-xs text-rose-400 hover:text-rose-300"
+                            aria-label="Remove project member"
+                            onClick={() => {
+                              setPendingDirectMemberRemoval(member)
+                            }}
+                          >
+                            ✕
+                          </button>
+                        ) : null}
                         {canEditRole ? (
                           <select
                             value={normalizedRole}
@@ -549,7 +641,7 @@ export function ProjectDetailModal({
                     <input
                       type="checkbox"
                       checked={selectedTeamIds.includes(team.id)}
-                      onChange={() => toggleTeam(team.id)}
+                      onChange={() => toggleTeam(team)}
                       className="rounded"
                     />
                     <span className={`h-2 w-2 rounded-full ${team.color}`} />
@@ -637,6 +729,39 @@ export function ProjectDetailModal({
           </>
         )}
       </div>
+      <ConfirmDialog
+        open={!!confirmAction}
+        title={confirmAction?.title}
+        message={confirmAction?.message}
+        confirmText={confirmAction?.confirmText}
+        cancelText="Cancel"
+        danger
+        loading={confirmLoading}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={() => void handleConfirmAction()}
+      />
+      <ConfirmDialog
+        open={!!pendingTeamRemoval}
+        title="Remove team from project?"
+        message={`Are you sure you want to remove ${pendingTeamRemoval?.name || 'this team'} from this project?`}
+        confirmText="Yes, remove"
+        cancelText="Cancel"
+        danger
+        loading={pendingTeamRemovalLoading}
+        onCancel={() => setPendingTeamRemoval(null)}
+        onConfirm={() => void confirmRemoveTeamFromProject()}
+      />
+      <ConfirmDialog
+        open={!!pendingDirectMemberRemoval}
+        title="Remove project member?"
+        message={`Are you sure you want to remove ${pendingDirectMemberRemoval?.name || pendingDirectMemberRemoval?.email || 'this member'} from this project?`}
+        confirmText="Yes, remove"
+        cancelText="Cancel"
+        danger
+        loading={pendingDirectMemberRemovalLoading}
+        onCancel={() => setPendingDirectMemberRemoval(null)}
+        onConfirm={() => void confirmRemoveDirectMember()}
+      />
     </Modal>
   )
 }

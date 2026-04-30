@@ -10,6 +10,7 @@ import { useAuth } from './AuthContext.jsx'
 import { connectToProjectHub, disconnectFromProjectHub } from './appHub.js'
 import { pruneSharedTasksByProjectIds } from '../components/kanban/taskStorage.js'
 import { pruneMeetingsByProjectIds } from './meetingStorage.js'
+import { isAdminRole, normalizeProjectRole } from './roleOntology.js'
 import {
   fetchMyProjects,
   fetchMyTeams,
@@ -21,10 +22,12 @@ import {
   deleteProject as dbDeleteProject,
   leaveProject as dbLeaveProject,
   updateProject as dbUpdateProject,
+  updateProjectOverview as dbUpdateProjectOverview,
   createTeam,
   deleteTeam as dbDeleteTeam,
   assignTeamToProject,
   removeTeamFromProject,
+  removeDirectProjectMember as dbRemoveDirectProjectMember,
   subscribeToMyProjects,
   subscribeToMyTeams,
   updateTeamRecord,
@@ -385,6 +388,44 @@ export function WorkspaceProvider({ children }) {
     await loadProjects()
   }
 
+  const removeDirectProjectMember = async (projectId, targetUserId) => {
+    if (!user || !projectId || !targetUserId) return false
+    const project = projectsRef.current.find((p) => p.id === projectId)
+    if (!project) return false
+
+    const isProjOwner =
+      project.owner_id === user.id || project.ownerId === user.id
+    const currentMember =
+      (project.projectMembers || []).find((m) => m?.userId === user.id) || null
+    const normalizedRole = user.id === (project.owner_id || project.ownerId)
+      ? 'project_admin'
+      : normalizeProjectRole(
+        currentMember?.role,
+        currentMember?.memberSource,
+        currentMember?.customRole,
+      )
+    const canManage =
+      isProjOwner || isAdminRole(normalizedRole) || normalizedRole === 'project_manager'
+
+    if (!canManage) {
+      console.warn('[WorkspaceContext] removeDirectProjectMember blocked', {
+        projectId,
+        targetUserId,
+      })
+      return false
+    }
+    if (targetUserId === user.id) return false
+
+    try {
+      await dbRemoveDirectProjectMember(projectId, targetUserId)
+      await loadProjects()
+      return true
+    } catch (err) {
+      console.error('[WorkspaceContext] removeDirectProjectMember error:', err)
+      return false
+    }
+  }
+
   const updateProjects = async (updatedList) => {
     if (!user) return
     const prevById = new Map(projectsRef.current.map((p) => [p.id, p]))
@@ -410,6 +451,27 @@ export function WorkspaceProvider({ children }) {
       }
     }
     await loadProjects()
+  }
+
+  const updateProjectOverview = async (projectId, updates) => {
+    if (!user || !projectId) return false
+    const project = projectsRef.current.find((p) => p.id === projectId)
+    if (!project) return false
+
+    // STRICT: only project_manager can edit overview metadata (admins can't unless also manager).
+    const currentMember =
+      (project.projectMembers || []).find((m) => m?.userId === user.id) || null
+    const isManager = currentMember?.customRole === 'project_manager'
+    if (!isManager) return false
+
+    try {
+      await dbUpdateProjectOverview(projectId, updates || {})
+      await loadProjects()
+      return true
+    } catch (err) {
+      console.error('[WorkspaceContext] updateProjectOverview error:', err)
+      return false
+    }
   }
 
   const addTeam = async (name, color) => {
@@ -515,6 +577,8 @@ export function WorkspaceProvider({ children }) {
         updateTeams,
         kickTeamMember,
         updateTeamMemberRole,
+        removeDirectProjectMember,
+        updateProjectOverview,
         loadProjectSprints,
         createProjectSprint,
         completeProjectSprint,

@@ -3,6 +3,7 @@ import { Modal } from '../ui/Modal.jsx'
 import { Button } from '../ui/Button.jsx'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import { useAuth } from '../../utils/AuthContext.jsx'
+import { ConfirmDialog } from '../common/ConfirmDialog.jsx'
 import {
   sendTeamInvitation,
   generateTeamPairingCode,
@@ -31,6 +32,8 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
   const [memberRemoveError, setMemberRemoveError] = useState('')
   const [removingMemberKey, setRemovingMemberKey] = useState('')
   const [roleUpdateError, setRoleUpdateError] = useState('')
+  const [confirmAction, setConfirmAction] = useState(null)
+  const [confirmLoading, setConfirmLoading] = useState(false)
   const isOwner =
     !!user?.id &&
     !!team &&
@@ -123,6 +126,26 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
       setMemberRemoveError(err?.message || 'Failed to remove member.')
     } finally {
       setRemovingMemberKey('')
+    }
+  }
+
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return
+    try {
+      setConfirmLoading(true)
+      if (confirmAction.type === 'deleteTeam') {
+        onDelete?.(team.id)
+        onClose?.()
+        return
+      }
+      if (confirmAction.type === 'removeTeamMember') {
+        const { member, memberKey, memberUserId } = confirmAction.payload || {}
+        await handleKickMember(member, memberKey, memberUserId)
+        return
+      }
+    } finally {
+      setConfirmLoading(false)
+      setConfirmAction(null)
     }
   }
 
@@ -290,8 +313,12 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
             <Button
               variant="danger"
               onClick={() => {
-                onDelete?.(team.id)
-                onClose?.()
+                setConfirmAction({
+                  type: 'deleteTeam',
+                  title: 'Delete team',
+                  message: 'Are you sure you want to delete this team?',
+                  confirmText: 'Yes, delete',
+                })
               }}
             >
               Delete Team
@@ -446,7 +473,15 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
                     {canKick ? (
                       <button
                         type="button"
-                        onClick={() => void handleKickMember(member, memberKey, memberUserId)}
+                        onClick={() => {
+                          setConfirmAction({
+                            type: 'removeTeamMember',
+                            title: 'Remove member',
+                            message: `Are you sure you want to remove ${memberName || 'this member'} from this team?`,
+                            confirmText: 'Yes, remove',
+                            payload: { member, memberKey, memberUserId },
+                          })
+                        }}
                         className="text-xs text-rose-400 hover:text-rose-300"
                         aria-label="Remove member"
                         disabled={isRemoving}
@@ -544,6 +579,17 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
           ) : null}
         </div>
       </div>
+      <ConfirmDialog
+        open={!!confirmAction}
+        title={confirmAction?.title}
+        message={confirmAction?.message}
+        confirmText={confirmAction?.confirmText}
+        cancelText="Cancel"
+        danger
+        loading={confirmLoading}
+        onCancel={() => setConfirmAction(null)}
+        onConfirm={() => void handleConfirmAction()}
+      />
     </Modal>
   )
 }

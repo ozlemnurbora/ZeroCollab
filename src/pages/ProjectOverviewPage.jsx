@@ -22,10 +22,17 @@ export function ProjectOverviewPage() {
     projects,
     createProjectSprint,
     completeProjectSprint,
+    updateProjectOverview,
   } = useWorkspace()
   const [tasks, setTasks] = useState([])
   const [createSprintOpen, setCreateSprintOpen] = useState(false)
   const [sprintActionError, setSprintActionError] = useState('')
+  const [isEditingOverview, setIsEditingOverview] = useState(false)
+  const [overviewError, setOverviewError] = useState('')
+  const [overviewSaving, setOverviewSaving] = useState(false)
+  const [goalDraft, setGoalDraft] = useState('')
+  const [startDraft, setStartDraft] = useState('')
+  const [targetEndDraft, setTargetEndDraft] = useState('')
 
   useEffect(() => {
     if (!user?.id) {
@@ -65,6 +72,14 @@ export function ProjectOverviewPage() {
     return (projects || []).find((p) => p.id === activeProject.id) || activeProject
   }, [projects, activeProject])
 
+  const currentMember = useMemo(() => {
+    const members = projectForOverview?.projectMembers || []
+    return user?.id ? members.find((m) => m?.userId === user.id) || null : null
+  }, [projectForOverview?.projectMembers, user?.id])
+
+  // STRICT: only project_manager can edit overview fields (admins cannot unless also manager).
+  const canEditProjectOverview = currentMember?.customRole === 'project_manager'
+
   const projectAdmin = useMemo(() => {
     if (!projectForOverview?.projectMembers?.length) return '—'
     const owner = projectForOverview.projectMembers.find((m) => m.role === 'owner')
@@ -80,6 +95,14 @@ export function ProjectOverviewPage() {
   const remainingDays = useMemo(() => {
     return getSprintRemainingDays(activeSprint?.end_date)
   }, [activeSprint?.end_date])
+
+  useEffect(() => {
+    if (!projectForOverview) return
+    if (isEditingOverview) return
+    setGoalDraft(projectForOverview.goal || '')
+    setStartDraft(projectForOverview.startDate || projectForOverview.start_date || '')
+    setTargetEndDraft(projectForOverview.targetEndDate || projectForOverview.target_end_date || '')
+  }, [projectForOverview, isEditingOverview])
 
   if (!activeProject) {
     return (
@@ -98,8 +121,74 @@ export function ProjectOverviewPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-2">
-          <h2 className="text-lg font-semibold text-[rgb(var(--zc-text))]">Project Identity</h2>
-          <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">High-level project context</p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-[rgb(var(--zc-text))]">Project Identity</h2>
+              <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">High-level project context</p>
+            </div>
+            {canEditProjectOverview ? (
+              isEditingOverview ? (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    disabled={overviewSaving}
+                    onClick={() => {
+                      setOverviewError('')
+                      setIsEditingOverview(false)
+                      setGoalDraft(projectForOverview.goal || '')
+                      setStartDraft(projectForOverview.startDate || projectForOverview.start_date || '')
+                      setTargetEndDraft(projectForOverview.targetEndDate || projectForOverview.target_end_date || '')
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    disabled={overviewSaving}
+                    onClick={() => {
+                      if (!activeProject?.id) return
+                      setOverviewError('')
+                      const goal = (goalDraft || '').trim()
+                      const start = startDraft || ''
+                      const end = targetEndDraft || ''
+                      if (start && end) {
+                        const s = Date.parse(start)
+                        const e = Date.parse(end)
+                        if (Number.isFinite(s) && Number.isFinite(e) && s > e) {
+                          setOverviewError('Start Date cannot be after Target End Date.')
+                          return
+                        }
+                      }
+                      setOverviewSaving(true)
+                      void (async () => {
+                        const ok = await updateProjectOverview?.(activeProject.id, {
+                          goal,
+                          start_date: start || null,
+                          target_end_date: end || null,
+                        })
+                        if (!ok) {
+                          setOverviewError('Failed to save project overview.')
+                          return
+                        }
+                        setIsEditingOverview(false)
+                      })().finally(() => setOverviewSaving(false))
+                    }}
+                  >
+                    {overviewSaving ? 'Saving…' : 'Save'}
+                  </Button>
+                </div>
+              ) : (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setOverviewError('')
+                    setIsEditingOverview(true)
+                  }}
+                >
+                  Edit
+                </Button>
+              )
+            ) : null}
+          </div>
 
           <div className="mt-4">
             <p className="text-sm text-[rgb(var(--zc-muted))]">Project Name</p>
@@ -109,7 +198,16 @@ export function ProjectOverviewPage() {
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
               <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Project Goal</p>
-              <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">{activeProject.goal || '—'}</p>
+              {isEditingOverview && canEditProjectOverview ? (
+                <textarea
+                  value={goalDraft}
+                  onChange={(e) => setGoalDraft(e.target.value)}
+                  rows={3}
+                  className="mt-2 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
+              ) : (
+                <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">{activeProject.goal || '—'}</p>
+              )}
             </div>
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
               <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Description</p>
@@ -147,17 +245,38 @@ export function ProjectOverviewPage() {
           <div className="mt-4 space-y-2 text-sm">
             <div className="flex items-center justify-between rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
               <span className="text-[rgb(var(--zc-muted))]">Start Date</span>
-              <span className="text-[rgb(var(--zc-text))]">{fmtDate(activeProject.startDate || activeProject.start_date)}</span>
+              {isEditingOverview && canEditProjectOverview ? (
+                <input
+                  type="date"
+                  value={startDraft}
+                  onChange={(e) => setStartDraft(e.target.value)}
+                  className="rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 py-1 text-xs text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
+              ) : (
+                <span className="text-[rgb(var(--zc-text))]">{fmtDate(activeProject.startDate || activeProject.start_date)}</span>
+              )}
             </div>
             <div className="flex items-center justify-between rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
               <span className="text-[rgb(var(--zc-muted))]">Target End Date</span>
-              <span className="text-[rgb(var(--zc-text))]">{fmtDate(activeProject.targetEndDate || activeProject.target_end_date)}</span>
+              {isEditingOverview && canEditProjectOverview ? (
+                <input
+                  type="date"
+                  value={targetEndDraft}
+                  onChange={(e) => setTargetEndDraft(e.target.value)}
+                  className="rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 py-1 text-xs text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
+              ) : (
+                <span className="text-[rgb(var(--zc-text))]">{fmtDate(activeProject.targetEndDate || activeProject.target_end_date)}</span>
+              )}
             </div>
             <div className="flex items-center justify-between rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
               <span className="text-[rgb(var(--zc-muted))]">Created At</span>
               <span className="text-[rgb(var(--zc-text))]">{fmtDate(activeProject.created_at)}</span>
             </div>
           </div>
+          {overviewError ? (
+            <p className="mt-2 text-xs text-rose-400">{overviewError}</p>
+          ) : null}
         </section>
       </div>
 

@@ -122,6 +122,23 @@ export async function leaveProject(projectId, userId) {
   if (error) throw error
 }
 
+export async function removeDirectProjectMember(projectId, targetUserId) {
+  if (!projectId || !targetUserId) {
+    throw new Error('Project id and target user id are required.')
+  }
+
+  // Only delete direct memberships; never delete owner/team-based rows.
+  const { error } = await supabase
+    .from('project_members')
+    .delete()
+    .eq('project_id', projectId)
+    .eq('user_id', targetUserId)
+    .eq('member_source', 'direct')
+    .neq('role', 'owner')
+
+  if (error) throw error
+}
+
 export async function joinProjectAsMember(projectId, userId, userEmail, role = 'member') {
   const { data: existing, error: selError } = await supabase
     .from('project_members')
@@ -163,6 +180,23 @@ export async function updateProject(project, userId) {
     })
     .eq('id', project.id)
     .eq('owner_id', userId)
+
+  if (error) throw error
+}
+
+export async function updateProjectOverview(projectId, updates = {}) {
+  if (!projectId) throw new Error('Project id is required.')
+  const payload = {}
+  if ('goal' in updates) payload.goal = updates.goal ?? null
+  if ('start_date' in updates) payload.start_date = updates.start_date ?? null
+  if ('target_end_date' in updates) payload.target_end_date = updates.target_end_date ?? null
+  if ('description' in updates) payload.description = updates.description ?? null
+  payload.updated_at = new Date().toISOString()
+
+  const { error } = await supabase
+    .from('projects')
+    .update(payload)
+    .eq('id', projectId)
 
   if (error) throw error
 }
