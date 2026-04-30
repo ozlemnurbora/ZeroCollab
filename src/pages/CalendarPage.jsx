@@ -229,12 +229,16 @@ export function CalendarPage() {
             memberProjectIds,
           )
           if (next.length === prev.length) return prev
-          if (uid) void saveTasks(next, uid)
+          if (uid) void saveTasks(next, uid, { allowEmpty: true, reason: 'incoming TASK_DELETE' })
           return next
         })
         return
       }
       if (data?.type !== 'TASK_SYNC') return
+      console.log('[CalendarPage] incoming TASK_SYNC', {
+        payloadCount: Array.isArray(data.tasks) ? data.tasks.length : 0,
+        projectId: data.projectId ?? null,
+      })
       const incomingGeneralTasks = (Array.isArray(data.tasks) ? data.tasks : []).filter(
         (task) =>
           task &&
@@ -248,7 +252,7 @@ export function CalendarPage() {
       hideTimer = window.setTimeout(() => setSyncNotice(false), 3200)
       setTasks((prev) => {
         const uid = ownerUserIdRef.current
-        const next = mergeTasksFromSync(prev, data.tasks, visibilityOptions).map((t) =>
+        const next = mergeTasksFromSync(prev, incomingGeneralTasks, visibilityOptions).map((t) =>
           uid ? { ...t, ownerUserId: uid } : t,
         )
         if (uid) void saveTasks(next, uid)
@@ -285,7 +289,7 @@ export function CalendarPage() {
           memberProjectIds,
         )
         if (next.length === prev.length) return prev
-        if (uid) void saveTasks(next, uid)
+        if (uid) void saveTasks(next, uid, { allowEmpty: true, reason: 'hub task-delete' })
         return next
       })
     }
@@ -508,7 +512,9 @@ export function CalendarPage() {
     setTasks((prev) => {
       const next = prev.filter((t) => t.id !== taskId)
       broadcastTasks(next)
-      if (ownerUserId) void saveTasks(next, ownerUserId)
+      if (ownerUserId) {
+        void saveTasks(next, ownerUserId, { allowEmpty: true, reason: 'deleteTask' })
+      }
       return next
     })
     if (removed && shouldBroadcastGeneralTaskDelete(removed, memberProjectIds)) {
@@ -520,15 +526,6 @@ export function CalendarPage() {
       void broadcastTaskDelete(removed.id, removed.projectId)
     }
   }
-
-  useEffect(() => {
-    if (!ownerUserId) return
-    const visible = filterTasksForVisibility(tasksRef.current, visibilityOptions)
-    if (visible.length !== tasksRef.current.length) {
-      setTasks(visible)
-      void saveTasks(visible, ownerUserId)
-    }
-  }, [visibilityOptions, ownerUserId])
 
   return (
     <section>

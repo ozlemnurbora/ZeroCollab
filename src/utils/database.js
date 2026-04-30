@@ -189,19 +189,71 @@ export async function getTasksForOwner(ownerUserId) {
   if (!ownerUserId) return []
   const db = await getDatabase()
   const all = (await db.getAll(STORES.tasks)) ?? []
-  return all.filter((t) => t?.ownerUserId === ownerUserId)
+  // Backward compatible: legacy rows may have no ownerUserId (pre-sprint-board merge).
+  // Treat them as belonging to the current signed-in user so they can be recovered.
+  return all.filter((t) => t && (t.ownerUserId === ownerUserId || !t.ownerUserId))
 }
 
 /**
  * Replace this user's task slice while preserving other users' tasks in the same DB.
  */
-export async function replaceTasksForOwner(ownerUserId, tasks) {
+export async function replaceTasksForOwner(ownerUserId, tasks, options = {}) {
   if (!ownerUserId) return
+  const { allowEmpty = false, reason = '' } = options || {}
   const db = await getDatabase()
   const all = (await db.getAll(STORES.tasks)) ?? []
+  const incoming = Array.isArray(tasks) ? tasks : []
+
+  const before = {
+    total: all.length,
+    owned: all.filter((t) => t?.ownerUserId === ownerUserId).length,
+    legacy: all.filter((t) => t && !t.ownerUserId).length,
+    otherOwners: all.filter((t) => t?.ownerUserId && t.ownerUserId !== ownerUserId).length,
+    incoming: incoming.length,
+  }
+
+  if (!allowEmpty && incoming.length === 0) {
+    console.warn('[database] replaceTasksForOwner blocked empty write', {
+      ownerUserId,
+      reason,
+      before,
+    })
+    return
+  }
+
+  // Preserve:
+  // - tasks from other owners
+  // - legacy tasks without ownerUserId (never stamp/delete them here)
   const others = all.filter((t) => t?.ownerUserId && t.ownerUserId !== ownerUserId)
-  const stamped = (tasks ?? []).map((t) => ({ ...t, ownerUserId }))
-  const next = [...others, ...stamped]
+  const legacy = all.filter((t) => t && !t.ownerUserId)
+
+  const stampedIncoming = incoming
+    .filter((t) => t && typeof t === 'object' && t.id)
+    // Owner stamping should happen in normalization (taskStorage). We keep it here as a safeguard
+    // for callers that forgot to stamp, but we never mutate legacy/unowned rows in this layer.
+    .map((t) => ({ ...t, ownerUserId: t.ownerUserId ?? ownerUserId }))
+
+  let next = []
+  if (allowEmpty && stampedIncoming.length === 0) {
+    // Explicitly allow deleting this owner's tasks, but NEVER delete legacy/unowned tasks here.
+    next = [...others, ...legacy]
+  } else {
+    // Replace this owner's slice; preserve other owners and legacy/unowned tasks.
+    next = [...others, ...legacy, ...stampedIncoming]
+  }
+
+  console.log('[database] replaceTasksForOwner before/after counts', {
+    ownerUserId,
+    reason,
+    before,
+    after: {
+      total: next.length,
+      owned: next.filter((t) => t?.ownerUserId === ownerUserId).length,
+      legacy: next.filter((t) => t && !t.ownerUserId).length,
+      otherOwners: next.filter((t) => t?.ownerUserId && t.ownerUserId !== ownerUserId).length,
+    },
+  })
+
   const tx = db.transaction(STORES.tasks, 'readwrite')
   await tx.store.clear()
   for (const t of next) {

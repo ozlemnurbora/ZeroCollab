@@ -1,19 +1,129 @@
 import { replaceTasksForOwner, getTasksForOwner } from '../../utils/database.js'
 
+export function normalizeTaskForStorage(task, ownerUserId) {
+  if (!task || typeof task !== 'object') return null
+  const id = typeof task.id === 'string' ? task.id : String(task.id || '')
+  if (!id) return null
+
+  const statusRaw = task.status
+  const status =
+    typeof statusRaw === 'string' && statusRaw.trim()
+      ? statusRaw.trim().toLowerCase()
+      : 'todo'
+
+  const itemTypeRaw = task.itemType ?? task.type
+  const itemType =
+    typeof itemTypeRaw === 'string' && itemTypeRaw.trim()
+      ? itemTypeRaw.trim()
+      : 'task'
+
+  const backlogStateRaw = task.backlogState
+  const backlogState =
+    typeof backlogStateRaw === 'string' && backlogStateRaw.trim()
+      ? backlogStateRaw.trim()
+      : 'new'
+
+  const sprintId =
+    task.sprintId == null || task.sprintId === '' ? null : task.sprintId
+
+  const sprintNumber =
+    task.sprintNumber == null || task.sprintNumber === '' ? null : task.sprintNumber
+
+  const storyPointsRaw = task.storyPoints ?? task.story_points ?? task.points
+  const storyPoints =
+    typeof storyPointsRaw === 'number' && Number.isFinite(storyPointsRaw)
+      ? storyPointsRaw
+      : typeof storyPointsRaw === 'string' && storyPointsRaw.trim()
+        ? Number(storyPointsRaw) || 0
+        : 0
+
+  const owner =
+    task.ownerUserId != null && String(task.ownerUserId).trim()
+      ? String(task.ownerUserId).trim()
+      : ownerUserId || null
+
+  const projectId = task.projectId ?? null
+
+  const calendarTypeRaw = task.calendarType
+  const calendarType =
+    typeof calendarTypeRaw === 'string' && calendarTypeRaw.trim()
+      ? calendarTypeRaw.trim()
+      : projectId
+        ? 'general'
+        : 'personal'
+
+  const updatedAtRaw = task.updatedAt ?? task.updated_at ?? null
+  const createdAtRaw = task.createdAt ?? task.created_at ?? null
+  const updatedAt =
+    typeof updatedAtRaw === 'number' && Number.isFinite(updatedAtRaw)
+      ? updatedAtRaw
+      : typeof updatedAtRaw === 'string' && updatedAtRaw.trim()
+        ? Number(updatedAtRaw) || Date.parse(updatedAtRaw) || null
+        : null
+  const createdAt =
+    typeof createdAtRaw === 'number' && Number.isFinite(createdAtRaw)
+      ? createdAtRaw
+      : typeof createdAtRaw === 'string' && createdAtRaw.trim()
+        ? Date.parse(createdAtRaw) || null
+        : null
+
+  // Keep other fields as-is; only fill required defaults for backward compatibility.
+  const next = {
+    ...task,
+    id,
+    status,
+    itemType,
+    backlogState,
+    sprintId,
+    sprintNumber,
+    storyPoints,
+    ownerUserId: owner,
+    calendarType,
+    projectId: projectId ?? undefined,
+    updatedAt: updatedAt ?? createdAt ?? Date.now(),
+  }
+
+  return next
+}
+
 export async function loadTasks(ownerUserId) {
   try {
     if (!ownerUserId) return []
-    const tasks = await getTasksForOwner(ownerUserId)
-    return Array.isArray(tasks) ? tasks : []
+    const raw = await getTasksForOwner(ownerUserId)
+    const list = Array.isArray(raw) ? raw : []
+    const normalized = list
+      .map((t) => normalizeTaskForStorage(t, ownerUserId))
+      .filter(Boolean)
+
+    // Temporary recovery logs
+    console.log('[TaskStorage] loadTasks', {
+      ownerUserId,
+      indexedDbCount: list.length,
+      normalizedCount: normalized.length,
+    })
+
+    return normalized
   } catch {
     return []
   }
 }
 
-export async function saveTasks(tasks, ownerUserId) {
+export async function saveTasks(tasks, ownerUserId, options = {}) {
   try {
     if (!ownerUserId) return
-    await replaceTasksForOwner(ownerUserId, tasks)
+    const { allowEmpty = false, reason = '' } = options || {}
+    const list = Array.isArray(tasks) ? tasks : []
+    if (!allowEmpty && list.length === 0) {
+      // Never write [] unless caller explicitly intends to delete everything.
+      console.log('[TaskStorage] blocked empty save', { ownerUserId, reason })
+      return
+    }
+    const normalized = list
+      .map((t) => normalizeTaskForStorage(t, ownerUserId))
+      .filter(Boolean)
+    if (!allowEmpty && normalized.length === 0) return
+    console.log('[TaskStorage] saving full task list count:', normalized.length, { ownerUserId, reason })
+    await replaceTasksForOwner(ownerUserId, normalized, { allowEmpty, reason })
   } catch {
     // ignore storage errors
   }
@@ -29,6 +139,9 @@ export async function pruneSharedTasksByProjectIds(projectIds, ownerUserId) {
     return !ids.has(task.projectId)
   })
   if (next.length !== current.length) {
-    await saveTasks(next, ownerUserId)
+    await saveTasks(next, ownerUserId, {
+      allowEmpty: true,
+      reason: 'pruneSharedTasksByProjectIds',
+    })
   }
 }

@@ -2,8 +2,71 @@ function normalizeSet(values) {
   return new Set(Array.isArray(values) ? values.filter(Boolean) : [])
 }
 
+function normalizeTaskShape(task) {
+  if (!task || typeof task !== 'object') return null
+  if (!task.id) return null
+  const statusRaw = task.status
+  const status =
+    typeof statusRaw === 'string' && statusRaw.trim()
+      ? statusRaw.trim().toLowerCase()
+      : 'todo'
+  const itemTypeRaw = task.itemType ?? task.type
+  const itemType =
+    typeof itemTypeRaw === 'string' && itemTypeRaw.trim()
+      ? itemTypeRaw.trim()
+      : 'task'
+  const backlogStateRaw = task.backlogState
+  const backlogState =
+    typeof backlogStateRaw === 'string' && backlogStateRaw.trim()
+      ? backlogStateRaw.trim()
+      : 'new'
+  const sprintId =
+    task.sprintId == null || task.sprintId === '' ? null : task.sprintId
+  const calendarTypeRaw = task.calendarType
+  const projectId = task.projectId ?? null
+  const calendarType =
+    typeof calendarTypeRaw === 'string' && calendarTypeRaw.trim()
+      ? calendarTypeRaw.trim()
+      : projectId
+        ? 'general'
+        : 'personal'
+  const ownerUserId =
+    task.ownerUserId != null && String(task.ownerUserId).trim()
+      ? String(task.ownerUserId).trim()
+      : null
+  return { ...task, status, itemType, backlogState, sprintId, calendarType, ownerUserId, projectId }
+}
+
+function getTaskUpdatedAt(task) {
+  const v =
+    task?.updatedAt ??
+    task?.updated_at ??
+    task?.modifiedAt ??
+    task?.modified_at ??
+    task?.lastUpdatedAt ??
+    null
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string') {
+    const n = Number(v)
+    if (Number.isFinite(n)) return n
+    const t = Date.parse(v)
+    if (Number.isFinite(t)) return t
+  }
+  const created = task?.createdAt ?? task?.created_at ?? null
+  if (typeof created === 'number' && Number.isFinite(created)) return created
+  if (typeof created === 'string') {
+    const t = Date.parse(created)
+    if (Number.isFinite(t)) return t
+  }
+  return 0
+}
+
 function isGeneralTask(task) {
-  return !!task && (task.calendarType === 'general' || !task.calendarType)
+  if (!task) return false
+  if (task.calendarType === 'general') return true
+  // Legacy: missing calendarType but has projectId => treat as general.
+  if (!task.calendarType && !!task.projectId) return true
+  return false
 }
 
 function isAuthorizedProjectTask(task, allowedProjectIds) {
@@ -14,7 +77,15 @@ function isAuthorizedProjectTask(task, allowedProjectIds) {
 
 function isOwnedPersonalTask(task, currentUserId) {
   if (!task || isGeneralTask(task)) return false
-  if (!currentUserId) return !task.ownerUserId
+  // Legacy: missing calendarType and no projectId => treat as personal.
+  const isPersonalLike =
+    task.calendarType === 'personal' ||
+    task.calendarType === 'custom' ||
+    (!task.calendarType && !task.projectId)
+  if (!isPersonalLike) return false
+  // Legacy: missing ownerUserId should be visible to current user (recovery scenario).
+  if (!task.ownerUserId) return true
+  if (!currentUserId) return true
   return task.ownerUserId === currentUserId
 }
 
@@ -22,8 +93,9 @@ function isOwnedPersonalTask(task, currentUserId) {
 function isOwnedPersonalTaskInAllowedProjects(task, currentUserId, allowedProjectIds) {
   if (!isOwnedPersonalTask(task, currentUserId)) return false
   const allowed = normalizeSet(allowedProjectIds)
-  if (!task.projectId) return false
-  return allowed.has(task.projectId)
+  // Legacy personal tasks can have no projectId — treat as visible (All Tasks recovery).
+  if (!task.projectId) return true
+  return allowed.has(task.projectId) || allowed.size === 0
 }
 
 export function tasksForP2PBroadcast(tasks, options = {}) {
@@ -45,38 +117,75 @@ export function mergeTasksFromSync(localTasks, incomingTasks, options = {}) {
   const { allowedProjectIds = [], currentUserId = null } = options
   const allowed = normalizeSet(allowedProjectIds)
 
-  const personalTasks = local.filter((task) =>
-    isOwnedPersonalTaskInAllowedProjects(task, currentUserId, allowedProjectIds),
-  )
-  const mergedGeneralById = new Map()
-
+  // Non-destructive merge:
+  // - always keep existing local tasks (even if not in allowed projects)
+  // - apply incoming *general* tasks only for allowed projects
+  // - merge by id using updatedAt/createdAt when available
+  // - never delete local tasks just because they are missing from incoming payload
+  const mergedById = new Map()
   for (const task of local) {
-    if (isAuthorizedProjectTask(task, allowed)) {
-      mergedGeneralById.set(task.id, task)
-    }
-  }
-  for (const task of incoming) {
-    if (isAuthorizedProjectTask(task, allowed)) {
-      mergedGeneralById.set(task.id, task)
-    }
+    const normalized = normalizeTaskShape(task)
+    if (normalized) mergedById.set(normalized.id, normalized)
   }
 
-  return [...personalTasks, ...mergedGeneralById.values()]
+  for (const task of incoming) {
+    const normalized = normalizeTaskShape(task)
+    if (!normalized || !isAuthorizedProjectTask(normalized, allowed)) continue
+    const existing = mergedById.get(normalized.id)
+    if (!existing) {
+      mergedById.set(normalized.id, normalized)
+      continue
+    }
+
+    // Only replace an existing task if it's the same sync scope (general+authorized).
+    // Never overwrite a personal/custom task with a shared payload.
+    if (!isGeneralTask(existing)) continue
+    if (!isAuthorizedProjectTask(existing, allowed)) continue
+
+    const existingTs = getTaskUpdatedAt(existing)
+    const incomingTs = getTaskUpdatedAt(normalized)
+    mergedById.set(normalized.id, incomingTs >= existingTs ? normalized : existing)
+  }
+
+  // Preserve local ordering as much as possible: start with local order, then append new incoming.
+  const out = []
+  const seen = new Set()
+  for (const task of local) {
+    const id = task?.id
+    if (!id || seen.has(id)) continue
+    const value = mergedById.get(id)
+    if (value) {
+      out.push(value)
+      seen.add(id)
+    }
+  }
+  for (const [id, value] of mergedById.entries()) {
+    if (!seen.has(id)) out.push(value)
+  }
+
+  return out
 }
 
 /** When a project is selected: general tasks in that project, or personal/custom owned by current user in that project. */
 export function taskVisibleInActiveProject(task, activeProjectId, ownerUserId) {
   if (!activeProjectId) return true
-  if (!task || task.projectId !== activeProjectId) return false
-  if (isGeneralTask(task)) return true
-  return !!ownerUserId && task.ownerUserId === ownerUserId
+  if (!task) return false
+  if (task.projectId === activeProjectId) return true
+  // Don't hide legacy/personal tasks that have no projectId; keep them visible so users can recover/edit them.
+  const isLegacyOrOwnedPersonal =
+    !task.projectId && (!task.ownerUserId || (ownerUserId && task.ownerUserId === ownerUserId))
+  if (isLegacyOrOwnedPersonal) return true
+  return false
 }
 
 export function filterTasksForVisibility(tasks, options = {}) {
   const list = Array.isArray(tasks) ? tasks : []
   const { allowedProjectIds = [], currentUserId = null } = options
   const allowed = normalizeSet(allowedProjectIds)
-  return list.filter(
+  const normalized = list.map(normalizeTaskShape).filter(Boolean)
+  // Backward-compat: if membership/projects haven't loaded yet, do not hide everything.
+  if (allowed.size === 0) return normalized
+  return normalized.filter(
     (task) =>
       isOwnedPersonalTaskInAllowedProjects(task, currentUserId, allowedProjectIds) ||
       isAuthorizedProjectTask(task, allowed),

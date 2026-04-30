@@ -6,6 +6,7 @@ import { tasksForP2PBroadcast } from '../utils/taskP2PSync.js'
 import { broadcastTaskSync } from '../utils/hubManager.js'
 import { sendToAllPeers } from '../utils/p2pManager.js'
 import { isTaskInActiveSprint } from '../utils/sprintTaskUtils.js'
+import { upsertRemoteTasks } from '../utils/taskRemoteStorage.js'
 
 const ITEM_TYPE_LABELS = {
   epic: 'Epic',
@@ -123,31 +124,39 @@ export function SprintPlanningPage() {
 
   const updateTaskSprint = async (taskId, shouldAssign) => {
     if (!user?.id) return
-    setTasks((prev) => {
-      const list = Array.isArray(prev) ? prev : []
-      const next = list.map((task) => {
-        if (task.id !== taskId) return task
-        if (shouldAssign) {
-          return {
-            ...task,
-            sprintId: activeSprint?.id ?? null,
-            sprintNumber: activeSprint?.sprint_number ?? null,
-            sprintCommittedAt: Date.now(),
-          }
-        }
-        return {
+    // Load ALL tasks, modify only selected task, save the full list.
+    const all = await loadTasks(user.id)
+    const list = Array.isArray(all) ? all : []
+    const now = Date.now()
+    let changed = null
+    const next = list.map((task) => {
+      if (task?.id !== taskId) return task
+      if (shouldAssign) {
+        changed = {
           ...task,
-          sprintId: null,
-          sprintNumber: null,
-          sprintCommittedAt: null,
+          sprintId: activeSprint?.id ?? null,
+          sprintNumber: activeSprint?.sprint_number ?? null,
+          sprintCommittedAt: Date.now(),
+          updatedAt: now,
         }
-      })
-      void (async () => {
-        await saveTasks(next, user.id)
-        await broadcastUpdatedTasks(next)
-      })()
-      return next
+        return changed
+      }
+      changed = {
+        ...task,
+        sprintId: null,
+        sprintNumber: null,
+        sprintCommittedAt: null,
+        updatedAt: now,
+      }
+      return changed
     })
+    setTasks(next)
+    await saveTasks(next, user.id, { reason: 'SprintPlanningPage updateTaskSprint' })
+    console.log('[SprintPlanning] saved full task count:', next.length)
+    await broadcastUpdatedTasks(next)
+    if (changed && changed.projectId && (changed.calendarType === 'general' || !changed.calendarType)) {
+      await upsertRemoteTasks([changed], user.id)
+    }
   }
 
   if (!activeProject) {

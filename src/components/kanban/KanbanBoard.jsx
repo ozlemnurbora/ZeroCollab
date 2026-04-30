@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AddTaskModal } from './AddTaskModal.jsx'
 import { KANBAN_COLUMNS } from './kanbanConstants.js'
-import { loadTasks, saveTasks } from './taskStorage.js'
+import { loadTasks, saveTasks, normalizeTaskForStorage } from './taskStorage.js'
 import { Button } from '../ui/Button.jsx'
 import { KanbanColumn } from './KanbanColumn.jsx'
 import { TaskDetailModal } from './TaskDetailModal.jsx'
@@ -31,6 +31,47 @@ import {
   getSprintRemainingDays,
 } from '../../utils/sprintDateUtils.js'
 import { getNormalizedTaskStatus, isTaskInActiveSprint } from '../../utils/sprintTaskUtils.js'
+import { recoverLegacyTasksForCurrentUser } from '../../utils/taskRecovery'
+import {
+  fetchRemoteProjectTasks,
+  upsertRemoteTasks,
+  deleteRemoteTask,
+} from '../../utils/taskRemoteStorage.js'
+
+function isSharedGeneralProjectTask(task) {
+  return !!task?.projectId && (task.calendarType === 'general' || !task.calendarType)
+}
+
+function getTaskTs(task) {
+  const v = task?.updatedAt ?? task?.updated_at ?? task?.modifiedAt ?? task?.createdAt ?? 0
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string') {
+    const n = Number(v)
+    if (Number.isFinite(n)) return n
+    const t = Date.parse(v)
+    if (Number.isFinite(t)) return t
+  }
+  return 0
+}
+
+function mergeTasksByIdPreferNewer(localAll, remoteAll) {
+  const local = Array.isArray(localAll) ? localAll : []
+  const remote = Array.isArray(remoteAll) ? remoteAll : []
+  const map = new Map()
+  for (const t of local) {
+    if (t?.id) map.set(t.id, t)
+  }
+  for (const rt of remote) {
+    if (!rt?.id) continue
+    const existing = map.get(rt.id)
+    if (!existing) {
+      map.set(rt.id, rt)
+      continue
+    }
+    map.set(rt.id, getTaskTs(rt) >= getTaskTs(existing) ? rt : existing)
+  }
+  return Array.from(map.values())
+}
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -116,7 +157,7 @@ export function KanbanBoard({ headerActions = null }) {
 
   useEffect(() => {
     if (!hasLoadedTasks || !ownerUserId) return
-    void saveTasks(tasks, ownerUserId)
+    void saveTasks(tasks, ownerUserId, { reason: 'KanbanBoard state change' })
   }, [tasks, hasLoadedTasks, ownerUserId])
 
   useEffect(() => {
@@ -136,17 +177,82 @@ export function KanbanBoard({ headerActions = null }) {
     let cancelled = false
     ;(async () => {
       setIsLoadingTasks(true)
-      const existing = await loadTasks(ownerUserId)
+      // One-time recovery: stamps legacy tasks that have no owner/sprint fields.
+      // IMPORTANT: never writes [] during startup.
+      let recovered = null
+      try {
+        recovered = await recoverLegacyTasksForCurrentUser(ownerUserId)
+      } catch {
+        recovered = null
+      }
+
+      const existing = recovered ?? (await loadTasks(ownerUserId))
       if (cancelled) return
       const list = Array.isArray(existing) ? existing : []
-      setTasks(list.length ? list : [])
+      const normalized = list.map((t) => normalizeTaskForStorage(t, ownerUserId)).filter(Boolean)
+      setTasks(normalized)
+      console.log('[KanbanBoard] loaded task count:', normalized.length)
       setHasLoadedTasks(true)
       setIsLoadingTasks(false)
     })()
     return () => {
       cancelled = true
     }
-  }, [ownerUserId, activeProject?.id])
+  }, [ownerUserId])
+
+  // When active project changes, reload safely without wiping current state while loading.
+  useEffect(() => {
+    if (!ownerUserId || !hasLoadedTasks) return
+    let cancelled = false
+    ;(async () => {
+      setIsLoadingTasks(true)
+      const existing = await loadTasks(ownerUserId)
+      if (cancelled) return
+      const list = Array.isArray(existing) ? existing : []
+      const normalized = list.map((t) => normalizeTaskForStorage(t, ownerUserId)).filter(Boolean)
+      setTasks((prev) => (Array.isArray(prev) && prev.length > 0 ? prev : normalized))
+      setIsLoadingTasks(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeProject?.id, ownerUserId, hasLoadedTasks])
+
+  // Durable recovery: merge Supabase project tasks into local cache (never wipes local).
+  useEffect(() => {
+    const projectId = activeProject?.id ?? null
+    if (!projectId || !ownerUserId || !hasLoadedTasks) return
+    let cancelled = false
+    ;(async () => {
+      const remoteTasks = await fetchRemoteProjectTasks(projectId)
+      if (cancelled) return
+
+      const localAll = Array.isArray(tasksRef.current) ? tasksRef.current : []
+      const mergedAll = mergeTasksByIdPreferNewer(localAll, remoteTasks).map((t) =>
+        normalizeTaskForStorage(t, ownerUserId),
+      ).filter(Boolean)
+
+      // Never let empty remote wipe local. Only write if we actually have tasks.
+      if (mergedAll.length > 0) {
+        setTasks(mergedAll)
+        await saveTasks(mergedAll, ownerUserId, { reason: 'remote merge' })
+      }
+
+      // Backfill: if local has shared project tasks missing in Supabase, upsert them.
+      const remoteIds = new Set((Array.isArray(remoteTasks) ? remoteTasks : []).map((t) => t?.id).filter(Boolean))
+      const localSharedProject = localAll.filter(
+        (t) => isSharedGeneralProjectTask(t) && t.projectId === projectId,
+      )
+      const toBackfill = localSharedProject.filter((t) => t?.id && !remoteIds.has(t.id))
+      if (toBackfill.length > 0) {
+        await upsertRemoteTasks(toBackfill, ownerUserId)
+        console.log('[TaskRemoteStorage] backfilled local tasks to Supabase:', toBackfill.length)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeProject?.id, ownerUserId, hasLoadedTasks])
 
   useEffect(() => {
     let hideTimer
@@ -180,12 +286,17 @@ export function KanbanBoard({ headerActions = null }) {
             memberProjectIds,
           )
           if (next.length === prev.length) return prev
-          if (uid) void saveTasks(next, uid)
+          if (uid) void saveTasks(next, uid, { allowEmpty: true, reason: 'incoming TASK_DELETE' })
           return next
         })
+        if (taskId && projectId) void deleteRemoteTask(taskId, projectId)
         return
       }
       if (data?.type !== 'TASK_SYNC') return
+      console.log('[KanbanBoard] incoming TASK_SYNC', {
+        payloadCount: Array.isArray(data.tasks) ? data.tasks.length : 0,
+        projectId: data.projectId ?? null,
+      })
       const incomingGeneralTasks = (Array.isArray(data.tasks) ? data.tasks : []).filter(
         (task) =>
           task &&
@@ -204,6 +315,7 @@ export function KanbanBoard({ headerActions = null }) {
         if (prev.length > 0 && nextBase.length === 0) return prev
         const next = nextBase.map((t) => (uid ? { ...t, ownerUserId: uid } : t))
         if (uid) void saveTasks(next, uid)
+        if (uid) void upsertRemoteTasks(incomingGeneralTasks, uid)
         return next
       })
     })
@@ -292,9 +404,10 @@ export function KanbanBoard({ headerActions = null }) {
             memberProjectIds,
           )
           if (next.length === prev.length) return prev
-          if (uid) void saveTasks(next, uid)
+          if (uid) void saveTasks(next, uid, { allowEmpty: true, reason: 'hub task-delete' })
           return next
         })
+        if (taskId && projectId) void deleteRemoteTask(taskId, projectId)
         return
       }
       if (action !== 'task-sync') return
@@ -308,6 +421,7 @@ export function KanbanBoard({ headerActions = null }) {
           if (prev.length > 0 && nextBase.length === 0) return prev
           const next = nextBase.map((t) => (uid ? { ...t, ownerUserId: uid } : t))
           if (uid) void saveTasks(next, uid)
+          if (uid) void upsertRemoteTasks(incomingTasks, uid)
           return next
         })
       }
@@ -325,8 +439,35 @@ export function KanbanBoard({ headerActions = null }) {
     const scoped = withPriority.filter((task) =>
       taskVisibleInActiveProject(task, activeProject.id, ownerUserId),
     )
-    return scoped
+    // Keep legacy tasks without projectId visible even when an active project is selected,
+    // so users can recover/edit them from All Tasks.
+    const legacyNoProject = withPriority.filter((t) => t && !t.projectId)
+    const merged = [...scoped]
+    const seen = new Set(scoped.map((t) => t?.id).filter(Boolean))
+    for (const t of legacyNoProject) {
+      if (t?.id && !seen.has(t.id)) merged.push(t)
+    }
+
+    console.log('[KanbanBoard] visibility debug', {
+      totalTasks: Array.isArray(tasks) ? tasks.length : 0,
+      visibleAfterMembership: Array.isArray(withPriority) ? withPriority.length : 0,
+      visibleProjectTasks: Array.isArray(merged) ? merged.length : 0,
+      activeProjectId: activeProject?.id ?? null,
+      memberProjectIds: Array.isArray(memberProjectIds) ? memberProjectIds : [],
+    })
+
+    return merged
   }, [tasks, activeProject, visibilityOptions, ownerUserId])
+
+  useEffect(() => {
+    if (!hasLoadedTasks) return
+    console.log('[KanbanBoard] recovery counts', {
+      loadedTasksInState: Array.isArray(tasks) ? tasks.length : 0,
+      afterVisibilityFilter: Array.isArray(visibleProjectTasks) ? visibleProjectTasks.length : 0,
+      activeProjectId: activeProject?.id ?? null,
+      memberProjectIdsCount: Array.isArray(memberProjectIds) ? memberProjectIds.length : 0,
+    })
+  }, [hasLoadedTasks, tasks, visibleProjectTasks, activeProject?.id, memberProjectIds])
 
   const sprintTasks = useMemo(() => {
     if (!activeProject?.id || !activeSprint?.id) return []
@@ -378,10 +519,18 @@ export function KanbanBoard({ headerActions = null }) {
 
   const moveTask = (taskId, nextStatus) => {
     setTasks((prev) => {
-      const next = prev.map((task) =>
-        task.id === taskId ? { ...task, status: nextStatus } : task,
-      )
+      const now = Date.now()
+      let changed = null
+      const next = prev.map((task) => {
+        if (task.id !== taskId) return task
+        changed = { ...task, status: nextStatus, updatedAt: now }
+        return changed
+      })
       broadcastTasks(next)
+      const uid = ownerUserIdRef.current
+      if (uid && changed && isSharedGeneralProjectTask(changed)) {
+        void upsertRemoteTasks([changed], uid)
+      }
       return next
     })
   }
@@ -397,31 +546,51 @@ export function KanbanBoard({ headerActions = null }) {
     setTasks((prev) => {
       const projectId = activeProject?.id ? activeProject.id : null
       const id = typeof payload?.id === 'string' && payload.id.trim() ? payload.id.trim() : createId()
+      const created = {
+        id,
+        status: 'todo',
+        createdAt: now,
+        updatedAt: now,
+        ...payload,
+        itemType: payload?.itemType ?? payload?.type ?? 'task',
+        backlogState: payload?.backlogState ?? 'new',
+        sprintId: payload?.sprintId ?? null,
+        storyPoints: payload?.storyPoints ?? payload?.story_points ?? payload?.points ?? 0,
+        calendarType,
+        projectId,
+        teamId:
+          calendarType === 'general'
+            ? activeTeam?.id || payload.teamId || null
+            : null,
+        ownerUserId: user?.id || null,
+      }
       const next = [
-        {
-          id,
-          status: 'todo',
-          createdAt: now,
-          ...payload,
-          calendarType,
-          projectId,
-          teamId:
-            calendarType === 'general'
-              ? activeTeam?.id || payload.teamId || null
-              : null,
-          ownerUserId: user?.id || null,
-        },
+        created,
         ...(Array.isArray(prev) ? prev.filter((t) => t?.id !== id) : []),
       ]
       broadcastTasks(next)
+      const uid = ownerUserIdRef.current
+      if (uid && isSharedGeneralProjectTask(created)) {
+        void upsertRemoteTasks([created], uid)
+      }
       return next
     })
   }
 
   const updateTask = (taskId, updates) => {
     setTasks((prev) => {
-      const next = prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
+      const now = Date.now()
+      let changed = null
+      const next = prev.map((t) => {
+        if (t.id !== taskId) return t
+        changed = { ...t, ...updates, updatedAt: now }
+        return changed
+      })
       broadcastTasks(next)
+      const uid = ownerUserIdRef.current
+      if (uid && changed && isSharedGeneralProjectTask(changed)) {
+        void upsertRemoteTasks([changed], uid)
+      }
       return next
     })
   }
@@ -431,7 +600,9 @@ export function KanbanBoard({ headerActions = null }) {
     setTasks((prev) => {
       const next = prev.filter((t) => t.id !== taskId)
       broadcastTasks(next)
-      if (ownerUserId) void saveTasks(next, ownerUserId)
+      if (ownerUserId) {
+        void saveTasks(next, ownerUserId, { allowEmpty: true, reason: 'deleteTask' })
+      }
       return next
     })
     if (removed && shouldBroadcastGeneralTaskDelete(removed, memberProjectIds)) {
@@ -441,6 +612,9 @@ export function KanbanBoard({ headerActions = null }) {
         projectId: removed.projectId,
       })
       void broadcastTaskDelete(removed.id, removed.projectId)
+    }
+    if (removed && isSharedGeneralProjectTask(removed) && removed.projectId) {
+      void deleteRemoteTask(removed.id, removed.projectId)
     }
   }
 
