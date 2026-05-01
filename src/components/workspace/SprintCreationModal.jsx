@@ -1,10 +1,12 @@
 import { useState } from 'react'
 import { Modal } from '../ui/Modal.jsx'
 import { Button } from '../ui/Button.jsx'
+import { normalizeCapacityPoints } from '../../utils/workspaceDB.js'
 
 export function SprintCreationModal({ open, onClose, onCreate }) {
   const [durationWeeks, setDurationWeeks] = useState(2)
   const [sprintGoal, setSprintGoal] = useState('')
+  const [capacityPoints, setCapacityPoints] = useState(0)
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -15,8 +17,10 @@ export function SprintCreationModal({ open, onClose, onCreate }) {
       await onCreate?.({
         durationWeeks: Number(durationWeeks),
         sprintGoal: sprintGoal.trim(),
+        capacityPoints: normalizeCapacityPoints(capacityPoints),
       })
       setSprintGoal('')
+      setCapacityPoints(0)
       onClose?.()
     } catch (err) {
       setError(err?.message || 'Failed to create sprint.')
@@ -57,6 +61,31 @@ export function SprintCreationModal({ open, onClose, onCreate }) {
             <option value={3}>3 weeks</option>
             <option value={4}>4 weeks</option>
           </select>
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
+            Sprint Capacity (Story Points)
+            <span className="ml-1 font-normal text-[rgb(var(--zc-subtle))]">
+              (optional, recommended)
+            </span>
+          </label>
+          <input
+            type="number"
+            min={0}
+            step={1}
+            value={Number.isFinite(Number(capacityPoints)) ? capacityPoints : 0}
+            onChange={(e) => {
+              const v = e.target.value
+              if (v === '') {
+                setCapacityPoints(0)
+                return
+              }
+              const n = Number(v)
+              if (!Number.isFinite(n)) return
+              setCapacityPoints(n < 0 ? 0 : Math.round(n))
+            }}
+            className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+          />
         </div>
         <div>
           <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">

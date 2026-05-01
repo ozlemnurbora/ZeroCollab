@@ -2,6 +2,10 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Button } from '../ui/Button.jsx'
 import { Modal } from '../ui/Modal.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
+import {
+  STORY_POINT_SELECT_OPTIONS,
+  normalizeStoryPointsValue,
+} from './taskStorage.js'
 
 const initialForm = {
   title: '',
@@ -14,6 +18,7 @@ const initialForm = {
   userStoryBenefit: '',
   acceptanceCriteria: '',
   backlogState: 'new',
+  storyPoints: 0,
   startDate: '',
   dueDate: '',
   calendarId: 'personal',
@@ -127,6 +132,7 @@ export function AddTaskModal({
                 priority: form.priority || 'must',
                 itemType: form.itemType || 'task',
                 backlogState: 'new',
+                storyPoints: normalizeStoryPointsValue(form.storyPoints),
                 acceptanceCriteria: form.acceptanceCriteria.trim(),
                 userStoryRole: form.userStoryRole.trim(),
                 userStoryCapability: form.userStoryCapability.trim(),
@@ -267,6 +273,25 @@ export function AddTaskModal({
             <option value="should">Should-have</option>
             <option value="could">Could-have</option>
             <option value="wont">Won’t-have</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
+            Story Points
+          </label>
+          <select
+            className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            value={normalizeStoryPointsValue(form.storyPoints)}
+            onChange={(e) =>
+              setForm((s) => ({ ...s, storyPoints: Number(e.target.value) }))
+            }
+          >
+            {STORY_POINT_SELECT_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
           </select>
         </div>
 

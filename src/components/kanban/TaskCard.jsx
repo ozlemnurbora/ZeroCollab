@@ -1,5 +1,6 @@
 import { formatDueDate, isOverdue } from './dateUtils.js'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
+import { normalizeStoryPointsValue } from './taskStorage.js'
 
 function truncate(text, n) {
   const s = String(text || '')
@@ -34,6 +35,9 @@ export function TaskCard({
     task: 'Task',
   }
   const itemTypeLabel = itemTypeLabelMap[itemType] || 'Task'
+  const storyPoints = normalizeStoryPointsValue(
+    task.storyPoints ?? task.story_points ?? 0,
+  )
   const priorityMeta =
     priority === 'must'
       ? { label: 'Must-have', classes: 'bg-red-500/20 text-red-400' }
@@ -120,6 +124,11 @@ export function TaskCard({
           >
             {priorityMeta.label}
           </span>
+          {storyPoints > 0 ? (
+            <span className="shrink-0 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium text-violet-300">
+              SP: {storyPoints}
+            </span>
+          ) : null}
           {overdue && (
             <span className="shrink-0 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">
               Overdue

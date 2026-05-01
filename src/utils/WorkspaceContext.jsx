@@ -36,6 +36,7 @@ import {
   getActiveSprint,
   createSprint as dbCreateSprint,
   completeSprint as dbCompleteSprint,
+  updateProjectSprint as dbUpdateProjectSprint,
 } from './workspaceDB.js'
 
 const WorkspaceContext = createContext(null)
@@ -537,13 +538,20 @@ export function WorkspaceProvider({ children }) {
     await loadTeams()
   }
 
-  const createProjectSprint = async ({ durationWeeks, sprintGoal }) => {
+  const createProjectSprint = async ({
+    durationWeeks,
+    sprintGoal,
+    capacityPoints,
+    capacity_points,
+  }) => {
     if (!user || !activeProject?.id) return null
+    const cap = capacityPoints ?? capacity_points ?? 0
     const created = await dbCreateSprint(
       activeProject.id,
       durationWeeks,
       sprintGoal,
       user.id,
+      cap,
     )
     await loadProjectSprints(activeProject.id)
     return created
@@ -552,6 +560,13 @@ export function WorkspaceProvider({ children }) {
   const completeProjectSprint = async (sprintId) => {
     if (!user || !activeProject?.id || !sprintId) return null
     const updated = await dbCompleteSprint(sprintId)
+    await loadProjectSprints(activeProject.id)
+    return updated
+  }
+
+  const updateProjectSprint = async (sprintId, updates) => {
+    if (!user || !activeProject?.id || !sprintId) return null
+    const updated = await dbUpdateProjectSprint(sprintId, updates)
     await loadProjectSprints(activeProject.id)
     return updated
   }
@@ -582,6 +597,7 @@ export function WorkspaceProvider({ children }) {
         loadProjectSprints,
         createProjectSprint,
         completeProjectSprint,
+        updateProjectSprint,
         reloadProjects: loadProjects,
         reloadTeams: loadTeams,
       }}

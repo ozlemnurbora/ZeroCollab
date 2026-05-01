@@ -316,6 +316,26 @@ function toIsoDate(d) {
   return d.toISOString().slice(0, 10)
 }
 
+export function normalizeCapacityPoints(raw) {
+  if (raw === '' || raw == null) return 0
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 0) return 0
+  return Math.round(n)
+}
+
+export function normalizeSprintRow(row) {
+  if (!row) return row
+  const cap =
+    row.capacity_points != null && row.capacity_points !== ''
+      ? Number(row.capacity_points)
+      : 0
+  const capacityPoints = Number.isFinite(cap) && cap >= 0 ? Math.round(cap) : 0
+  return {
+    ...row,
+    capacityPoints,
+  }
+}
+
 export async function fetchProjectSprints(projectId) {
   if (!projectId) return []
   const { data, error } = await supabase
@@ -325,7 +345,7 @@ export async function fetchProjectSprints(projectId) {
     .order('sprint_number', { ascending: false })
 
   if (error) throw error
-  return data || []
+  return (data || []).map(normalizeSprintRow)
 }
 
 export async function getActiveSprint(projectId) {
@@ -340,10 +360,16 @@ export async function getActiveSprint(projectId) {
     .maybeSingle()
 
   if (error) throw error
-  return data || null
+  return data ? normalizeSprintRow(data) : null
 }
 
-export async function createSprint(projectId, durationWeeks, sprintGoal, createdBy) {
+export async function createSprint(
+  projectId,
+  durationWeeks,
+  sprintGoal,
+  createdBy,
+  capacityPoints = 0,
+) {
   if (!projectId) throw new Error('Project is required for sprint creation.')
   const duration = Number(durationWeeks || 0)
   if (!Number.isFinite(duration) || duration < 1) {
@@ -371,6 +397,8 @@ export async function createSprint(projectId, durationWeeks, sprintGoal, created
   const end = new Date(start)
   end.setDate(end.getDate() + duration * 7)
 
+  const cap = normalizeCapacityPoints(capacityPoints)
+
   const payload = {
     id: createSprintId(),
     project_id: projectId,
@@ -379,6 +407,7 @@ export async function createSprint(projectId, durationWeeks, sprintGoal, created
     start_date: toIsoDate(start),
     end_date: toIsoDate(end),
     sprint_goal: sprintGoal || null,
+    capacity_points: cap,
     status: 'active',
     created_by: createdBy || null,
   }
@@ -390,7 +419,7 @@ export async function createSprint(projectId, durationWeeks, sprintGoal, created
     .single()
 
   if (error) throw error
-  return data
+  return normalizeSprintRow(data)
 }
 
 export async function completeSprint(sprintId) {
@@ -403,7 +432,43 @@ export async function completeSprint(sprintId) {
     .maybeSingle()
 
   if (error) throw error
-  return data || null
+  return data ? normalizeSprintRow(data) : null
+}
+
+/**
+ * Whitelisted sprint updates for planning UI. Does not touch dates, status, or numbering.
+ */
+export async function updateProjectSprint(sprintId, updates) {
+  if (!sprintId) throw new Error('Sprint id is required.')
+  if (!updates || typeof updates !== 'object') {
+    throw new Error('Updates are required.')
+  }
+
+  const payload = {}
+
+  if ('capacity_points' in updates || 'capacityPoints' in updates) {
+    const raw = updates.capacity_points ?? updates.capacityPoints
+    payload.capacity_points = normalizeCapacityPoints(raw)
+  }
+
+  if ('sprint_goal' in updates) {
+    const g = updates.sprint_goal
+    payload.sprint_goal = g === '' || g == null ? null : String(g)
+  }
+
+  if (Object.keys(payload).length === 0) {
+    return null
+  }
+
+  const { data, error } = await supabase
+    .from('sprints')
+    .update(payload)
+    .eq('id', sprintId)
+    .select('*')
+    .maybeSingle()
+
+  if (error) throw error
+  return data ? normalizeSprintRow(data) : null
 }
 
 // ─── TEAMS ───

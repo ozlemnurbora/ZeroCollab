@@ -1,5 +1,23 @@
 import { replaceTasksForOwner, getTasksForOwner } from '../../utils/database.js'
 
+/** Fibonacci-style options for create/edit UI; values are not enforced server-side. */
+export const STORY_POINT_SELECT_OPTIONS = [0, 1, 2, 3, 5, 8, 13, 21]
+
+export function normalizeStoryPointsValue(raw) {
+  if (raw === '' || raw == null) return 0
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n < 0) return 0
+  return Math.round(n)
+}
+
+/** Select options: recommended set plus current value when it falls outside (e.g. legacy data). */
+export function storyPointOptionsForValue(raw) {
+  const v = normalizeStoryPointsValue(raw)
+  const set = new Set(STORY_POINT_SELECT_OPTIONS)
+  set.add(v)
+  return [...set].sort((a, b) => a - b)
+}
+
 export function normalizeTaskForStorage(task, ownerUserId) {
   if (!task || typeof task !== 'object') return null
   const id = typeof task.id === 'string' ? task.id : String(task.id || '')
@@ -29,13 +47,9 @@ export function normalizeTaskForStorage(task, ownerUserId) {
   const sprintNumber =
     task.sprintNumber == null || task.sprintNumber === '' ? null : task.sprintNumber
 
-  const storyPointsRaw = task.storyPoints ?? task.story_points ?? task.points
-  const storyPoints =
-    typeof storyPointsRaw === 'number' && Number.isFinite(storyPointsRaw)
-      ? storyPointsRaw
-      : typeof storyPointsRaw === 'string' && storyPointsRaw.trim()
-        ? Number(storyPointsRaw) || 0
-        : 0
+  const storyPoints = normalizeStoryPointsValue(
+    task.storyPoints ?? task.story_points ?? task.points ?? 0,
+  )
 
   const owner =
     task.ownerUserId != null && String(task.ownerUserId).trim()

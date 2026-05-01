@@ -1,3 +1,5 @@
+import { normalizeStoryPointsValue } from '../components/kanban/taskStorage.js'
+
 function normalizeSet(values) {
   return new Set(Array.isArray(values) ? values.filter(Boolean) : [])
 }
@@ -34,7 +36,20 @@ function normalizeTaskShape(task) {
     task.ownerUserId != null && String(task.ownerUserId).trim()
       ? String(task.ownerUserId).trim()
       : null
-  return { ...task, status, itemType, backlogState, sprintId, calendarType, ownerUserId, projectId }
+  const storyPoints = normalizeStoryPointsValue(
+    task.storyPoints ?? task.story_points ?? task.points ?? 0,
+  )
+  return {
+    ...task,
+    status,
+    itemType,
+    backlogState,
+    sprintId,
+    calendarType,
+    ownerUserId,
+    projectId,
+    storyPoints,
+  }
 }
 
 function getTaskUpdatedAt(task) {
@@ -114,7 +129,7 @@ export function tasksForP2PBroadcast(tasks, options = {}) {
 export function mergeTasksFromSync(localTasks, incomingTasks, options = {}) {
   const local = Array.isArray(localTasks) ? localTasks : []
   const incoming = Array.isArray(incomingTasks) ? incomingTasks : []
-  const { allowedProjectIds = [], currentUserId = null } = options
+  const { allowedProjectIds = [] } = options
   const allowed = normalizeSet(allowedProjectIds)
 
   // Non-destructive merge:

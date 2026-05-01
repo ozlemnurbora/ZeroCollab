@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AddTaskModal } from './AddTaskModal.jsx'
 import { KANBAN_COLUMNS } from './kanbanConstants.js'
-import { loadTasks, saveTasks, normalizeTaskForStorage } from './taskStorage.js'
+import {
+  loadTasks,
+  saveTasks,
+  normalizeTaskForStorage,
+  normalizeStoryPointsValue,
+} from './taskStorage.js'
 import { Button } from '../ui/Button.jsx'
 import { KanbanColumn } from './KanbanColumn.jsx'
 import { TaskDetailModal } from './TaskDetailModal.jsx'
@@ -555,7 +560,9 @@ export function KanbanBoard({ headerActions = null }) {
         itemType: payload?.itemType ?? payload?.type ?? 'task',
         backlogState: payload?.backlogState ?? 'new',
         sprintId: payload?.sprintId ?? null,
-        storyPoints: payload?.storyPoints ?? payload?.story_points ?? payload?.points ?? 0,
+        storyPoints: normalizeStoryPointsValue(
+          payload?.storyPoints ?? payload?.story_points ?? payload?.points ?? 0,
+        ),
         calendarType,
         projectId,
         teamId:
@@ -583,7 +590,14 @@ export function KanbanBoard({ headerActions = null }) {
       let changed = null
       const next = prev.map((t) => {
         if (t.id !== taskId) return t
-        changed = { ...t, ...updates, updatedAt: now }
+        const merged = { ...updates }
+        if ('storyPoints' in merged || 'story_points' in merged) {
+          merged.storyPoints = normalizeStoryPointsValue(
+            merged.storyPoints ?? merged.story_points ?? t.storyPoints ?? 0,
+          )
+          delete merged.story_points
+        }
+        changed = { ...t, ...merged, updatedAt: now }
         return changed
       })
       broadcastTasks(next)

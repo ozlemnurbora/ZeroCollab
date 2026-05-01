@@ -6,6 +6,10 @@ import { useAuth } from '../../utils/AuthContext.jsx'
 import { loadMessages, saveMessage } from '../chat/chatStorage.js'
 import { broadcastMessage } from '../../utils/hubManager.js'
 import { on, P2P_EVENTS, sendToAllPeers } from '../../utils/p2pManager.js'
+import {
+  normalizeStoryPointsValue,
+  storyPointOptionsForValue,
+} from './taskStorage.js'
 
 function normalizeCalendarType(v) {
   return v === 'general' ? 'general' : 'personal'
@@ -241,6 +245,9 @@ export function TaskDetailModal({
       status: form.status || 'todo',
       calendarId: calendarId || '',
       calendarType: nextCalendarType,
+      storyPoints: normalizeStoryPointsValue(
+        form.storyPoints ?? form.story_points ?? 0,
+      ),
     })
     setIsEditing(false)
   }
@@ -443,6 +450,32 @@ export function TaskDetailModal({
                 </select>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
+                  Story Points
+                </label>
+                <select
+                  value={normalizeStoryPointsValue(
+                    value.storyPoints ?? value.story_points ?? 0,
+                  )}
+                  onChange={(e) =>
+                    setForm((s) => ({
+                      ...(s || {}),
+                      storyPoints: Number(e.target.value),
+                    }))
+                  }
+                  className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                >
+                  {storyPointOptionsForValue(
+                    value.storyPoints ?? value.story_points ?? 0,
+                  ).map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               {itemType === 'user_story' ? (
                 <div className="grid gap-4">
                   <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
@@ -502,6 +535,12 @@ export function TaskDetailModal({
               <p className="text-[rgb(var(--zc-text))]">
                 <span className="text-[rgb(var(--zc-muted))]">Priority: </span>
                 {getPriorityLabel(priority)}
+              </p>
+              <p className="text-[rgb(var(--zc-text))]">
+                <span className="text-[rgb(var(--zc-muted))]">Story Points: </span>
+                {normalizeStoryPointsValue(
+                  value.storyPoints ?? value.story_points ?? 0,
+                )}
               </p>
               {itemType === 'user_story' && userStoryText ? (
                 <p className="text-[rgb(var(--zc-text))]">

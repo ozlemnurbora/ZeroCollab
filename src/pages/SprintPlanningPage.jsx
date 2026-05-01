@@ -1,12 +1,52 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../utils/AuthContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
-import { loadTasks, saveTasks } from '../components/kanban/taskStorage.js'
-import { tasksForP2PBroadcast } from '../utils/taskP2PSync.js'
+import {
+  loadTasks,
+  saveTasks,
+  normalizeTaskForStorage,
+} from '../components/kanban/taskStorage.js'
+import {
+  tasksForP2PBroadcast,
+  mergeTasksFromSync,
+  removeAuthorizedGeneralTaskById,
+  canApplyIncomingTaskDelete,
+} from '../utils/taskP2PSync.js'
 import { broadcastTaskSync } from '../utils/hubManager.js'
-import { sendToAllPeers } from '../utils/p2pManager.js'
-import { isTaskInActiveSprint } from '../utils/sprintTaskUtils.js'
-import { upsertRemoteTasks } from '../utils/taskRemoteStorage.js'
+import { on, P2P_EVENTS, sendToAllPeers } from '../utils/p2pManager.js'
+import { upsertRemoteTasks, fetchRemoteProjectTasks, deleteRemoteTask } from '../utils/taskRemoteStorage.js'
+import { normalizeCapacityPoints } from '../utils/workspaceDB.js'
+
+function getTaskTs(task) {
+  const v = task?.updatedAt ?? task?.updated_at ?? task?.modifiedAt ?? task?.createdAt ?? 0
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string') {
+    const n = Number(v)
+    if (Number.isFinite(n)) return n
+    const t = Date.parse(v)
+    if (Number.isFinite(t)) return t
+  }
+  return 0
+}
+
+function mergeTasksByIdPreferNewer(localAll, remoteAll) {
+  const local = Array.isArray(localAll) ? localAll : []
+  const remote = Array.isArray(remoteAll) ? remoteAll : []
+  const map = new Map()
+  for (const t of local) {
+    if (t?.id) map.set(t.id, t)
+  }
+  for (const rt of remote) {
+    if (!rt?.id) continue
+    const existing = map.get(rt.id)
+    if (!existing) {
+      map.set(rt.id, rt)
+      continue
+    }
+    map.set(rt.id, getTaskTs(rt) >= getTaskTs(existing) ? rt : existing)
+  }
+  return Array.from(map.values())
+}
 
 const ITEM_TYPE_LABELS = {
   epic: 'Epic',
@@ -42,9 +82,20 @@ function isSprintCompatibleItemType(itemType) {
 
 export function SprintPlanningPage() {
   const { user } = useAuth()
-  const { activeProject, activeSprint, memberProjectIds = [] } = useWorkspace()
+  const {
+    activeProject,
+    activeSprint,
+    memberProjectIds = [],
+    projects,
+    updateProjectSprint,
+  } = useWorkspace()
   const [tasks, setTasks] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const [capacityEditing, setCapacityEditing] = useState(false)
+  const [capacityDraft, setCapacityDraft] = useState(0)
+  const [capacitySaving, setCapacitySaving] = useState(false)
+  const [capacitySaveError, setCapacitySaveError] = useState('')
+  const [capacitySaveOk, setCapacitySaveOk] = useState(false)
 
   useEffect(() => {
     if (!user?.id) {
@@ -55,20 +106,141 @@ export function SprintPlanningPage() {
     let cancelled = false
     ;(async () => {
       setIsLoading(true)
-      const existing = await loadTasks(user.id)
+      const rawLocal = await loadTasks(user.id)
+      const localArr = Array.isArray(rawLocal) ? rawLocal : []
+      const projectId = activeProject?.id ?? null
+      let remote = []
+      if (projectId) {
+        try {
+          remote = await fetchRemoteProjectTasks(projectId)
+        } catch {
+          remote = []
+        }
+      }
+      const merged = mergeTasksByIdPreferNewer(
+        localArr,
+        Array.isArray(remote) ? remote : [],
+      )
+      const normalized = merged
+        .map((t) => normalizeTaskForStorage(t, user.id))
+        .filter(Boolean)
       if (cancelled) return
-      setTasks(Array.isArray(existing) ? existing : [])
+      setTasks(normalized)
       setIsLoading(false)
+      if (projectId && normalized.length > 0) {
+        await saveTasks(normalized, user.id, { reason: 'SprintPlanning remote merge' })
+      }
     })()
     return () => {
       cancelled = true
     }
-  }, [user?.id])
+  }, [user?.id, activeProject?.id])
+
+  const visibilityOptions = useMemo(
+    () => ({
+      allowedProjectIds: memberProjectIds,
+      currentUserId: user?.id ?? null,
+    }),
+    [memberProjectIds, user?.id],
+  )
+
+  useEffect(() => {
+    if (!user?.id) return
+    const unsub = on(P2P_EVENTS.MESSAGE, ({ data }) => {
+      if (data?.type === 'TASK_DELETE') {
+        const { taskId, projectId } = data
+        if (!canApplyIncomingTaskDelete({ taskId, projectId }, memberProjectIds)) return
+        setTasks((prev) => {
+          const next = removeAuthorizedGeneralTaskById(
+            prev,
+            taskId,
+            projectId,
+            memberProjectIds,
+          )
+          if (next.length === prev.length) return prev
+          void saveTasks(next, user.id, { allowEmpty: true, reason: 'SprintPlanning P2P delete' })
+          return next
+        })
+        if (taskId && projectId) void deleteRemoteTask(taskId, projectId)
+        return
+      }
+      if (data?.type !== 'TASK_SYNC') return
+      const incomingGeneral = (Array.isArray(data.tasks) ? data.tasks : []).filter(
+        (task) =>
+          task &&
+          (task.calendarType === 'general' || !task.calendarType) &&
+          !!task.projectId &&
+          memberProjectIds.includes(task.projectId),
+      )
+      if (incomingGeneral.length === 0) return
+      if (activeProject?.id && data.projectId && data.projectId !== activeProject.id) return
+      setTasks((prev) => {
+        const nextBase = mergeTasksFromSync(prev, incomingGeneral, visibilityOptions)
+        if (prev.length > 0 && nextBase.length === 0) return prev
+        const next = nextBase.map((t) => ({
+          ...t,
+          ownerUserId: t.ownerUserId ?? user.id,
+        }))
+        void saveTasks(next, user.id, { reason: 'SprintPlanning P2P sync' })
+        void upsertRemoteTasks(incomingGeneral, user.id)
+        return next
+      })
+    })
+
+    const onHub = (e) => {
+      const payload = e.detail || {}
+      const { action, tasks: incomingTasks, projectId, taskId } = payload
+      if (action === 'task-delete') {
+        if (!canApplyIncomingTaskDelete({ taskId, projectId }, memberProjectIds)) return
+        if (activeProject?.id && projectId && projectId !== activeProject.id) return
+        setTasks((prev) => {
+          const next = removeAuthorizedGeneralTaskById(
+            prev,
+            taskId,
+            projectId,
+            memberProjectIds,
+          )
+          if (next.length === prev.length) return prev
+          void saveTasks(next, user.id, { allowEmpty: true, reason: 'SprintPlanning hub delete' })
+          return next
+        })
+        if (taskId && projectId) void deleteRemoteTask(taskId, projectId)
+        return
+      }
+      if (action !== 'task-sync') return
+      if (projectId && !memberProjectIds.includes(projectId)) return
+      if (activeProject?.id && projectId && projectId !== activeProject.id) return
+      if (!Array.isArray(incomingTasks) || incomingTasks.length === 0) return
+      setTasks((prev) => {
+        const nextBase = mergeTasksFromSync(prev, incomingTasks, visibilityOptions)
+        if (prev.length > 0 && nextBase.length === 0) return prev
+        const next = nextBase.map((t) => ({
+          ...t,
+          ownerUserId: t.ownerUserId ?? user.id,
+        }))
+        void saveTasks(next, user.id, { reason: 'SprintPlanning hub sync' })
+        void upsertRemoteTasks(incomingTasks, user.id)
+        return next
+      })
+    }
+    window.addEventListener('hub:message', onHub)
+    return () => {
+      unsub()
+      window.removeEventListener('hub:message', onHub)
+    }
+  }, [
+    user?.id,
+    memberProjectIds,
+    activeProject?.id,
+    visibilityOptions,
+  ])
 
   const projectTasks = useMemo(() => {
     if (!activeProject?.id) return []
     return (Array.isArray(tasks) ? tasks : []).filter(
-      (t) => t && t.projectId === activeProject.id,
+      (t) =>
+        t &&
+        String(t.projectId) === String(activeProject.id),
     )
   }, [tasks, activeProject?.id])
 
@@ -77,7 +249,7 @@ export function SprintPlanningPage() {
       projectTasks.filter(
         (t) =>
           t.backlogState === 'ready' &&
-          (t.sprintId == null || t.sprintId === '') &&
+          !t.sprintId &&
           isSprintCompatibleItemType(t.itemType || 'task') &&
           t.status !== 'done',
       ),
@@ -89,23 +261,117 @@ export function SprintPlanningPage() {
       projectTasks.some(
         (t) =>
           t.backlogState === 'ready' &&
-          (t.sprintId == null || t.sprintId === '') &&
+          !t.sprintId &&
           (t.itemType === 'epic' || t.itemType === 'feature'),
       ),
     [projectTasks],
   )
 
-  const sprintBacklog = useMemo(
+  const sprintBacklog = useMemo(() => {
+    if (!activeSprint?.id || !activeProject?.id) return []
+    return projectTasks.filter(
+      (t) =>
+        t &&
+        String(t.projectId) === String(activeProject.id) &&
+        String(t.sprintId) === String(activeSprint.id),
+    )
+  }, [projectTasks, activeSprint?.id, activeProject?.id])
+
+  const projectForMembers = useMemo(() => {
+    if (!activeProject?.id) return activeProject
+    return (projects || []).find((p) => p.id === activeProject.id) || activeProject
+  }, [projects, activeProject])
+
+  const currentMember = useMemo(() => {
+    const members = projectForMembers?.projectMembers || []
+    return user?.id ? members.find((m) => m?.userId === user.id) || null : null
+  }, [projectForMembers?.projectMembers, user?.id])
+
+  const canManageSprintPlanning =
+    currentMember?.customRole === 'project_manager' ||
+    currentMember?.custom_role === 'project_manager'
+
+  const sprintTasks = useMemo(() => {
+    if (!activeSprint?.id || !activeProject?.id) return []
+    return projectTasks.filter(
+      (t) =>
+        t &&
+        String(t.projectId) === String(activeProject.id) &&
+        String(t.sprintId) === String(activeSprint.id),
+    )
+  }, [projectTasks, activeSprint?.id, activeProject?.id])
+
+  const selectedStoryPoints = useMemo(
     () =>
-      !activeSprint?.id
-        ? []
-        : projectTasks.filter((t) =>
-          isTaskInActiveSprint(t, activeProject?.id, activeSprint.id),
-        ),
-    [projectTasks, activeProject?.id, activeSprint?.id],
+      sprintTasks.reduce((sum, task) => {
+        const sp = Number(task.storyPoints || task.story_points || 0)
+        return sum + (Number.isFinite(sp) ? sp : 0)
+      }, 0),
+    [sprintTasks],
   )
 
-  const canPlan = !!user?.id && !!activeProject?.id && !!activeSprint?.id
+  const capacityPoints = useMemo(
+    () =>
+      Number(
+        activeSprint?.capacityPoints ??
+          activeSprint?.capacity_points ??
+          0,
+      ),
+    [activeSprint?.capacityPoints, activeSprint?.capacity_points],
+  )
+
+  const capacityPointsInt = Number.isFinite(capacityPoints)
+    ? Math.max(0, Math.round(capacityPoints))
+    : 0
+
+  const remainingPoints = capacityPointsInt - selectedStoryPoints
+
+  const isOverCapacity =
+    capacityPointsInt > 0 && selectedStoryPoints > capacityPointsInt
+
+  const canPlan =
+    canManageSprintPlanning &&
+    !!user?.id &&
+    !!activeProject?.id &&
+    !!activeSprint?.id
+
+  useEffect(() => {
+    console.log('[SprintPlanning] visibility debug', {
+      activeProjectId: activeProject?.id,
+      activeSprintId: activeSprint?.id,
+      totalTasks: tasks.length,
+      projectTasks: projectTasks.length,
+      sprintTasks: sprintTasks.length,
+      readyBacklogTasks: readyBacklog.length,
+      currentRole: currentMember?.customRole || currentMember?.custom_role,
+    })
+  }, [
+    activeProject?.id,
+    activeSprint?.id,
+    tasks.length,
+    projectTasks.length,
+    sprintTasks.length,
+    readyBacklog.length,
+    currentMember?.customRole,
+    currentMember?.custom_role,
+  ])
+
+  useEffect(() => {
+    if (!capacitySaveOk) return
+    const t = setTimeout(() => setCapacitySaveOk(false), 3500)
+    return () => clearTimeout(t)
+  }, [capacitySaveOk])
+
+  useEffect(() => {
+    if (!activeSprint?.id) {
+      setCapacityEditing(false)
+      return
+    }
+    const cap = normalizeCapacityPoints(
+      activeSprint.capacityPoints ?? activeSprint.capacity_points ?? 0,
+    )
+    setCapacityDraft(cap)
+  }, [activeSprint?.id, activeSprint?.capacityPoints, activeSprint?.capacity_points])
 
   const broadcastUpdatedTasks = async (nextTasks) => {
     if (!activeProject?.id) return
@@ -123,20 +389,39 @@ export function SprintPlanningPage() {
   }
 
   const updateTaskSprint = async (taskId, shouldAssign) => {
-    if (!user?.id) return
-    // Load ALL tasks, modify only selected task, save the full list.
-    const all = await loadTasks(user.id)
-    const list = Array.isArray(all) ? all : []
+    if (!user?.id || !canManageSprintPlanning) return
+    const projectId = activeProject?.id
+    if (!projectId || !activeSprint?.id) return
+    const rawLocal = await loadTasks(user.id)
+    const localArr = Array.isArray(rawLocal) ? rawLocal : []
+    let remote = []
+    try {
+      remote = await fetchRemoteProjectTasks(projectId)
+    } catch {
+      remote = []
+    }
+    const stateList = Array.isArray(tasks) ? tasks : []
+    const merged = mergeTasksByIdPreferNewer(
+      mergeTasksByIdPreferNewer(localArr, remote),
+      stateList,
+    )
+    const list = merged
+      .map((t) => normalizeTaskForStorage(t, user.id))
+      .filter(Boolean)
     const now = Date.now()
+    const sprintNo =
+      activeSprint?.sprint_number ?? activeSprint?.sprintNumber ?? null
     let changed = null
-    const next = list.map((task) => {
+    const nextRaw = list.map((task) => {
       if (task?.id !== taskId) return task
       if (shouldAssign) {
         changed = {
           ...task,
-          sprintId: activeSprint?.id ?? null,
-          sprintNumber: activeSprint?.sprint_number ?? null,
-          sprintCommittedAt: Date.now(),
+          sprintId: activeSprint.id,
+          sprintNumber: sprintNo,
+          sprintCommittedAt: now,
+          calendarType: 'general',
+          calendarId: 'general',
           updatedAt: now,
         }
         return changed
@@ -146,16 +431,44 @@ export function SprintPlanningPage() {
         sprintId: null,
         sprintNumber: null,
         sprintCommittedAt: null,
+        backlogState: 'ready',
+        calendarType: 'general',
+        calendarId: 'general',
         updatedAt: now,
       }
       return changed
     })
+    const next = nextRaw
+      .map((t) => normalizeTaskForStorage(t, user.id))
+      .filter(Boolean)
+
+    if (!changed) {
+      console.warn('[SprintPlanning] updateTaskSprint: task not in merged list', taskId)
+      return
+    }
+
     setTasks(next)
     await saveTasks(next, user.id, { reason: 'SprintPlanningPage updateTaskSprint' })
     console.log('[SprintPlanning] saved full task count:', next.length)
     await broadcastUpdatedTasks(next)
-    if (changed && changed.projectId && (changed.calendarType === 'general' || !changed.calendarType)) {
+
+    if (String(changed.projectId) === String(projectId)) {
+      if (shouldAssign) {
+        console.log('[SprintPlanning] addToSprint persisted', {
+          taskId: changed.id,
+          sprintId: changed.sprintId,
+          projectId: changed.projectId,
+          storyPoints: changed.storyPoints,
+        })
+      } else {
+        console.log('[SprintPlanning] removeFromSprint persisted', {
+          taskId: changed.id,
+          sprintId: changed.sprintId,
+          projectId: changed.projectId,
+        })
+      }
       await upsertRemoteTasks([changed], user.id)
+      console.log('[SprintPlanning] remote upsert done', changed.id)
     }
   }
 
@@ -198,6 +511,11 @@ export function SprintPlanningPage() {
           Epics and Features are used for backlog organization and cannot be committed directly to a sprint.
         </p>
       ) : null}
+      {!canManageSprintPlanning ? (
+        <p className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] px-3 py-2 text-sm text-[rgb(var(--zc-muted2))]">
+          Read-only sprint view. Only the project manager can change sprint planning.
+        </p>
+      ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
@@ -227,6 +545,123 @@ export function SprintPlanningPage() {
               <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
                 {activeSprint.sprint_goal || '—'}
               </p>
+            </div>
+
+            <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="text-[rgb(var(--zc-muted))] text-xs uppercase tracking-wide">
+                  Capacity vs backlog
+                </p>
+                {canManageSprintPlanning && !capacityEditing ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCapacitySaveError('')
+                      setCapacityDraft(capacityPointsInt)
+                      setCapacityEditing(true)
+                    }}
+                    className="text-xs font-medium text-indigo-300 hover:text-indigo-200"
+                  >
+                    Edit capacity
+                  </button>
+                ) : null}
+              </div>
+
+              {capacityEditing && canManageSprintPlanning ? (
+                <div className="mt-3 space-y-2">
+                  <label className="block text-[10px] font-medium uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+                    Team capacity (SP)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={capacityDraft}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      if (v === '') {
+                        setCapacityDraft(0)
+                        return
+                      }
+                      const n = Number(v)
+                      if (!Number.isFinite(n)) return
+                      setCapacityDraft(n < 0 ? 0 : Math.round(n))
+                    }}
+                    className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.5)] px-2 py-1.5 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  />
+                  {capacitySaveError ? (
+                    <p className="text-xs text-rose-400">{capacitySaveError}</p>
+                  ) : null}
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={capacitySaving}
+                      onClick={() => {
+                        setCapacitySaveError('')
+                        setCapacitySaving(true)
+                        void (async () => {
+                          try {
+                            await updateProjectSprint(activeSprint.id, {
+                              capacity_points: normalizeCapacityPoints(capacityDraft),
+                            })
+                            setCapacityEditing(false)
+                            setCapacitySaveOk(true)
+                          } catch (err) {
+                            setCapacitySaveError(
+                              err?.message || 'Could not update sprint capacity.',
+                            )
+                          } finally {
+                            setCapacitySaving(false)
+                          }
+                        })()
+                      }}
+                      className="rounded-md bg-indigo-500/25 px-3 py-1 text-xs font-medium text-indigo-200 hover:bg-indigo-500/35 disabled:opacity-50"
+                    >
+                      {capacitySaving ? 'Saving…' : 'Save'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={capacitySaving}
+                      onClick={() => {
+                        setCapacitySaveError('')
+                        setCapacityDraft(capacityPointsInt)
+                        setCapacityEditing(false)
+                      }}
+                      className="rounded-md border border-[rgb(var(--zc-border))] px-3 py-1 text-xs font-medium text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-panel)/0.4)] disabled:opacity-50"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 space-y-2 text-sm text-[rgb(var(--zc-text))]">
+                  {capacityPointsInt === 0 ? (
+                    <p className="text-[rgb(var(--zc-muted2))]">Capacity not set</p>
+                  ) : (
+                    <p>
+                      <span className="text-[rgb(var(--zc-muted))]">Team Capacity:</span>{' '}
+                      {capacityPointsInt} SP
+                    </p>
+                  )}
+                  <p>
+                    <span className="text-[rgb(var(--zc-muted))]">Selected:</span>{' '}
+                    {selectedStoryPoints} SP
+                  </p>
+                  {isOverCapacity ? (
+                    <p className="text-amber-300">
+                      ⚠ Sprint is overloaded by{' '}
+                      {Math.round(selectedStoryPoints - capacityPointsInt)} SP
+                    </p>
+                  ) : capacityPointsInt > 0 && remainingPoints >= 0 ? (
+                    <p className="text-[rgb(var(--zc-muted2))]">
+                      Remaining: {remainingPoints} SP
+                    </p>
+                  ) : null}
+                  {capacitySaveOk ? (
+                    <p className="text-xs text-emerald-400">Capacity updated.</p>
+                  ) : null}
+                </div>
+              )}
             </div>
           </div>
         </section>
@@ -264,7 +699,7 @@ export function SprintPlanningPage() {
                       <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
                         {PRIORITY_LABELS[task.priority] || 'Must'}
                       </span>
-                      {getStoryPoints(task) != null ? (
+                      {Number(task.storyPoints || task.story_points || 0) > 0 ? (
                         <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
                           SP: {getStoryPoints(task)}
                         </span>
@@ -274,14 +709,16 @@ export function SprintPlanningPage() {
                       Assignee: {task.assignee || 'Unassigned'}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={!canPlan}
-                    onClick={() => updateTaskSprint(task.id, true)}
-                    className="shrink-0 rounded-md bg-emerald-500/20 px-2 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
-                  >
-                    Add to Sprint
-                  </button>
+                  {canManageSprintPlanning ? (
+                    <button
+                      type="button"
+                      disabled={!canPlan}
+                      onClick={() => updateTaskSprint(task.id, true)}
+                      className="shrink-0 rounded-md bg-emerald-500/20 px-2 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+                    >
+                      Add to Sprint
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -324,19 +761,26 @@ export function SprintPlanningPage() {
                       <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
                         {STATUS_LABELS[task.status] || 'To Do'}
                       </span>
+                      {Number(task.storyPoints || task.story_points || 0) > 0 ? (
+                        <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
+                          SP: {getStoryPoints(task)}
+                        </span>
+                      ) : null}
                     </div>
                     <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
                       Assignee: {task.assignee || 'Unassigned'}
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={!canPlan}
-                    onClick={() => updateTaskSprint(task.id, false)}
-                    className="shrink-0 rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-300 hover:bg-rose-500/25 disabled:opacity-50"
-                  >
-                    Remove
-                  </button>
+                  {canManageSprintPlanning ? (
+                    <button
+                      type="button"
+                      disabled={!canPlan}
+                      onClick={() => updateTaskSprint(task.id, false)}
+                      className="shrink-0 rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-300 hover:bg-rose-500/25 disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  ) : null}
                 </li>
               ))}
             </ul>

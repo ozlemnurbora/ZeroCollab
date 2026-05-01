@@ -1,10 +1,13 @@
 import { supabase } from './supabase.js'
+import { normalizeStoryPointsValue } from '../components/kanban/taskStorage.js'
 
 function isSharedProjectTask(task) {
   if (!task || typeof task !== 'object') return false
   if (!task.projectId) return false
-  // Only shared/general project tasks go to Supabase.
-  return task.calendarType === 'general' || !task.calendarType
+  // Project work items must sync so sprint assignment and backlog are visible to all members.
+  if (task.calendarType === 'general' || !task.calendarType) return true
+  if (task.calendarType === 'personal' || task.calendarType === 'custom') return true
+  return false
 }
 
 function toIso(ts) {
@@ -12,11 +15,28 @@ function toIso(ts) {
   return new Date(n).toISOString()
 }
 
+function sprintCommittedAtToIso(value) {
+  if (value == null || value === '') return null
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return new Date(value).toISOString()
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const t = Date.parse(value)
+    if (Number.isFinite(t)) return new Date(t).toISOString()
+    return value
+  }
+  return null
+}
+
 export function normalizeTaskForRemote(task, fallbackUserId) {
   if (!isSharedProjectTask(task)) return null
   const id = typeof task.id === 'string' ? task.id : String(task.id || '')
   const projectId = typeof task.projectId === 'string' ? task.projectId : String(task.projectId || '')
   if (!id || !projectId) return null
+
+  const snRaw = task.sprintNumber ?? task.sprint_number
+  const snNum = snRaw == null || snRaw === '' ? NaN : Number(snRaw)
+  const sprintNumber = Number.isFinite(snNum) ? Math.round(snNum) : null
 
   const normalized = {
     ...task,
@@ -26,11 +46,14 @@ export function normalizeTaskForRemote(task, fallbackUserId) {
     priority: typeof task.priority === 'string' && task.priority.trim() ? task.priority.trim() : 'must',
     itemType: typeof task.itemType === 'string' && task.itemType.trim() ? task.itemType.trim() : 'task',
     backlogState: typeof task.backlogState === 'string' && task.backlogState.trim() ? task.backlogState.trim() : 'new',
-    storyPoints: Number(task.storyPoints ?? 0) || 0,
-    sprintId: task.sprintId == null || task.sprintId === '' ? null : task.sprintId,
-    sprintNumber: task.sprintNumber == null || task.sprintNumber === '' ? null : task.sprintNumber,
+    storyPoints: normalizeStoryPointsValue(
+      task.storyPoints ?? task.story_points ?? task.points ?? 0,
+    ),
+    sprintId: task.sprintId == null || task.sprintId === '' ? null : String(task.sprintId),
+    sprintNumber,
+    sprintCommittedAt: task.sprintCommittedAt ?? task.sprint_committed_at ?? null,
     calendarType: 'general',
-    calendarId: task.calendarId || 'general',
+    calendarId: 'general',
     ownerUserId: task.ownerUserId || fallbackUserId || null,
     updatedAt:
       typeof task.updatedAt === 'number' && Number.isFinite(task.updatedAt)
@@ -48,15 +71,24 @@ export function normalizeTaskForRemote(task, fallbackUserId) {
     priority: normalized.priority || 'must',
     item_type: normalized.itemType || 'task',
     backlog_state: normalized.backlogState || 'new',
-    story_points: Number(normalized.storyPoints || 0),
+    story_points: normalizeStoryPointsValue(normalized.storyPoints),
     sprint_id: normalized.sprintId || null,
     sprint_number: normalized.sprintNumber ?? null,
-    sprint_committed_at: normalized.sprintCommittedAt || null,
+    sprint_committed_at: sprintCommittedAtToIso(normalized.sprintCommittedAt),
     calendar_type: normalized.calendarType || 'general',
     calendar_id: normalized.calendarId || 'general',
     team_id: normalized.teamId || null,
     owner_user_id: normalized.ownerUserId || fallbackUserId || null,
-    payload: normalized,
+    payload: {
+      ...normalized,
+      sprintId: normalized.sprintId,
+      sprintNumber: normalized.sprintNumber,
+      sprintCommittedAt: normalized.sprintCommittedAt,
+      backlogState: normalized.backlogState,
+      storyPoints: normalized.storyPoints,
+      calendarType: 'general',
+      calendarId: 'general',
+    },
     updated_at: toIso(normalized.updatedAt),
   }
 }
@@ -81,7 +113,9 @@ export function mapRemoteTask(row) {
     priority: payload.priority ?? row.priority ?? 'must',
     itemType: payload.itemType ?? row.item_type ?? 'task',
     backlogState: payload.backlogState ?? row.backlog_state ?? 'new',
-    storyPoints: payload.storyPoints ?? row.story_points ?? 0,
+    storyPoints: normalizeStoryPointsValue(
+      payload.storyPoints ?? row.story_points ?? 0,
+    ),
     sprintId: payload.sprintId ?? row.sprint_id ?? null,
     sprintNumber: payload.sprintNumber ?? row.sprint_number ?? null,
     sprintCommittedAt: payload.sprintCommittedAt ?? row.sprint_committed_at ?? null,
