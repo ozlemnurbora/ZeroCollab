@@ -101,6 +101,7 @@ export function SidebarLayout() {
       { to: '/', label: t('nav_dashboard'), end: true },
       { to: '/project-overview', label: 'Project Overview' },
       { to: '/sprint-planning', label: 'Sprint Planning' },
+      { to: '/sprint-board', label: 'Sprint Board' },
       { to: '/tasks', label: t('nav_tasks') },
       { to: '/calendar', label: t('nav_calendar') },
       { to: '/chat', label: t('nav_chat') },

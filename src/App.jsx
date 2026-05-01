@@ -10,6 +10,7 @@ import { SidebarLayout } from './layouts/SidebarLayout.jsx'
 import { DashboardPage } from './pages/DashboardPage.jsx'
 import { ProjectOverviewPage } from './pages/ProjectOverviewPage.jsx'
 import { SprintPlanningPage } from './pages/SprintPlanningPage.jsx'
+import { SprintBoardPage } from './pages/SprintBoardPage.jsx'
 import { TasksPage } from './pages/TasksPage.jsx'
 import { CalendarPage } from './pages/CalendarPage.jsx'
 import { ChatPage } from './pages/ChatPage.jsx'
@@ -39,6 +40,7 @@ function AppRoutes() {
         <Route index element={<DashboardPage />} />
         <Route path="project-overview" element={<ProjectOverviewPage />} />
         <Route path="sprint-planning" element={<SprintPlanningPage />} />
+        <Route path="sprint-board" element={<SprintBoardPage />} />
         <Route path="tasks" element={<TasksPage />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="chat" element={<ChatPage />} />

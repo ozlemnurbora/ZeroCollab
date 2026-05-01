@@ -1,7 +1,8 @@
 import { supabase } from './supabase.js'
 import { normalizeStoryPointsValue } from '../components/kanban/taskStorage.js'
 
-function isSharedProjectTask(task) {
+/** True when a task row should be upserted to Supabase `tasks` (project-scoped work items). */
+export function isSharedProjectTask(task) {
   if (!task || typeof task !== 'object') return false
   if (!task.projectId) return false
   // Project work items must sync so sprint assignment and backlog are visible to all members.

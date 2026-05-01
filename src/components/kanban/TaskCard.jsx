@@ -15,6 +15,7 @@ export function TaskCard({
   onDelete,
   onClick,
   onEdit,
+  showSprintTaskBadge = false,
 }) {
   const { t, locale } = useLanguage()
   const overdue = isOverdue(task.dueDate)
@@ -110,6 +111,11 @@ export function TaskCard({
           </span>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-1.5">
+          {showSprintTaskBadge ? (
+            <span className="shrink-0 rounded-full bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-300">
+              SPRINT TASK
+            </span>
+          ) : null}
           <span className="shrink-0 rounded-full bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-medium text-indigo-300">
             {itemTypeLabel}
           </span>

@@ -12,6 +12,7 @@ export function KanbanColumn({
   isDropTarget,
   setDropTargetColumnId,
   emptyLabel,
+  sprintTaskBadge = false,
 }) {
   const columnColors = {
     todo: {
@@ -82,6 +83,7 @@ export function KanbanColumn({
           <TaskCard
             key={task.id}
             task={task}
+            showSprintTaskBadge={sprintTaskBadge}
             onDelete={onDeleteTask}
             onClick={onClickTask}
             onEdit={onEditTask}

@@ -41,11 +41,10 @@ import {
   fetchRemoteProjectTasks,
   upsertRemoteTasks,
   deleteRemoteTask,
+  isSharedProjectTask,
 } from '../../utils/taskRemoteStorage.js'
-
-function isSharedGeneralProjectTask(task) {
-  return !!task?.projectId && (task.calendarType === 'general' || !task.calendarType)
-}
+import { normalizeCapacityPoints } from '../../utils/workspaceDB.js'
+import { Link } from 'react-router-dom'
 
 function getTaskTs(task) {
   const v = task?.updatedAt ?? task?.updated_at ?? task?.modifiedAt ?? task?.createdAt ?? 0
@@ -93,7 +92,7 @@ function isTaskChatMessage(message) {
   )
 }
 
-export function KanbanBoard({ headerActions = null }) {
+export function KanbanBoard({ headerActions = null, variant = 'default' }) {
   const { t } = useLanguage()
   const { user } = useAuth()
   const ownerUserId = user?.id ?? null
@@ -246,7 +245,7 @@ export function KanbanBoard({ headerActions = null }) {
       // Backfill: if local has shared project tasks missing in Supabase, upsert them.
       const remoteIds = new Set((Array.isArray(remoteTasks) ? remoteTasks : []).map((t) => t?.id).filter(Boolean))
       const localSharedProject = localAll.filter(
-        (t) => isSharedGeneralProjectTask(t) && t.projectId === projectId,
+        (t) => isSharedProjectTask(t) && t.projectId === projectId,
       )
       const toBackfill = localSharedProject.filter((t) => t?.id && !remoteIds.has(t.id))
       if (toBackfill.length > 0) {
@@ -493,11 +492,64 @@ export function KanbanBoard({ headerActions = null }) {
     })
   }, [visibleProjectTasks])
 
+  const isSprintBoard = variant === 'sprint_board'
+
   const boardScopedTasks = useMemo(() => {
+    if (isSprintBoard) {
+      if (!activeProject?.id || !activeSprint?.id) return []
+      return visibleProjectTasks.filter(
+        (task) =>
+          task &&
+          String(task.projectId) === String(activeProject.id) &&
+          String(task.sprintId) === String(activeSprint.id),
+      )
+    }
     if (boardView === 'active_sprint') return hasActiveSprint ? sprintTasks : []
     if (boardView === 'backlog') return backlogTasks
     return visibleProjectTasks
-  }, [boardView, hasActiveSprint, sprintTasks, backlogTasks, visibleProjectTasks])
+  }, [
+    isSprintBoard,
+    activeProject?.id,
+    activeSprint?.id,
+    visibleProjectTasks,
+    boardView,
+    hasActiveSprint,
+    sprintTasks,
+    backlogTasks,
+  ])
+
+  const sprintBoardHeaderMetrics = useMemo(() => {
+    if (!isSprintBoard || !activeSprint?.id) return null
+    const list = boardScopedTasks
+    const selectedSP = list.reduce((sum, task) => {
+      const sp = Number(task.storyPoints || task.story_points || 0)
+      return sum + (Number.isFinite(sp) ? sp : 0)
+    }, 0)
+    const cap = normalizeCapacityPoints(
+      activeSprint.capacityPoints ?? activeSprint.capacity_points ?? 0,
+    )
+    const totalSprintTasks = list.length
+    const doneSprintTasks = list.filter(
+      (t) => getNormalizedTaskStatus(t) === 'done',
+    ).length
+    const completionPercentage =
+      totalSprintTasks === 0
+        ? 0
+        : Math.round((doneSprintTasks / totalSprintTasks) * 100)
+    const remainingSP = cap - selectedSP
+    const planningCompleted =
+      activeSprint.planningStatus === 'completed' ||
+      activeSprint.planning_status === 'completed'
+    return {
+      selectedSP,
+      cap,
+      totalSprintTasks,
+      doneSprintTasks,
+      completionPercentage,
+      remainingSP,
+      planningCompleted,
+    }
+  }, [isSprintBoard, activeSprint, boardScopedTasks])
 
   const filteredTasks = useMemo(() => {
     if (priorityFilter === 'all') return boardScopedTasks
@@ -533,7 +585,7 @@ export function KanbanBoard({ headerActions = null }) {
       })
       broadcastTasks(next)
       const uid = ownerUserIdRef.current
-      if (uid && changed && isSharedGeneralProjectTask(changed)) {
+      if (uid && changed && isSharedProjectTask(changed)) {
         void upsertRemoteTasks([changed], uid)
       }
       return next
@@ -577,7 +629,7 @@ export function KanbanBoard({ headerActions = null }) {
       ]
       broadcastTasks(next)
       const uid = ownerUserIdRef.current
-      if (uid && isSharedGeneralProjectTask(created)) {
+      if (uid && isSharedProjectTask(created)) {
         void upsertRemoteTasks([created], uid)
       }
       return next
@@ -602,7 +654,7 @@ export function KanbanBoard({ headerActions = null }) {
       })
       broadcastTasks(next)
       const uid = ownerUserIdRef.current
-      if (uid && changed && isSharedGeneralProjectTask(changed)) {
+      if (uid && changed && isSharedProjectTask(changed)) {
         void upsertRemoteTasks([changed], uid)
       }
       return next
@@ -627,7 +679,7 @@ export function KanbanBoard({ headerActions = null }) {
       })
       void broadcastTaskDelete(removed.id, removed.projectId)
     }
-    if (removed && isSharedGeneralProjectTask(removed) && removed.projectId) {
+    if (removed && isSharedProjectTask(removed) && removed.projectId) {
       void deleteRemoteTask(removed.id, removed.projectId)
     }
   }
@@ -644,7 +696,72 @@ export function KanbanBoard({ headerActions = null }) {
   )
 
   return (
-    <div className="mt-6">
+    <div className={isSprintBoard ? 'mt-0' : 'mt-6'}>
+      {isSprintBoard && activeSprint && sprintBoardHeaderMetrics ? (
+        <section className="mb-6 rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-5">
+          <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+            Active sprint
+          </p>
+          <h2 className="mt-1 text-xl font-semibold text-[rgb(var(--zc-text))]">
+            Sprint #{activeSprint.sprint_number}
+          </h2>
+          <p className="mt-2 text-sm text-[rgb(var(--zc-text))]">
+            <span className="text-[rgb(var(--zc-muted))]">Goal: </span>
+            {activeSprint.sprint_goal || activeSprint.sprintGoal || '—'}
+          </p>
+          <p className="mt-1 text-xs text-[rgb(var(--zc-muted2))]">
+            {activeSprint.start_date} → {activeSprint.end_date}
+          </p>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
+              <p className="text-xs text-[rgb(var(--zc-subtle))]">Capacity</p>
+              <p className="text-[rgb(var(--zc-text))]">
+                {sprintBoardHeaderMetrics.cap} SP
+              </p>
+            </div>
+            <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
+              <p className="text-xs text-[rgb(var(--zc-subtle))]">Selected</p>
+              <p className="text-[rgb(var(--zc-text))]">
+                {sprintBoardHeaderMetrics.selectedSP} SP
+              </p>
+            </div>
+            <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
+              <p className="text-xs text-[rgb(var(--zc-subtle))]">Remaining</p>
+              <p className="text-[rgb(var(--zc-text))]">
+                {sprintBoardHeaderMetrics.remainingSP} SP
+              </p>
+            </div>
+            <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm sm:col-span-2 lg:col-span-3">
+              <p className="text-xs text-[rgb(var(--zc-subtle))]">Planning</p>
+              <p className="text-[rgb(var(--zc-text))]">
+                {sprintBoardHeaderMetrics.planningCompleted
+                  ? 'Completed'
+                  : 'Draft'}
+              </p>
+            </div>
+          </div>
+          <div className="mt-4 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] px-3 py-3">
+            <div className="flex items-center justify-between gap-2 text-sm">
+              <span className="text-[rgb(var(--zc-muted))]">Sprint progress</span>
+              <span className="font-medium text-[rgb(var(--zc-text))]">
+                {sprintBoardHeaderMetrics.completionPercentage}%
+              </span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-[rgb(var(--zc-border)/0.6)]">
+              <div
+                className="h-full rounded-full bg-emerald-500/80 transition-[width]"
+                style={{
+                  width: `${sprintBoardHeaderMetrics.completionPercentage}%`,
+                }}
+              />
+            </div>
+            <p className="mt-2 text-xs text-[rgb(var(--zc-subtle))]">
+              {sprintBoardHeaderMetrics.doneSprintTasks} of{' '}
+              {sprintBoardHeaderMetrics.totalSprintTasks} tasks done
+            </p>
+          </div>
+        </section>
+      ) : null}
       {syncNotice ? (
         <p
           className="mb-3 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200"
@@ -655,26 +772,41 @@ export function KanbanBoard({ headerActions = null }) {
       ) : null}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm text-[rgb(var(--zc-muted))]">
-            {t('kanban_hint')}{' '}
-            <span className="text-[rgb(var(--zc-text))]">{t('kanban_indexeddb')}</span>.
-          </p>
-          <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-            {t('kanban_total_tasks', { n: total })}
-          </p>
+          {isSprintBoard ? (
+            <p className="text-sm text-[rgb(var(--zc-muted2))]">
+              Only tasks committed to the active sprint. Drag cards to update workflow status.
+            </p>
+          ) : (
+            <>
+              <p className="text-sm text-[rgb(var(--zc-muted))]">
+                {t('kanban_hint')}{' '}
+                <span className="text-[rgb(var(--zc-text))]">{t('kanban_indexeddb')}</span>.
+              </p>
+              <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                {t('kanban_total_tasks', { n: total })}
+              </p>
+            </>
+          )}
+          {isSprintBoard ? (
+            <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+              Sprint tasks: {total}
+            </p>
+          ) : null}
         </div>
         <div className="flex items-center gap-2">
           {headerActions}
-          <select
-            className="h-9 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-            value={boardView}
-            onChange={(e) => setBoardView(e.target.value)}
-            aria-label="Board view"
-          >
-            <option value="all">All Tasks</option>
-            <option value="active_sprint">Active Sprint</option>
-            <option value="backlog">Backlog</option>
-          </select>
+          {!isSprintBoard ? (
+            <select
+              className="h-9 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+              value={boardView}
+              onChange={(e) => setBoardView(e.target.value)}
+              aria-label="Board view"
+            >
+              <option value="all">All Tasks</option>
+              <option value="active_sprint">Active Sprint</option>
+              <option value="backlog">Backlog</option>
+            </select>
+          ) : null}
           <select
             className="h-9 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
             value={priorityFilter}
@@ -687,11 +819,13 @@ export function KanbanBoard({ headerActions = null }) {
             <option value="could">could</option>
             <option value="wont">wont</option>
           </select>
-          <Button onClick={() => setIsAddOpen(true)}>{t('kanban_add_task')}</Button>
+          {!isSprintBoard ? (
+            <Button onClick={() => setIsAddOpen(true)}>{t('kanban_add_task')}</Button>
+          ) : null}
         </div>
       </div>
 
-      {boardView === 'active_sprint' && hasActiveSprint ? (
+      {!isSprintBoard && boardView === 'active_sprint' && hasActiveSprint ? (
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
           <section className="rounded-xl border border-indigo-500/25 bg-indigo-500/10 p-5 lg:col-span-2">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -794,9 +928,22 @@ export function KanbanBoard({ headerActions = null }) {
           <div className="lg:col-span-4 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
             {t('loading_tasks')}
           </div>
-        ) : boardView === 'active_sprint' && !hasActiveSprint ? (
+        ) : !isSprintBoard && boardView === 'active_sprint' && !hasActiveSprint ? (
           <div className="lg:col-span-4 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
             No active sprint. Create one from Project Overview.
+          </div>
+        ) : isSprintBoard &&
+          hasActiveSprint &&
+          !isLoadingTasks &&
+          boardScopedTasks.length === 0 ? (
+          <div className="lg:col-span-4 flex flex-col items-center justify-center gap-4 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-10 text-center text-sm text-[rgb(var(--zc-muted2))]">
+            <p>No tasks committed to this sprint yet.</p>
+            <Link
+              to="/sprint-planning"
+              className="rounded-md bg-indigo-500/25 px-4 py-2 text-sm font-medium text-indigo-200 hover:bg-indigo-500/35"
+            >
+              Open Sprint Planning
+            </Link>
           </div>
         ) : (
           columnsWithTitles.map((column) => (
@@ -804,6 +951,7 @@ export function KanbanBoard({ headerActions = null }) {
               key={column.id}
               column={column}
               tasks={tasksByColumn.get(column.id) ?? []}
+              sprintTaskBadge={isSprintBoard}
               onDropTask={moveTask}
               onDeleteTask={(id) => {
                 deleteTask(id)
@@ -827,15 +975,17 @@ export function KanbanBoard({ headerActions = null }) {
         )}
       </div>
 
-      <AddTaskModal
-        key={`add-task-${isAddOpen ? 'open' : 'closed'}-${activeProject?.id ?? 'none'}-${activeTeam?.id ?? 'none'}`}
-        open={isAddOpen}
-        onClose={() => setIsAddOpen(false)}
-        onCreate={createTask}
-        customCalendars={customCalendars}
-        activeProject={activeProject}
-        activeTeam={activeTeam}
-      />
+      {!isSprintBoard ? (
+        <AddTaskModal
+          key={`add-task-${isAddOpen ? 'open' : 'closed'}-${activeProject?.id ?? 'none'}-${activeTeam?.id ?? 'none'}`}
+          open={isAddOpen}
+          onClose={() => setIsAddOpen(false)}
+          onCreate={createTask}
+          customCalendars={customCalendars}
+          activeProject={activeProject}
+          activeTeam={activeTeam}
+        />
+      ) : null}
 
       <TaskDetailModal
         key={`task-detail-${selectedTaskId ?? 'none'}-${detailInitialEdit ? 'edit' : 'view'}`}
