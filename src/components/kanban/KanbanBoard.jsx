@@ -44,7 +44,9 @@ import {
   isSharedProjectTask,
 } from '../../utils/taskRemoteStorage.js'
 import { normalizeCapacityPoints } from '../../utils/workspaceDB.js'
+import { resolveDoneAtForStatusChange } from '../../utils/taskDoneAt.js'
 import { Link } from 'react-router-dom'
+import { BurndownChart } from '../sprint/BurndownChart.jsx'
 
 function getTaskTs(task) {
   const v = task?.updatedAt ?? task?.updated_at ?? task?.modifiedAt ?? task?.createdAt ?? 0
@@ -580,7 +582,8 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
       let changed = null
       const next = prev.map((task) => {
         if (task.id !== taskId) return task
-        changed = { ...task, status: nextStatus, updatedAt: now }
+        const doneAt = resolveDoneAtForStatusChange(task, nextStatus, now)
+        changed = { ...task, status: nextStatus, updatedAt: now, doneAt }
         return changed
       })
       broadcastTasks(next)
@@ -643,13 +646,18 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
       const next = prev.map((t) => {
         if (t.id !== taskId) return t
         const merged = { ...updates }
+        delete merged.doneAt
+        delete merged.done_at
         if ('storyPoints' in merged || 'story_points' in merged) {
           merged.storyPoints = normalizeStoryPointsValue(
             merged.storyPoints ?? merged.story_points ?? t.storyPoints ?? 0,
           )
           delete merged.story_points
         }
-        changed = { ...t, ...merged, updatedAt: now }
+        const nextStatus =
+          merged.status !== undefined ? merged.status : t.status
+        const doneAt = resolveDoneAtForStatusChange(t, nextStatus, now)
+        changed = { ...t, ...merged, updatedAt: now, doneAt }
         return changed
       })
       broadcastTasks(next)
@@ -761,6 +769,13 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
             </p>
           </div>
         </section>
+      ) : null}
+      {isSprintBoard && activeSprint ? (
+        <BurndownChart
+          activeSprint={activeSprint}
+          sprintTasks={boardScopedTasks}
+          isLoading={isLoadingTasks}
+        />
       ) : null}
       {syncNotice ? (
         <p

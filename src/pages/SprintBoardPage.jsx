@@ -50,6 +50,7 @@ export function SprintBoardPage() {
           {activeProject.name} · Sprint #{activeSprint.sprint_number}
         </p>
       </div>
+      {/* Burndown chart is rendered inside KanbanBoard directly under the sprint summary (same task state as the board). */}
       <KanbanBoard variant="sprint_board" />
     </section>
   )

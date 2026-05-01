@@ -81,6 +81,21 @@ export function normalizeTaskForStorage(task, ownerUserId) {
         ? Date.parse(createdAtRaw) || null
         : null
 
+  let doneAt = null
+  if (status === 'done') {
+    const doneAtRaw = task.doneAt ?? task.done_at ?? null
+    if (typeof doneAtRaw === 'number' && Number.isFinite(doneAtRaw)) {
+      doneAt = doneAtRaw
+    } else if (typeof doneAtRaw === 'string' && doneAtRaw.trim()) {
+      const n = Number(doneAtRaw)
+      if (Number.isFinite(n)) doneAt = n
+      else {
+        const p = Date.parse(doneAtRaw)
+        doneAt = Number.isFinite(p) ? p : null
+      }
+    }
+  }
+
   // Keep other fields as-is; only fill required defaults for backward compatibility.
   const next = {
     ...task,
@@ -95,6 +110,7 @@ export function normalizeTaskForStorage(task, ownerUserId) {
     calendarType,
     projectId: projectId ?? undefined,
     updatedAt: updatedAt ?? createdAt ?? Date.now(),
+    doneAt,
   }
 
   return next

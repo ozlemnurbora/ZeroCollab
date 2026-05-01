@@ -39,11 +39,29 @@ export function normalizeTaskForRemote(task, fallbackUserId) {
   const snNum = snRaw == null || snRaw === '' ? NaN : Number(snRaw)
   const sprintNumber = Number.isFinite(snNum) ? Math.round(snNum) : null
 
+  const doneAtRaw = task.doneAt ?? task.done_at ?? null
+  let doneAt = null
+  if (typeof doneAtRaw === 'number' && Number.isFinite(doneAtRaw)) {
+    doneAt = doneAtRaw
+  } else if (typeof doneAtRaw === 'string' && doneAtRaw.trim()) {
+    const n = Number(doneAtRaw)
+    if (Number.isFinite(n)) doneAt = n
+    else {
+      const p = Date.parse(doneAtRaw)
+      doneAt = Number.isFinite(p) ? p : null
+    }
+  }
+
+  const statusNorm =
+    typeof task.status === 'string' && task.status.trim()
+      ? task.status.trim().toLowerCase()
+      : 'todo'
+
   const normalized = {
     ...task,
     id,
     projectId,
-    status: typeof task.status === 'string' && task.status.trim() ? task.status.trim().toLowerCase() : 'todo',
+    status: statusNorm,
     priority: typeof task.priority === 'string' && task.priority.trim() ? task.priority.trim() : 'must',
     itemType: typeof task.itemType === 'string' && task.itemType.trim() ? task.itemType.trim() : 'task',
     backlogState: typeof task.backlogState === 'string' && task.backlogState.trim() ? task.backlogState.trim() : 'new',
@@ -60,6 +78,7 @@ export function normalizeTaskForRemote(task, fallbackUserId) {
       typeof task.updatedAt === 'number' && Number.isFinite(task.updatedAt)
         ? task.updatedAt
         : Date.now(),
+    doneAt: statusNorm === 'done' ? doneAt : null,
   }
 
   return {
@@ -126,6 +145,17 @@ export function mapRemoteTask(row) {
     ownerUserId: payload.ownerUserId ?? row.owner_user_id ?? null,
     createdAt: payload.createdAt ?? createdAt ?? Date.now(),
     updatedAt: payload.updatedAt ?? updatedAt ?? Date.now(),
+    doneAt: (() => {
+      const raw = payload.doneAt ?? payload.done_at ?? null
+      if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+      if (typeof raw === 'string' && raw.trim()) {
+        const n = Number(raw)
+        if (Number.isFinite(n)) return n
+        const p = Date.parse(raw)
+        if (Number.isFinite(p)) return p
+      }
+      return null
+    })(),
   }
 }
 
