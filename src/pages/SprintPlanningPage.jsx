@@ -16,6 +16,14 @@ import { broadcastTaskSync } from '../utils/hubManager.js'
 import { on, P2P_EVENTS, sendToAllPeers } from '../utils/p2pManager.js'
 import { upsertRemoteTasks, fetchRemoteProjectTasks, deleteRemoteTask } from '../utils/taskRemoteStorage.js'
 import { normalizeCapacityPoints } from '../utils/workspaceDB.js'
+import { ConfirmDialog } from '../components/common/ConfirmDialog.jsx'
+
+function formatPlanningCompletedAt(value) {
+  if (!value) return ''
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return String(value)
+  return d.toLocaleString()
+}
 
 function getTaskTs(task) {
   const v = task?.updatedAt ?? task?.updated_at ?? task?.modifiedAt ?? task?.createdAt ?? 0
@@ -96,6 +104,10 @@ export function SprintPlanningPage() {
   const [capacitySaving, setCapacitySaving] = useState(false)
   const [capacitySaveError, setCapacitySaveError] = useState('')
   const [capacitySaveOk, setCapacitySaveOk] = useState(false)
+  const [completePlanningOpen, setCompletePlanningOpen] = useState(false)
+  const [reopenPlanningOpen, setReopenPlanningOpen] = useState(false)
+  const [planningActionSaving, setPlanningActionSaving] = useState(false)
+  const [planningCompleteOk, setPlanningCompleteOk] = useState(false)
 
   useEffect(() => {
     if (!user?.id) {
@@ -301,6 +313,21 @@ export function SprintPlanningPage() {
     )
   }, [projectTasks, activeSprint?.id, activeProject?.id])
 
+  const hasSprintGoal = Boolean(
+    String(activeSprint?.sprint_goal ?? activeSprint?.sprintGoal ?? '').trim(),
+  )
+  const hasCommittedItems = sprintTasks.length > 0
+  const isPlanningCompleted =
+    activeSprint?.planningStatus === 'completed' ||
+    activeSprint?.planning_status === 'completed'
+  const canMutateSprintPlanning =
+    canManageSprintPlanning && !isPlanningCompleted
+  const canCompletePlanning =
+    canManageSprintPlanning &&
+    !isPlanningCompleted &&
+    hasSprintGoal &&
+    hasCommittedItems
+
   const selectedStoryPoints = useMemo(
     () =>
       sprintTasks.reduce((sum, task) => {
@@ -330,10 +357,20 @@ export function SprintPlanningPage() {
     capacityPointsInt > 0 && selectedStoryPoints > capacityPointsInt
 
   const canPlan =
-    canManageSprintPlanning &&
+    canMutateSprintPlanning &&
     !!user?.id &&
     !!activeProject?.id &&
     !!activeSprint?.id
+
+  useEffect(() => {
+    if (isPlanningCompleted) setCapacityEditing(false)
+  }, [isPlanningCompleted])
+
+  useEffect(() => {
+    if (!planningCompleteOk) return
+    const t = setTimeout(() => setPlanningCompleteOk(false), 4000)
+    return () => clearTimeout(t)
+  }, [planningCompleteOk])
 
   useEffect(() => {
     console.log('[SprintPlanning] visibility debug', {
@@ -389,7 +426,7 @@ export function SprintPlanningPage() {
   }
 
   const updateTaskSprint = async (taskId, shouldAssign) => {
-    if (!user?.id || !canManageSprintPlanning) return
+    if (!user?.id || !canMutateSprintPlanning) return
     const projectId = activeProject?.id
     if (!projectId || !activeSprint?.id) return
     const rawLocal = await loadTasks(user.id)
@@ -543,16 +580,74 @@ export function SprintPlanningPage() {
                 Sprint Goal
               </p>
               <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
-                {activeSprint.sprint_goal || '—'}
+                {activeSprint.sprint_goal || activeSprint.sprintGoal || '—'}
               </p>
             </div>
+
+            <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
+              <p className="text-[rgb(var(--zc-muted))] text-xs uppercase tracking-wide">
+                Planning status
+              </p>
+              <p className="mt-1 font-medium text-[rgb(var(--zc-text))]">
+                {isPlanningCompleted ? 'Planning: Completed' : 'Planning: Draft'}
+              </p>
+              {isPlanningCompleted &&
+              (activeSprint.planningCompletedAt ||
+                activeSprint.planning_completed_at) ? (
+                <p className="mt-1 text-xs text-[rgb(var(--zc-muted2))]">
+                  Completed at:{' '}
+                  {formatPlanningCompletedAt(
+                    activeSprint.planningCompletedAt ||
+                      activeSprint.planning_completed_at,
+                  )}
+                </p>
+              ) : null}
+            </div>
+
+            {isPlanningCompleted ? (
+              <p className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-200/90">
+                Sprint planning is completed. Backlog changes are locked.
+              </p>
+            ) : null}
+
+            {canManageSprintPlanning && !isPlanningCompleted ? (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  disabled={!canCompletePlanning}
+                  onClick={() => setCompletePlanningOpen(true)}
+                  className="w-full rounded-md bg-emerald-500/25 px-3 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-500/35 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Complete Planning
+                </button>
+                {!canCompletePlanning ? (
+                  <p className="text-xs text-[rgb(var(--zc-subtle))]">
+                    Add at least one item and define a sprint goal to complete planning.
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {canManageSprintPlanning && isPlanningCompleted ? (
+              <button
+                type="button"
+                onClick={() => setReopenPlanningOpen(true)}
+                className="w-full rounded-md border border-[rgb(var(--zc-border))] px-3 py-2 text-sm font-medium text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-panel)/0.4)]"
+              >
+                Reopen Planning
+              </button>
+            ) : null}
+
+            {planningCompleteOk ? (
+              <p className="text-xs text-emerald-400">Sprint planning completed.</p>
+            ) : null}
 
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <p className="text-[rgb(var(--zc-muted))] text-xs uppercase tracking-wide">
                   Capacity vs backlog
                 </p>
-                {canManageSprintPlanning && !capacityEditing ? (
+                {canMutateSprintPlanning && !capacityEditing ? (
                   <button
                     type="button"
                     onClick={() => {
@@ -567,7 +662,7 @@ export function SprintPlanningPage() {
                 ) : null}
               </div>
 
-              {capacityEditing && canManageSprintPlanning ? (
+              {capacityEditing && canMutateSprintPlanning ? (
                 <div className="mt-3 space-y-2">
                   <label className="block text-[10px] font-medium uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
                     Team capacity (SP)
@@ -709,7 +804,7 @@ export function SprintPlanningPage() {
                       Assignee: {task.assignee || 'Unassigned'}
                     </p>
                   </div>
-                  {canManageSprintPlanning ? (
+                  {canMutateSprintPlanning ? (
                     <button
                       type="button"
                       disabled={!canPlan}
@@ -771,7 +866,7 @@ export function SprintPlanningPage() {
                       Assignee: {task.assignee || 'Unassigned'}
                     </p>
                   </div>
-                  {canManageSprintPlanning ? (
+                  {canMutateSprintPlanning ? (
                     <button
                       type="button"
                       disabled={!canPlan}
@@ -787,6 +882,62 @@ export function SprintPlanningPage() {
           )}
         </section>
       </div>
+
+      <ConfirmDialog
+        open={completePlanningOpen}
+        title="Complete sprint planning?"
+        message="After completing planning, sprint backlog changes will be locked unless planning is reopened."
+        confirmText="Complete Planning"
+        cancelText="Cancel"
+        loading={planningActionSaving}
+        onCancel={() => !planningActionSaving && setCompletePlanningOpen(false)}
+        onConfirm={() => {
+          void (async () => {
+            if (!user?.id || !activeSprint?.id) return
+            setPlanningActionSaving(true)
+            try {
+              await updateProjectSprint(activeSprint.id, {
+                planning_status: 'completed',
+                planning_completed_at: new Date().toISOString(),
+                planning_completed_by: user.id,
+              })
+              setCompletePlanningOpen(false)
+              setPlanningCompleteOk(true)
+            } catch (err) {
+              console.error('[SprintPlanning] complete planning failed', err)
+            } finally {
+              setPlanningActionSaving(false)
+            }
+          })()
+        }}
+      />
+      <ConfirmDialog
+        open={reopenPlanningOpen}
+        title="Reopen sprint planning?"
+        message="This will allow changes to the sprint backlog again."
+        confirmText="Reopen"
+        cancelText="Cancel"
+        loading={planningActionSaving}
+        onCancel={() => !planningActionSaving && setReopenPlanningOpen(false)}
+        onConfirm={() => {
+          void (async () => {
+            if (!activeSprint?.id) return
+            setPlanningActionSaving(true)
+            try {
+              await updateProjectSprint(activeSprint.id, {
+                planning_status: 'draft',
+                planning_completed_at: null,
+                planning_completed_by: null,
+              })
+              setReopenPlanningOpen(false)
+            } catch (err) {
+              console.error('[SprintPlanning] reopen planning failed', err)
+            } finally {
+              setPlanningActionSaving(false)
+            }
+          })()
+        }}
+      />
     </section>
   )
 }

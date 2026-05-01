@@ -330,9 +330,16 @@ export function normalizeSprintRow(row) {
       ? Number(row.capacity_points)
       : 0
   const capacityPoints = Number.isFinite(cap) && cap >= 0 ? Math.round(cap) : 0
+  const rawPs = row.planning_status ?? row.planningStatus
+  const planningStatus =
+    rawPs === 'completed' ? 'completed' : 'draft'
   return {
     ...row,
     capacityPoints,
+    planningStatus,
+    planningCompletedAt: row.planning_completed_at ?? row.planningCompletedAt ?? null,
+    planningCompletedBy: row.planning_completed_by ?? row.planningCompletedBy ?? null,
+    sprintGoal: row.sprint_goal ?? row.sprintGoal ?? null,
   }
 }
 
@@ -409,6 +416,9 @@ export async function createSprint(
     sprint_goal: sprintGoal || null,
     capacity_points: cap,
     status: 'active',
+    planning_status: 'draft',
+    planning_completed_at: null,
+    planning_completed_by: null,
     created_by: createdBy || null,
   }
 
@@ -451,9 +461,36 @@ export async function updateProjectSprint(sprintId, updates) {
     payload.capacity_points = normalizeCapacityPoints(raw)
   }
 
-  if ('sprint_goal' in updates) {
-    const g = updates.sprint_goal
+  if ('sprint_goal' in updates || 'sprintGoal' in updates) {
+    const g = updates.sprint_goal ?? updates.sprintGoal
     payload.sprint_goal = g === '' || g == null ? null : String(g)
+  }
+
+  if ('planning_status' in updates || 'planningStatus' in updates) {
+    const ps = updates.planning_status ?? updates.planningStatus
+    if (ps !== 'draft' && ps !== 'completed') {
+      throw new Error('planning_status must be draft or completed.')
+    }
+    payload.planning_status = ps
+  }
+
+  if ('planning_completed_at' in updates || 'planningCompletedAt' in updates) {
+    const v = updates.planning_completed_at ?? updates.planningCompletedAt
+    if (v === null || v === undefined || v === '') {
+      payload.planning_completed_at = null
+    } else if (typeof v === 'string') {
+      payload.planning_completed_at = v
+    } else if (typeof v === 'number' && Number.isFinite(v)) {
+      payload.planning_completed_at = new Date(v).toISOString()
+    } else {
+      payload.planning_completed_at = String(v)
+    }
+  }
+
+  if ('planning_completed_by' in updates || 'planningCompletedBy' in updates) {
+    const u = updates.planning_completed_by ?? updates.planningCompletedBy
+    payload.planning_completed_by =
+      u === null || u === undefined || u === '' ? null : String(u)
   }
 
   if (Object.keys(payload).length === 0) {
