@@ -11,6 +11,10 @@ import {
   nextPositionForGroup,
   PRIORITY_RANK,
 } from './taskStorage.js'
+import {
+  DEFINITION_OF_READY_MESSAGE,
+  taskMeetsDefinitionOfReady,
+} from './definitionOfReady.js'
 import { Button } from '../ui/Button.jsx'
 import { KanbanColumn } from './KanbanColumn.jsx'
 import { TaskDetailModal } from './TaskDetailModal.jsx'
@@ -826,6 +830,14 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
         return { ...t, ...merged, updatedAt: now, doneAt }
       })
       const afterTask = nextBeforeDedupe.find((t) => t.id === taskId)
+      if (
+        afterTask &&
+        (afterTask.backlogState || 'new') === 'ready' &&
+        !taskMeetsDefinitionOfReady(afterTask)
+      ) {
+        window.alert(DEFINITION_OF_READY_MESSAGE)
+        return prev
+      }
       const statusChanged =
         !!beforeTask &&
         !!afterTask &&

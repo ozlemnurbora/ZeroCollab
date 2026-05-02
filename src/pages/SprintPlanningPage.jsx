@@ -6,6 +6,7 @@ import {
   saveTasks,
   normalizeTaskForStorage,
 } from '../components/kanban/taskStorage.js'
+import { taskMeetsDefinitionOfReady } from '../components/kanban/definitionOfReady.js'
 import {
   tasksForP2PBroadcast,
   mergeTasksFromSync,
@@ -472,6 +473,9 @@ export function SprintPlanningPage() {
         calendarType: 'general',
         calendarId: 'general',
         updatedAt: now,
+      }
+      if (!taskMeetsDefinitionOfReady(changed)) {
+        changed = { ...changed, backlogState: 'refined' }
       }
       return changed
     })

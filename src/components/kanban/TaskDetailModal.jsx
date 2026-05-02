@@ -10,6 +10,12 @@ import {
   normalizeStoryPointsValue,
   storyPointOptionsForValue,
 } from './taskStorage.js'
+import {
+  DEFINITION_OF_READY_HELPER_TEXT,
+  DEFINITION_OF_READY_MESSAGE,
+  taskMeetsDefinitionOfReady,
+  validateReadyBacklogState,
+} from './definitionOfReady.js'
 
 function normalizeCalendarType(v) {
   return v === 'general' ? 'general' : 'personal'
@@ -82,6 +88,7 @@ export function TaskDetailModal({
   const [form, setForm] = useState(() => (task ? { ...task } : null))
   const [messages, setMessages] = useState([])
   const [input, setInput] = useState('')
+  const [definitionOfReadyError, setDefinitionOfReadyError] = useState('')
   const currentUserId = user?.id || null
   const currentUserName =
     String(user?.user_metadata?.full_name || '').trim() ||
@@ -111,6 +118,7 @@ export function TaskDetailModal({
     setIsEditing(!!initialEdit)
     setForm(task ? { ...task } : null)
     setInput('')
+    setDefinitionOfReadyError('')
   }, [open, task, initialEdit])
 
   useEffect(() => {
@@ -225,14 +233,37 @@ export function TaskDetailModal({
         ? 'personal'
         : calendarType
 
+    const nextBacklogState = form.backlogState || 'new'
+    const trimmedTitle = (form.title || '').trim()
+    const trimmedAc = (form.acceptanceCriteria || '').trim()
+    const nextStoryPoints = normalizeStoryPointsValue(
+      form.storyPoints ?? form.story_points ?? 0,
+    )
+    if (nextBacklogState === 'ready') {
+      const proposed = {
+        ...task,
+        ...form,
+        title: trimmedTitle,
+        acceptanceCriteria: trimmedAc,
+        storyPoints: nextStoryPoints,
+        backlogState: 'ready',
+      }
+      const check = validateReadyBacklogState(proposed)
+      if (!check.ok) {
+        setDefinitionOfReadyError(check.message)
+        return
+      }
+    }
+    setDefinitionOfReadyError('')
+
     onUpdate?.(task.id, {
-      title: (form.title || '').trim(),
+      title: trimmedTitle,
       description: (form.description || '').trim(),
       assignee: (form.assignee || '').trim(),
       priority: form.priority || 'must',
       itemType: form.itemType || 'task',
-      backlogState: form.backlogState || 'new',
-      acceptanceCriteria: (form.acceptanceCriteria || '').trim(),
+      backlogState: nextBacklogState,
+      acceptanceCriteria: trimmedAc,
       userStoryRole: form.userStoryRole || '',
       userStoryCapability: form.userStoryCapability || '',
       userStoryBenefit: form.userStoryBenefit || '',
@@ -245,9 +276,7 @@ export function TaskDetailModal({
       status: form.status || 'todo',
       calendarId: calendarId || '',
       calendarType: nextCalendarType,
-      storyPoints: normalizeStoryPointsValue(
-        form.storyPoints ?? form.story_points ?? 0,
-      ),
+      storyPoints: nextStoryPoints,
     })
     setIsEditing(false)
   }
@@ -277,6 +306,7 @@ export function TaskDetailModal({
                   variant="secondary"
                   onClick={() => {
                     setIsEditing(false)
+                    setDefinitionOfReadyError('')
                     setForm(task ? { ...task } : null)
                   }}
                 >
@@ -304,9 +334,10 @@ export function TaskDetailModal({
           <input
             disabled={!isEditing}
             value={value.title || ''}
-            onChange={(e) =>
+            onChange={(e) => {
+              setDefinitionOfReadyError('')
               setForm((s) => ({ ...(s || {}), title: e.target.value }))
-            }
+            }}
             className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:opacity-70"
           />
         </div>
@@ -420,15 +451,41 @@ export function TaskDetailModal({
                   </label>
                   <select
                     value={backlogState}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...(s || {}), backlogState: e.target.value }))
-                    }
+                    onChange={(e) => {
+                      const next = e.target.value
+                      if (next === 'ready' && form) {
+                        const proposed = {
+                          ...task,
+                          ...form,
+                          title: (form.title || '').trim(),
+                          acceptanceCriteria: (form.acceptanceCriteria || '').trim(),
+                          storyPoints: normalizeStoryPointsValue(
+                            form.storyPoints ?? form.story_points ?? 0,
+                          ),
+                          backlogState: 'ready',
+                        }
+                        if (!taskMeetsDefinitionOfReady(proposed)) {
+                          setDefinitionOfReadyError(DEFINITION_OF_READY_MESSAGE)
+                          return
+                        }
+                      }
+                      if (next !== 'ready') setDefinitionOfReadyError('')
+                      setForm((s) => ({ ...(s || {}), backlogState: next }))
+                    }}
                     className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                   >
                     <option value="new">New</option>
                     <option value="refined">Refined</option>
                     <option value="ready">Ready</option>
                   </select>
+                  <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                    {DEFINITION_OF_READY_HELPER_TEXT}
+                  </p>
+                  {definitionOfReadyError ? (
+                    <p className="mt-1 text-xs text-rose-300" role="alert">
+                      {definitionOfReadyError}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -458,12 +515,13 @@ export function TaskDetailModal({
                   value={normalizeStoryPointsValue(
                     value.storyPoints ?? value.story_points ?? 0,
                   )}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setDefinitionOfReadyError('')
                     setForm((s) => ({
                       ...(s || {}),
                       storyPoints: Number(e.target.value),
                     }))
-                  }
+                  }}
                   className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 >
                   {storyPointOptionsForValue(
@@ -514,9 +572,10 @@ export function TaskDetailModal({
                 </label>
                 <textarea
                   value={value.acceptanceCriteria || ''}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    setDefinitionOfReadyError('')
                     setForm((s) => ({ ...(s || {}), acceptanceCriteria: e.target.value }))
-                  }
+                  }}
                   placeholder={'- Criterion 1\n- Criterion 2\n- Criterion 3'}
                   className="mt-1 min-h-[100px] w-full resize-y rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 />
