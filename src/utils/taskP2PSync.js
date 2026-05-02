@@ -1,4 +1,10 @@
-import { normalizeStoryPointsValue } from '../components/kanban/taskStorage.js'
+import {
+  normalizeStoryPointsValue,
+  normalizeTaskForStorage,
+  isTaskDeleted,
+  mergeTaskVersionsPreferringTombstone,
+  markTaskSoftDeleted,
+} from '../components/kanban/taskStorage.js'
 
 function normalizeSet(values) {
   return new Set(Array.isArray(values) ? values.filter(Boolean) : [])
@@ -50,30 +56,6 @@ function normalizeTaskShape(task) {
     projectId,
     storyPoints,
   }
-}
-
-function getTaskUpdatedAt(task) {
-  const v =
-    task?.updatedAt ??
-    task?.updated_at ??
-    task?.modifiedAt ??
-    task?.modified_at ??
-    task?.lastUpdatedAt ??
-    null
-  if (typeof v === 'number' && Number.isFinite(v)) return v
-  if (typeof v === 'string') {
-    const n = Number(v)
-    if (Number.isFinite(n)) return n
-    const t = Date.parse(v)
-    if (Number.isFinite(t)) return t
-  }
-  const created = task?.createdAt ?? task?.created_at ?? null
-  if (typeof created === 'number' && Number.isFinite(created)) return created
-  if (typeof created === 'string') {
-    const t = Date.parse(created)
-    if (Number.isFinite(t)) return t
-  }
-  return 0
 }
 
 function isGeneralTask(task) {
@@ -157,9 +139,10 @@ export function mergeTasksFromSync(localTasks, incomingTasks, options = {}) {
     if (!isGeneralTask(existing)) continue
     if (!isAuthorizedProjectTask(existing, allowed)) continue
 
-    const existingTs = getTaskUpdatedAt(existing)
-    const incomingTs = getTaskUpdatedAt(normalized)
-    mergedById.set(normalized.id, incomingTs >= existingTs ? normalized : existing)
+    mergedById.set(
+      normalized.id,
+      mergeTaskVersionsPreferringTombstone(existing, normalized),
+    )
   }
 
   // Preserve local ordering as much as possible: start with local order, then append new incoming.
@@ -202,8 +185,9 @@ export function filterTasksForVisibility(tasks, options = {}) {
   if (allowed.size === 0) return normalized
   return normalized.filter(
     (task) =>
-      isOwnedPersonalTaskInAllowedProjects(task, currentUserId, allowedProjectIds) ||
-      isAuthorizedProjectTask(task, allowed),
+      !isTaskDeleted(task) &&
+      (isOwnedPersonalTaskInAllowedProjects(task, currentUserId, allowedProjectIds) ||
+        isAuthorizedProjectTask(task, allowed)),
   )
 }
 
@@ -221,19 +205,54 @@ export function canApplyIncomingTaskDelete(payload, allowedProjectIds = []) {
   return !!(taskId && projectId && allowed.has(projectId))
 }
 
-/** Remove one general project task by id after an authorized delete event. */
-export function removeAuthorizedGeneralTaskById(
+/**
+ * Soft-delete one general project task after an authorized TASK_DELETE / hub delete.
+ * Inserts a minimal tombstone if the task was never in this client's list.
+ */
+export function applyAuthorizedGeneralTaskSoftDelete(
   tasks,
   taskId,
   projectId,
   allowedProjectIds = [],
+  ownerUserId = null,
 ) {
   if (!canApplyIncomingTaskDelete({ taskId, projectId }, allowedProjectIds)) {
-    return Array.isArray(tasks) ? tasks : []
+    return { next: Array.isArray(tasks) ? tasks : [], changed: false }
   }
-  const list = Array.isArray(tasks) ? tasks : []
-  return list.filter(
+  const list = Array.isArray(tasks) ? [...tasks] : []
+  const now = Date.now()
+  const idx = list.findIndex(
     (t) =>
-      !(t.id === taskId && t.projectId === projectId && isGeneralTask(t)),
+      t?.id === taskId &&
+      String(t?.projectId ?? '') === String(projectId) &&
+      isGeneralTask(t),
   )
+  if (idx >= 0) {
+    if (isTaskDeleted(list[idx])) return { next: list, changed: false }
+    const marked = markTaskSoftDeleted(list[idx], now)
+    list[idx] = ownerUserId
+      ? normalizeTaskForStorage(marked, ownerUserId)
+      : marked
+    return { next: list, changed: true }
+  }
+  const stub = normalizeTaskForStorage(
+    {
+      id: taskId,
+      projectId,
+      calendarType: 'general',
+      calendarId: 'general',
+      title: '',
+      status: 'todo',
+      itemType: 'task',
+      backlogState: 'new',
+      deleted: true,
+      deletedAt: now,
+      updatedAt: now,
+      createdAt: now,
+    },
+    ownerUserId,
+  )
+  if (stub) list.push(stub)
+  return { next: list, changed: true }
 }
+

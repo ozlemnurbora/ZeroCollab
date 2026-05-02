@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { loadTasks } from '../components/kanban/taskStorage.js'
+import { loadTasks, isTaskDeleted } from '../components/kanban/taskStorage.js'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
@@ -62,8 +62,9 @@ export function DashboardPage() {
   }, [user?.id])
 
   const visibleTasks = useMemo(() => {
-    if (!activeProject) return tasks
-    return tasks.filter(
+    const alive = (Array.isArray(tasks) ? tasks : []).filter((t) => t && !isTaskDeleted(t))
+    if (!activeProject) return alive
+    return alive.filter(
       (t) => t.projectId === activeProject.id || !t.projectId,
     )
   }, [tasks, activeProject])
@@ -71,7 +72,7 @@ export function DashboardPage() {
   const projectMembers = useMemo(() => {
     if (!activeProject || !teams || teams.length === 0) {
       const assignees = new Set()
-      tasks.forEach((task) => {
+      visibleTasks.forEach((task) => {
         if (task.assignee) assignees.add(task.assignee)
       })
       return Array.from(assignees)
@@ -88,13 +89,13 @@ export function DashboardPage() {
     })
 
     if (members.size === 0) {
-      tasks.forEach((task) => {
+      visibleTasks.forEach((task) => {
         if (task.assignee) members.add(task.assignee)
       })
     }
 
     return Array.from(members)
-  }, [activeProject, teams, tasks])
+  }, [activeProject, teams, visibleTasks])
 
   const stats = useMemo(() => {
     const total = visibleTasks.length

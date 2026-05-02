@@ -78,6 +78,12 @@ function getPriorityLabel(priority) {
   return 'Must-have'
 }
 
+function isSprintCommittedTask(taskLike) {
+  if (!taskLike) return false
+  const sid = taskLike.sprintId
+  return sid != null && String(sid).trim() !== ''
+}
+
 export function TaskDetailModal({
   open,
   onClose,
@@ -232,8 +238,11 @@ export function TaskDetailModal({
   }
 
   const value = form || task
+  const sprintCommitted = isSprintCommittedTask(task)
   const itemType = value.itemType || 'task'
-  const backlogState = value.backlogState || 'new'
+  const backlogState = sprintCommitted
+    ? String(task.backlogState || 'new').toLowerCase()
+    : value.backlogState || 'new'
   const priority = value.priority || 'must'
   const userStoryText =
     (value.userStoryText || '').trim() ||
@@ -250,7 +259,9 @@ export function TaskDetailModal({
         ? 'personal'
         : calendarType
 
-    const nextBacklogState = form.backlogState || 'new'
+    const nextBacklogState = sprintCommitted
+      ? String(task.backlogState || 'new').toLowerCase()
+      : form.backlogState || 'new'
     const trimmedTitle = (form.title || '').trim()
     const trimmedAc = (form.acceptanceCriteria || '').trim()
     const nextStoryPoints = normalizeStoryPointsValue(
@@ -452,7 +463,14 @@ export function TaskDetailModal({
         </div>
 
         <section className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
-          <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">Backlog Item</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">Backlog Item</h3>
+            {sprintCommitted ? (
+              <span className="shrink-0 rounded-full bg-cyan-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-300">
+                {t('badge_in_sprint')}
+              </span>
+            ) : null}
+          </div>
           {isEditing ? (
             <div className="mt-3 grid gap-4">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -485,7 +503,9 @@ export function TaskDetailModal({
                   </label>
                   <select
                     value={backlogState}
+                    disabled={sprintCommitted}
                     onChange={(e) => {
+                      if (sprintCommitted) return
                       const next = e.target.value
                       if (next === 'ready' && form) {
                         const proposed = {
@@ -510,15 +530,21 @@ export function TaskDetailModal({
                       if (next !== 'ready') setDefinitionOfReadyError('')
                       setForm((s) => ({ ...(s || {}), backlogState: next }))
                     }}
-                    className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:cursor-not-allowed disabled:opacity-70"
                   >
                     <option value="new">New</option>
                     <option value="refined">Refined</option>
                     <option value="ready">Ready</option>
                   </select>
-                  <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                    {DEFINITION_OF_READY_HELPER_TEXT}
-                  </p>
+                  {sprintCommitted ? (
+                    <p className="mt-1 text-xs text-[rgb(var(--zc-muted2))]">
+                      {t('backlog_state_sprint_locked_help')}
+                    </p>
+                  ) : (
+                    <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                      {DEFINITION_OF_READY_HELPER_TEXT}
+                    </p>
+                  )}
                   {definitionOfReadyError ? (
                     <p className="mt-1 text-xs text-rose-300" role="alert">
                       {definitionOfReadyError}
@@ -668,6 +694,11 @@ export function TaskDetailModal({
                 <span className="text-[rgb(var(--zc-muted))]">Backlog State: </span>
                 {getBacklogStateLabel(backlogState)}
               </p>
+              {sprintCommitted ? (
+                <p className="text-xs text-[rgb(var(--zc-muted2))]">
+                  {t('backlog_state_sprint_locked_help')}
+                </p>
+              ) : null}
               <p className="text-[rgb(var(--zc-text))]">
                 <span className="text-[rgb(var(--zc-muted))]">Priority: </span>
                 {getPriorityLabel(priority)}

@@ -61,6 +61,19 @@ export function investChecklistComplete(definitionOfReady) {
   )
 }
 
+/** Count of INVEST criteria marked true (0–6). */
+export function investChecklistCheckedCount(definitionOfReady) {
+  const d = normalizeDefinitionOfReady(definitionOfReady)
+  return [
+    d.independent,
+    d.negotiable,
+    d.valuable,
+    d.estimable,
+    d.small,
+    d.testable,
+  ].filter(Boolean).length
+}
+
 /**
  * @returns {{ ok: true } | { ok: false, message: string }}
  */

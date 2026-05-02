@@ -5,17 +5,21 @@ import {
   loadTasks,
   saveTasks,
   normalizeTaskForStorage,
+  mergeTaskListsByIdPreferNewer,
+  isTaskDeleted,
 } from '../components/kanban/taskStorage.js'
-import { taskMeetsDefinitionOfReady } from '../components/kanban/definitionOfReady.js'
 import {
   tasksForP2PBroadcast,
   mergeTasksFromSync,
-  removeAuthorizedGeneralTaskById,
-  canApplyIncomingTaskDelete,
+  applyAuthorizedGeneralTaskSoftDelete,
 } from '../utils/taskP2PSync.js'
 import { broadcastTaskSync } from '../utils/hubManager.js'
 import { on, P2P_EVENTS, sendToAllPeers } from '../utils/p2pManager.js'
-import { upsertRemoteTasks, fetchRemoteProjectTasks, deleteRemoteTask } from '../utils/taskRemoteStorage.js'
+import {
+  upsertRemoteTasks,
+  fetchRemoteProjectTasks,
+  isSharedProjectTask,
+} from '../utils/taskRemoteStorage.js'
 import { normalizeCapacityPoints } from '../utils/workspaceDB.js'
 import { ConfirmDialog } from '../components/common/ConfirmDialog.jsx'
 
@@ -24,37 +28,6 @@ function formatPlanningCompletedAt(value) {
   const d = new Date(value)
   if (Number.isNaN(d.getTime())) return String(value)
   return d.toLocaleString()
-}
-
-function getTaskTs(task) {
-  const v = task?.updatedAt ?? task?.updated_at ?? task?.modifiedAt ?? task?.createdAt ?? 0
-  if (typeof v === 'number' && Number.isFinite(v)) return v
-  if (typeof v === 'string') {
-    const n = Number(v)
-    if (Number.isFinite(n)) return n
-    const t = Date.parse(v)
-    if (Number.isFinite(t)) return t
-  }
-  return 0
-}
-
-function mergeTasksByIdPreferNewer(localAll, remoteAll) {
-  const local = Array.isArray(localAll) ? localAll : []
-  const remote = Array.isArray(remoteAll) ? remoteAll : []
-  const map = new Map()
-  for (const t of local) {
-    if (t?.id) map.set(t.id, t)
-  }
-  for (const rt of remote) {
-    if (!rt?.id) continue
-    const existing = map.get(rt.id)
-    if (!existing) {
-      map.set(rt.id, rt)
-      continue
-    }
-    map.set(rt.id, getTaskTs(rt) >= getTaskTs(existing) ? rt : existing)
-  }
-  return Array.from(map.values())
 }
 
 const ITEM_TYPE_LABELS = {
@@ -130,7 +103,7 @@ export function SprintPlanningPage() {
           remote = []
         }
       }
-      const merged = mergeTasksByIdPreferNewer(
+      const merged = mergeTaskListsByIdPreferNewer(
         localArr,
         Array.isArray(remote) ? remote : [],
       )
@@ -162,19 +135,25 @@ export function SprintPlanningPage() {
     const unsub = on(P2P_EVENTS.MESSAGE, ({ data }) => {
       if (data?.type === 'TASK_DELETE') {
         const { taskId, projectId } = data
-        if (!canApplyIncomingTaskDelete({ taskId, projectId }, memberProjectIds)) return
         setTasks((prev) => {
-          const next = removeAuthorizedGeneralTaskById(
+          const { next, changed } = applyAuthorizedGeneralTaskSoftDelete(
             prev,
             taskId,
             projectId,
             memberProjectIds,
+            user.id,
           )
-          if (next.length === prev.length) return prev
+          if (!changed) return prev
           void saveTasks(next, user.id, { allowEmpty: true, reason: 'SprintPlanning P2P delete' })
+          const tomb = next.find(
+            (t) =>
+              t?.id === taskId &&
+              String(t?.projectId ?? '') === String(projectId) &&
+              isSharedProjectTask(t),
+          )
+          if (tomb) void upsertRemoteTasks([tomb], user.id)
           return next
         })
-        if (taskId && projectId) void deleteRemoteTask(taskId, projectId)
         return
       }
       if (data?.type !== 'TASK_SYNC') return
@@ -204,20 +183,26 @@ export function SprintPlanningPage() {
       const payload = e.detail || {}
       const { action, tasks: incomingTasks, projectId, taskId } = payload
       if (action === 'task-delete') {
-        if (!canApplyIncomingTaskDelete({ taskId, projectId }, memberProjectIds)) return
         if (activeProject?.id && projectId && projectId !== activeProject.id) return
         setTasks((prev) => {
-          const next = removeAuthorizedGeneralTaskById(
+          const { next, changed } = applyAuthorizedGeneralTaskSoftDelete(
             prev,
             taskId,
             projectId,
             memberProjectIds,
+            user.id,
           )
-          if (next.length === prev.length) return prev
+          if (!changed) return prev
           void saveTasks(next, user.id, { allowEmpty: true, reason: 'SprintPlanning hub delete' })
+          const tomb = next.find(
+            (t) =>
+              t?.id === taskId &&
+              String(t?.projectId ?? '') === String(projectId) &&
+              isSharedProjectTask(t),
+          )
+          if (tomb) void upsertRemoteTasks([tomb], user.id)
           return next
         })
-        if (taskId && projectId) void deleteRemoteTask(taskId, projectId)
         return
       }
       if (action !== 'task-sync') return
@@ -253,6 +238,7 @@ export function SprintPlanningPage() {
     return (Array.isArray(tasks) ? tasks : []).filter(
       (t) =>
         t &&
+        !isTaskDeleted(t) &&
         String(t.projectId) === String(activeProject.id),
     )
   }, [tasks, activeProject?.id])
@@ -439,8 +425,8 @@ export function SprintPlanningPage() {
       remote = []
     }
     const stateList = Array.isArray(tasks) ? tasks : []
-    const merged = mergeTasksByIdPreferNewer(
-      mergeTasksByIdPreferNewer(localArr, remote),
+    const merged = mergeTaskListsByIdPreferNewer(
+      mergeTaskListsByIdPreferNewer(localArr, remote),
       stateList,
     )
     const list = merged
@@ -453,11 +439,15 @@ export function SprintPlanningPage() {
     const nextRaw = list.map((task) => {
       if (task?.id !== taskId) return task
       if (shouldAssign) {
+        const rawBs = task.backlogState || 'ready'
+        const backlogStateForSprint =
+          String(rawBs).toLowerCase() === 'refined' ? 'ready' : rawBs
         changed = {
           ...task,
           sprintId: activeSprint.id,
           sprintNumber: sprintNo,
           sprintCommittedAt: now,
+          backlogState: backlogStateForSprint,
           calendarType: 'general',
           calendarId: 'general',
           updatedAt: now,
@@ -473,9 +463,6 @@ export function SprintPlanningPage() {
         calendarType: 'general',
         calendarId: 'general',
         updatedAt: now,
-      }
-      if (!taskMeetsDefinitionOfReady(changed)) {
-        changed = { ...changed, backlogState: 'refined' }
       }
       return changed
     })

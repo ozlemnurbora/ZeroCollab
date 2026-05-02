@@ -10,8 +10,14 @@ import {
   dedupeAndNormalizePositions,
   nextPositionForGroup,
   PRIORITY_RANK,
+  mergeTaskListsByIdPreferNewer,
+  isTaskDeleted,
+  markTaskSoftDeleted,
 } from './taskStorage.js'
-import { validateReadyBacklogState } from './definitionOfReady.js'
+import {
+  taskMeetsDefinitionOfReady,
+  validateReadyBacklogState,
+} from './definitionOfReady.js'
 import { Button } from '../ui/Button.jsx'
 import { KanbanColumn } from './KanbanColumn.jsx'
 import { TaskDetailModal } from './TaskDetailModal.jsx'
@@ -27,10 +33,9 @@ import {
 } from '../../utils/hubManager.js'
 import { on, sendToAllPeers, P2P_EVENTS } from '../../utils/p2pManager.js'
 import {
-  canApplyIncomingTaskDelete,
+  applyAuthorizedGeneralTaskSoftDelete,
   filterTasksForVisibility,
   mergeTasksFromSync,
-  removeAuthorizedGeneralTaskById,
   shouldBroadcastGeneralTaskDelete,
   taskVisibleInActiveProject,
   tasksForP2PBroadcast,
@@ -40,12 +45,11 @@ import { useScopedCustomCalendars } from '../../utils/useScopedCustomCalendars.j
 import {
   getSprintRemainingDays,
 } from '../../utils/sprintDateUtils.js'
-import { getNormalizedTaskStatus, isTaskInActiveSprint } from '../../utils/sprintTaskUtils.js'
+import { getNormalizedTaskStatus } from '../../utils/sprintTaskUtils.js'
 import { recoverLegacyTasksForCurrentUser } from '../../utils/taskRecovery'
 import {
   fetchRemoteProjectTasks,
   upsertRemoteTasks,
-  deleteRemoteTask,
   isSharedProjectTask,
 } from '../../utils/taskRemoteStorage.js'
 import { normalizeCapacityPoints } from '../../utils/workspaceDB.js'
@@ -53,41 +57,17 @@ import { resolveDoneAtForStatusChange } from '../../utils/taskDoneAt.js'
 import { Link } from 'react-router-dom'
 import { BurndownChart } from '../sprint/BurndownChart.jsx'
 
-function getTaskTs(task) {
-  const v = task?.updatedAt ?? task?.updated_at ?? task?.modifiedAt ?? task?.createdAt ?? 0
-  if (typeof v === 'number' && Number.isFinite(v)) return v
-  if (typeof v === 'string') {
-    const n = Number(v)
-    if (Number.isFinite(n)) return n
-    const t = Date.parse(v)
-    if (Number.isFinite(t)) return t
-  }
-  return 0
-}
-
-function mergeTasksByIdPreferNewer(localAll, remoteAll) {
-  const local = Array.isArray(localAll) ? localAll : []
-  const remote = Array.isArray(remoteAll) ? remoteAll : []
-  const map = new Map()
-  for (const t of local) {
-    if (t?.id) map.set(t.id, t)
-  }
-  for (const rt of remote) {
-    if (!rt?.id) continue
-    const existing = map.get(rt.id)
-    if (!existing) {
-      map.set(rt.id, rt)
-      continue
-    }
-    map.set(rt.id, getTaskTs(rt) >= getTaskTs(existing) ? rt : existing)
-  }
-  return Array.from(map.values())
-}
-
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
     return crypto.randomUUID()
   return `task_${Date.now()}_${Math.random().toString(16).slice(2)}`
+}
+
+/** True when task.sprintId is set (committed to a sprint). */
+function isSprintCommittedKanbanTask(task) {
+  if (!task) return false
+  const sid = task.sprintId
+  return sid != null && String(sid).trim() !== ''
 }
 
 function isTaskChatMessage(message) {
@@ -242,7 +222,7 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
 
       const localAll = Array.isArray(tasksRef.current) ? tasksRef.current : []
       const mergedAll = dedupeAndNormalizePositions(
-        mergeTasksByIdPreferNewer(localAll, remoteTasks)
+        mergeTaskListsByIdPreferNewer(localAll, remoteTasks)
           .map((t) => normalizeTaskForStorage(t, ownerUserId))
           .filter(Boolean),
       )
@@ -291,20 +271,26 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
       }
       if (data?.type === 'TASK_DELETE') {
         const { taskId, projectId } = data
-        if (!canApplyIncomingTaskDelete({ taskId, projectId }, memberProjectIds)) return
         setTasks((prev) => {
           const uid = ownerUserIdRef.current
-          const next = removeAuthorizedGeneralTaskById(
+          const { next, changed } = applyAuthorizedGeneralTaskSoftDelete(
             prev,
             taskId,
             projectId,
             memberProjectIds,
+            uid,
           )
-          if (next.length === prev.length) return prev
+          if (!changed) return prev
           if (uid) void saveTasks(next, uid, { allowEmpty: true, reason: 'incoming TASK_DELETE' })
+          const tomb = next.find(
+            (t) =>
+              t?.id === taskId &&
+              String(t?.projectId ?? '') === String(projectId) &&
+              isSharedProjectTask(t),
+          )
+          if (tomb && uid) void upsertRemoteTasks([tomb], uid)
           return next
         })
-        if (taskId && projectId) void deleteRemoteTask(taskId, projectId)
         return
       }
       if (data?.type !== 'TASK_SYNC') return
@@ -410,21 +396,27 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
       }
       const { action, tasks: incomingTasks, projectId, taskId } = payload
       if (action === 'task-delete') {
-        if (!canApplyIncomingTaskDelete({ taskId, projectId }, memberProjectIds)) return
         if (activeProject?.id && projectId && projectId !== activeProject.id) return
         setTasks((prev) => {
           const uid = ownerUserIdRef.current
-          const next = removeAuthorizedGeneralTaskById(
+          const { next, changed } = applyAuthorizedGeneralTaskSoftDelete(
             prev,
             taskId,
             projectId,
             memberProjectIds,
+            uid,
           )
-          if (next.length === prev.length) return prev
+          if (!changed) return prev
           if (uid) void saveTasks(next, uid, { allowEmpty: true, reason: 'hub task-delete' })
+          const tomb = next.find(
+            (t) =>
+              t?.id === taskId &&
+              String(t?.projectId ?? '') === String(projectId) &&
+              isSharedProjectTask(t),
+          )
+          if (tomb && uid) void upsertRemoteTasks([tomb], uid)
           return next
         })
-        if (taskId && projectId) void deleteRemoteTask(taskId, projectId)
         return
       }
       if (action !== 'task-sync') return
@@ -488,26 +480,58 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
     })
   }, [hasLoadedTasks, tasks, visibleProjectTasks, activeProject?.id, memberProjectIds])
 
+  /** Tasks committed to the workspace active sprint (matches Tasks → Active Sprint). */
   const sprintTasks = useMemo(() => {
-    if (!activeProject?.id || !activeSprint?.id) return []
-    return visibleProjectTasks.filter((task) =>
-      isTaskInActiveSprint(task, activeProject.id, activeSprint.id),
+    if (!activeSprint?.id) return []
+    const sid = String(activeSprint.id)
+    return visibleProjectTasks.filter(
+      (task) => task && String(task.sprintId) === sid,
     )
-  }, [visibleProjectTasks, activeProject?.id, activeSprint?.id])
+  }, [visibleProjectTasks, activeSprint?.id])
 
+  /** Not sprint-committed; New or Refined only (Ready stays in All Tasks + Sprint Planning). */
   const backlogTasks = useMemo(() => {
-    const allowed = new Set(['epic', 'feature', 'user_story', 'task'])
     return visibleProjectTasks.filter((task) => {
       if (!task) return false
-      const sprintId = task.sprintId
-      const isBacklog = sprintId == null || sprintId === ''
-      if (!isBacklog) return false
-      const itemType = task.itemType || 'task'
-      return allowed.has(itemType)
+      if (isSprintCommittedKanbanTask(task)) return false
+      const bs = String(task.backlogState || 'new').toLowerCase()
+      return ['new', 'refined'].includes(bs)
     })
   }, [visibleProjectTasks])
 
+  /** Not sprint-committed; Refined only. */
+  const refinementSessionTasks = useMemo(() => {
+    return visibleProjectTasks.filter((task) => {
+      if (!task) return false
+      if (isSprintCommittedKanbanTask(task)) return false
+      return String(task.backlogState || '').toLowerCase() === 'refined'
+    })
+  }, [visibleProjectTasks])
+
+  /**
+   * Ready, not sprint-committed, active project only (Tasks → Ready Backlog).
+   * visibleProjectTasks already excludes deleted tasks.
+   */
+  const readyBacklogTasks = useMemo(() => {
+    if (!activeProject?.id) return []
+    const pid = String(activeProject.id)
+    return visibleProjectTasks.filter((task) => {
+      if (!task || isTaskDeleted(task)) return false
+      if (String(task.projectId ?? '') !== pid) return false
+      if (isSprintCommittedKanbanTask(task)) return false
+      return String(task.backlogState || '').toLowerCase() === 'ready'
+    })
+  }, [visibleProjectTasks, activeProject?.id])
+
+  const refinementSessionMetrics = useMemo(() => {
+    const list = refinementSessionTasks
+    const readyCandidates = list.filter((t) => taskMeetsDefinitionOfReady(t)).length
+    return { refinedCount: list.length, readyCandidates }
+  }, [refinementSessionTasks])
+
   const isSprintBoard = variant === 'sprint_board'
+  const isRefinementSessionView = !isSprintBoard && boardView === 'refinement_session'
+  const isReadyBacklogView = !isSprintBoard && boardView === 'ready_backlog'
 
   const boardScopedTasks = useMemo(() => {
     if (isSprintBoard) {
@@ -521,6 +545,8 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
     }
     if (boardView === 'active_sprint') return hasActiveSprint ? sprintTasks : []
     if (boardView === 'backlog') return backlogTasks
+    if (boardView === 'refinement_session') return refinementSessionTasks
+    if (boardView === 'ready_backlog') return readyBacklogTasks
     return visibleProjectTasks
   }, [
     isSprintBoard,
@@ -531,6 +557,8 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
     hasActiveSprint,
     sprintTasks,
     backlogTasks,
+    refinementSessionTasks,
+    readyBacklogTasks,
   ])
 
   const sprintBoardHeaderMetrics = useMemo(() => {
@@ -810,9 +838,24 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
       const now = Date.now()
       const prevById = new Map(prev.map((t) => [t.id, t]))
       const beforeTask = prev.find((t) => t.id === taskId)
+      if (beforeTask && isTaskDeleted(beforeTask)) return prev
+      let effectiveUpdates = { ...updates }
+      if (beforeTask) {
+        const sid = beforeTask.sprintId
+        const sprintLocked = sid != null && String(sid).trim() !== ''
+        if (sprintLocked && effectiveUpdates.backlogState !== undefined) {
+          const orig = String(beforeTask.backlogState || 'new').toLowerCase()
+          const nextBs = String(effectiveUpdates.backlogState || 'new').toLowerCase()
+          if (orig !== nextBs) {
+            window.alert(t('backlog_state_sprint_locked_alert'))
+            effectiveUpdates = { ...effectiveUpdates }
+            delete effectiveUpdates.backlogState
+          }
+        }
+      }
       const nextBeforeDedupe = prev.map((t) => {
         if (t.id !== taskId) return t
-        const merged = { ...updates }
+        const merged = { ...effectiveUpdates }
         delete merged.doneAt
         delete merged.done_at
         if ('storyPoints' in merged || 'story_points' in merged) {
@@ -866,6 +909,8 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
             o.itemType !== t.itemType ||
             o.backlogState !== t.backlogState ||
             o.sprintId !== t.sprintId ||
+            o.deleted !== t.deleted ||
+            o.deletedAt !== t.deletedAt ||
             JSON.stringify(o.definitionOfReady ?? null) !==
               JSON.stringify(t.definitionOfReady ?? null)
           )
@@ -878,15 +923,21 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
 
   const deleteTask = (taskId) => {
     const removed = tasksRef.current.find((t) => t.id === taskId) ?? null
+    if (!removed) return
+    const tombstone = normalizeTaskForStorage(
+      markTaskSoftDeleted({ ...removed }, Date.now()),
+      ownerUserId,
+    )
+    if (!tombstone) return
     setTasks((prev) => {
-      const next = prev.filter((t) => t.id !== taskId)
+      const next = prev.map((t) => (t.id === taskId ? tombstone : t))
       broadcastTasks(next)
       if (ownerUserId) {
         void saveTasks(next, ownerUserId, { allowEmpty: true, reason: 'deleteTask' })
       }
       return next
     })
-    if (removed && shouldBroadcastGeneralTaskDelete(removed, memberProjectIds)) {
+    if (shouldBroadcastGeneralTaskDelete(removed, memberProjectIds)) {
       sendToAllPeers({
         type: 'TASK_DELETE',
         taskId: removed.id,
@@ -894,8 +945,8 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
       })
       void broadcastTaskDelete(removed.id, removed.projectId)
     }
-    if (removed && isSharedProjectTask(removed) && removed.projectId) {
-      void deleteRemoteTask(removed.id, removed.projectId)
+    if (isSharedProjectTask(tombstone) && tombstone.projectId && ownerUserId) {
+      void upsertRemoteTasks([tombstone], ownerUserId)
     }
   }
 
@@ -1027,6 +1078,8 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
               <option value="all">All Tasks</option>
               <option value="active_sprint">Active Sprint</option>
               <option value="backlog">Backlog</option>
+              <option value="refinement_session">Refinement Session</option>
+              <option value="ready_backlog">{t('kanban_view_ready_backlog')}</option>
             </select>
           ) : null}
           <select
@@ -1145,6 +1198,43 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
         </div>
       ) : null}
 
+      {isRefinementSessionView ? (
+        <section className="mt-4 rounded-xl border border-amber-500/25 border-violet-500/20 bg-[rgb(var(--zc-bg)/0.4)] px-4 py-3 ring-1 ring-inset ring-amber-400/15">
+          <h2 className="text-sm font-semibold text-[rgb(var(--zc-text))]">
+            Refinement Session
+          </h2>
+          <p className="mt-1 text-xs text-[rgb(var(--zc-muted2))]">
+            Items currently under backlog refinement and Definition of Ready review.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3 text-xs">
+            <span className="rounded-md bg-[rgb(var(--zc-panel)/0.5)] px-2.5 py-1 text-[rgb(var(--zc-text))] ring-1 ring-[rgb(var(--zc-border))]">
+              Refined items:{' '}
+              <span className="font-medium tabular-nums">{refinementSessionMetrics.refinedCount}</span>
+            </span>
+            <span className="rounded-md bg-[rgb(var(--zc-panel)/0.5)] px-2.5 py-1 text-[rgb(var(--zc-text))] ring-1 ring-[rgb(var(--zc-border))]">
+              Ready candidates:{' '}
+              <span className="font-medium tabular-nums text-emerald-300/90">
+                {refinementSessionMetrics.readyCandidates}
+              </span>
+            </span>
+          </div>
+        </section>
+      ) : null}
+
+      {isReadyBacklogView ? (
+        <section className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/5 px-4 py-3 ring-1 ring-inset ring-emerald-400/20">
+          <h2 className="text-sm font-semibold text-[rgb(var(--zc-text))]">
+            {t('kanban_ready_backlog_title')}
+          </h2>
+          <p className="mt-1 text-xs text-[rgb(var(--zc-muted2))]">{t('kanban_ready_backlog_hint')}</p>
+          <div className="mt-3 flex flex-wrap gap-3 text-xs">
+            <span className="rounded-md bg-[rgb(var(--zc-panel)/0.5)] px-2.5 py-1 text-[rgb(var(--zc-text))] ring-1 ring-[rgb(var(--zc-border))]">
+              {t('kanban_ready_backlog_count', { n: readyBacklogTasks.length })}
+            </span>
+          </div>
+        </section>
+      ) : null}
+
       <div className="mt-5 grid gap-4 lg:grid-cols-4">
         {isLoadingTasks ? (
           <div className="lg:col-span-4 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
@@ -1153,6 +1243,32 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
         ) : !isSprintBoard && boardView === 'active_sprint' && !hasActiveSprint ? (
           <div className="lg:col-span-4 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
             No active sprint. Create one from Project Overview.
+          </div>
+        ) : !isSprintBoard && boardView === 'ready_backlog' && !activeProject?.id ? (
+          <div className="lg:col-span-4 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
+            {t('kanban_ready_backlog_no_project')}
+          </div>
+        ) : !isSprintBoard &&
+          boardView === 'ready_backlog' &&
+          activeProject?.id &&
+          !isLoadingTasks &&
+          readyBacklogTasks.length === 0 ? (
+          <div className="lg:col-span-4 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-10 text-center">
+            <p className="max-w-md text-sm text-[rgb(var(--zc-text))]">
+              {t('kanban_ready_backlog_empty')}
+            </p>
+          </div>
+        ) : !isSprintBoard &&
+          boardView === 'refinement_session' &&
+          !isLoadingTasks &&
+          refinementSessionTasks.length === 0 ? (
+          <div className="lg:col-span-4 flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-10 text-center">
+            <p className="text-sm text-[rgb(var(--zc-text))]">
+              No backlog items are currently in refinement.
+            </p>
+            <p className="max-w-md text-xs text-[rgb(var(--zc-muted2))]">
+              Move backlog items to &quot;Refined&quot; state to begin refinement review.
+            </p>
           </div>
         ) : isSprintBoard &&
           hasActiveSprint &&
@@ -1193,6 +1309,7 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
               isDropTarget={dropTargetColumnId === column.id}
               setDropTargetColumnId={setDropTargetColumnId}
               emptyLabel={t('kanban_drop_here')}
+              refinementSessionMode={isRefinementSessionView}
             />
           ))
         )}

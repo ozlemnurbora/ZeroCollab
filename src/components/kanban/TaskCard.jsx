@@ -2,9 +2,11 @@ import { formatDueDate, isOverdue } from './dateUtils.js'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 import { normalizeStoryPointsValue } from './taskStorage.js'
 import {
+  investChecklistCheckedCount,
   investChecklistComplete,
   itemTypeRequiresInvestChecklist,
   normalizeDefinitionOfReady,
+  taskMeetsDefinitionOfReady,
 } from './definitionOfReady.js'
 
 export function TaskCard({
@@ -16,6 +18,7 @@ export function TaskCard({
   onEdit,
   onReorderByKeyboard,
   showSprintTaskBadge = false,
+  refinementSessionMode = false,
 }) {
   const { t, locale } = useLanguage()
   const overdue = isOverdue(task.dueDate)
@@ -29,6 +32,8 @@ export function TaskCard({
     ready: 'Ready',
   }
   const backlogStateLabel = backlogStateLabelMap[backlogState] || 'New'
+  const sprintCommitted =
+    task.sprintId != null && String(task.sprintId).trim() !== ''
   const itemTypeLabelMap = {
     epic: 'Epic',
     feature: 'Feature',
@@ -53,9 +58,18 @@ export function TaskCard({
     normalizeDefinitionOfReady(task.definitionOfReady),
   )
   const showNeedsRefinementBadge =
-    investRelevant && backlogState === 'refined' && !investDone
+    !refinementSessionMode &&
+    investRelevant &&
+    backlogState === 'refined' &&
+    !investDone
   const showReadyForSprintBadge =
-    investRelevant && investDone && backlogState !== 'ready'
+    !refinementSessionMode &&
+    investRelevant &&
+    investDone &&
+    backlogState !== 'ready'
+
+  const investChecked = investChecklistCheckedCount(task.definitionOfReady)
+  const meetsFullDoR = taskMeetsDefinitionOfReady(task)
 
   return (
     <div
@@ -65,6 +79,9 @@ export function TaskCard({
         'border-[rgb(var(--zc-border))] hover:border-[rgb(var(--zc-border)/0.85)] hover:bg-[rgb(var(--zc-panel)/0.8)]',
         'active:scale-[0.99]',
         isDragging ? 'opacity-60 ring-2 ring-indigo-500/40' : '',
+        refinementSessionMode && String(backlogState).toLowerCase() === 'refined'
+          ? 'shadow-[0_0_0_1px_rgba(251,191,36,0.22),0_0_14px_-4px_rgba(167,139,250,0.35)]'
+          : '',
         task.status === 'done'
           ? 'border-l-2 border-l-emerald-500/70'
           : task.status === 'in_progress'
@@ -139,6 +156,10 @@ export function TaskCard({
             <span className="shrink-0 rounded-full bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-300">
               SPRINT TASK
             </span>
+          ) : sprintCommitted ? (
+            <span className="shrink-0 rounded-full bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-300">
+              {t('badge_in_sprint')}
+            </span>
           ) : null}
           <span className="shrink-0 rounded-full bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-medium text-indigo-300">
             {itemTypeLabel}
@@ -174,6 +195,23 @@ export function TaskCard({
               Overdue
             </span>
           )}
+          {refinementSessionMode && investRelevant ? (
+            <span className="shrink-0 rounded-full bg-violet-500/15 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-violet-200/90">
+              INVEST: {investChecked}/6
+            </span>
+          ) : null}
+          {refinementSessionMode ? (
+            <span
+              className={[
+                'shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium',
+                meetsFullDoR
+                  ? 'bg-emerald-500/15 text-emerald-200/95'
+                  : 'bg-slate-500/25 text-slate-300',
+              ].join(' ')}
+            >
+              Ready for Sprint {meetsFullDoR ? '✓' : '✗'}
+            </span>
+          ) : null}
         </div>
         {task.description ? (
           <div className="mt-2.5 rounded-md border border-[rgb(var(--zc-border)/0.35)] border-l-2 border-l-indigo-400/50 bg-slate-900/40 px-2.5 py-2">

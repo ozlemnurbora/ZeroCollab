@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { loadTasks } from '../components/kanban/taskStorage.js'
+import { loadTasks, isTaskDeleted } from '../components/kanban/taskStorage.js'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
 import { Button } from '../components/ui/Button.jsx'
@@ -51,7 +51,9 @@ export function ProjectOverviewPage() {
 
   const projectTasks = useMemo(() => {
     if (!activeProject?.id) return []
-    return tasks.filter((t) => t.projectId === activeProject.id)
+    return tasks.filter(
+      (t) => t.projectId === activeProject.id && !isTaskDeleted(t),
+    )
   }, [tasks, activeProject?.id])
 
   const progress = useMemo(() => {

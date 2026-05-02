@@ -11,6 +11,87 @@ export const PRIORITY_RANK = {
   wont: 4,
 }
 
+/** True when the task is soft-deleted (tombstone) and must be hidden from UI and lose merges to non-deleted copies. */
+export function isTaskDeleted(task) {
+  if (!task || typeof task !== 'object') return false
+  const d = task.deleted
+  if (d === true || d === 1 || d === 'true' || d === '1') return true
+  const raw = task.deletedAt ?? task.deleted_at
+  if (raw == null || raw === '') return false
+  if (typeof raw === 'number' && Number.isFinite(raw)) return true
+  if (typeof raw === 'string' && raw.trim()) return true
+  return false
+}
+
+/** Mark a task as soft-deleted; bump updatedAt for merge ordering. */
+export function markTaskSoftDeleted(task, now = Date.now()) {
+  if (!task || typeof task !== 'object') return task
+  return {
+    ...task,
+    deleted: true,
+    deletedAt: now,
+    updatedAt: now,
+  }
+}
+
+/** Timestamp used when comparing two task revisions (sync / merge). */
+export function getTaskMergeTimestamp(task) {
+  const v =
+    task?.updatedAt ??
+    task?.updated_at ??
+    task?.modifiedAt ??
+    task?.modified_at ??
+    task?.lastUpdatedAt ??
+    null
+  if (typeof v === 'number' && Number.isFinite(v)) return v
+  if (typeof v === 'string') {
+    const n = Number(v)
+    if (Number.isFinite(n)) return n
+    const t = Date.parse(v)
+    if (Number.isFinite(t)) return t
+  }
+  const created = task?.createdAt ?? task?.created_at ?? null
+  if (typeof created === 'number' && Number.isFinite(created)) return created
+  if (typeof created === 'string') {
+    const t = Date.parse(created)
+    if (Number.isFinite(t)) return t
+  }
+  return 0
+}
+
+/**
+ * Merge two versions of the same task id. Tombstones win over non-deleted peers;
+ * among tombstones or among active tasks, newer updatedAt wins.
+ */
+export function mergeTaskVersionsPreferringTombstone(existing, incoming) {
+  if (!existing) return incoming
+  if (!incoming) return existing
+  const exDel = isTaskDeleted(existing)
+  const inDel = isTaskDeleted(incoming)
+  if (exDel && !inDel) return existing
+  if (!exDel && inDel) return incoming
+  const exTs = getTaskMergeTimestamp(existing)
+  const inTs = getTaskMergeTimestamp(incoming)
+  if (exDel && inDel) return inTs >= exTs ? incoming : existing
+  return inTs >= exTs ? incoming : existing
+}
+
+/** Merge local + remote task arrays by id with tombstone-safe rules (Supabase / hydration). */
+export function mergeTaskListsByIdPreferNewer(localAll, remoteAll) {
+  const local = Array.isArray(localAll) ? localAll : []
+  const remote = Array.isArray(remoteAll) ? remoteAll : []
+  const map = new Map()
+  for (const t of local) {
+    if (t?.id) map.set(t.id, t)
+  }
+  for (const rt of remote) {
+    if (!rt?.id) continue
+    const existing = map.get(rt.id)
+    map.set(rt.id, mergeTaskVersionsPreferringTombstone(existing, rt))
+  }
+  return Array.from(map.values())
+}
+
 /** Stable position within the same status column and priority group. */
 export function getTaskPosition(task) {
   if (!task || typeof task !== 'object') return null
@@ -43,8 +124,10 @@ export function compareKanbanTasksInColumn(a, b) {
  */
 export function dedupeAndNormalizePositions(tasks) {
   const list = Array.isArray(tasks) ? tasks.map((t) => ({ ...t })) : []
+  const tombstones = list.filter((t) => t?.id && isTaskDeleted(t))
+  const active = list.filter((t) => t?.id && !isTaskDeleted(t))
   const byKey = new Map()
-  for (const t of list) {
+  for (const t of active) {
     if (!t?.id) continue
     const status = t.status || 'todo'
     const pri = t.priority || 'must'
@@ -58,7 +141,8 @@ export function dedupeAndNormalizePositions(tasks) {
       t.position = i
     })
   }
-  return list
+  const normalizedActive = Array.from(byKey.values()).flat()
+  return [...normalizedActive, ...tombstones]
 }
 
 /** Next position when appending to a (status, priority) group. */
@@ -68,6 +152,7 @@ export function nextPositionForGroup(tasks, status, priority) {
   const st = status || 'todo'
   let max = -1
   for (const t of list) {
+    if (isTaskDeleted(t)) continue
     if ((t.status || 'todo') !== st) continue
     if ((t.priority || 'must') !== pri) continue
     const p = getTaskPosition(t)
@@ -203,6 +288,28 @@ export function normalizeTaskForStorage(task, ownerUserId) {
     estimable: !!dor.estimable,
     small: !!dor.small,
     testable: !!dor.testable,
+  }
+
+  const delRaw = task.deleted
+  const explicitlyDeleted =
+    delRaw === true || delRaw === 1 || delRaw === 'true' || delRaw === '1'
+  const delAtRaw = task.deletedAt ?? task.deleted_at ?? null
+  let deletedAtParsed = null
+  if (delAtRaw != null && delAtRaw !== '') {
+    if (typeof delAtRaw === 'number' && Number.isFinite(delAtRaw)) {
+      deletedAtParsed = delAtRaw
+    } else if (typeof delAtRaw === 'string' && delAtRaw.trim()) {
+      const n = Number(delAtRaw)
+      deletedAtParsed = Number.isFinite(n) ? n : Date.parse(delAtRaw) || null
+    }
+  }
+  if (explicitlyDeleted || (deletedAtParsed != null && Number.isFinite(deletedAtParsed))) {
+    next.deleted = true
+    next.deletedAt = deletedAtParsed ?? next.updatedAt ?? Date.now()
+  } else {
+    next.deleted = false
+    delete next.deletedAt
+    delete next.deleted_at
   }
 
   return next

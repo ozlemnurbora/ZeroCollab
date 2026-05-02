@@ -86,6 +86,14 @@ export const TRANSLATIONS = {
     kanban_col_in_progress: 'In Progress',
     kanban_col_in_review: 'In Review',
     kanban_col_done: 'Done',
+    kanban_view_ready_backlog: 'Ready Backlog',
+    kanban_ready_backlog_title: 'Ready Backlog',
+    kanban_ready_backlog_hint:
+      'Items that satisfy Definition of Ready and can be committed during Sprint Planning.',
+    kanban_ready_backlog_count: 'Ready items: {n}',
+    kanban_ready_backlog_no_project: 'Select an active project to view the Ready Backlog.',
+    kanban_ready_backlog_empty:
+      'No ready backlog items yet. Move refined work to Ready when it meets Definition of Ready.',
     task_assignee: 'Assignee',
     task_due: 'Due',
     task_drag: 'Drag',
@@ -96,6 +104,11 @@ export const TRANSLATIONS = {
     task_edit: 'Edit',
     task_save: 'Save',
     task_no_date: '—',
+    backlog_state_sprint_locked_help:
+      'This item is already committed to a sprint. Remove it from the sprint before changing backlog state.',
+    backlog_state_sprint_locked_alert:
+      'This item is already committed to a sprint. Remove it from the sprint before changing backlog state.',
+    badge_in_sprint: 'In Sprint',
 
     // Add task modal
     modal_add_task: 'Add task',
@@ -442,6 +455,14 @@ export const TRANSLATIONS = {
     kanban_col_in_progress: 'Devam ediyor',
     kanban_col_in_review: 'İncelemede',
     kanban_col_done: 'Tamamlandı',
+    kanban_view_ready_backlog: 'Hazır Backlog',
+    kanban_ready_backlog_title: 'Hazır Backlog',
+    kanban_ready_backlog_hint:
+      'Tanımına Hazır (DoR) öğeleri; Sprint Planlaması sırasında sprinte eklenebilir.',
+    kanban_ready_backlog_count: 'Hazır öğeler: {n}',
+    kanban_ready_backlog_no_project: 'Hazır Backlog için aktif bir proje seçin.',
+    kanban_ready_backlog_empty:
+      'Henüz hazır backlog öğesi yok. Tanıma uygun işi Hazır durumuna taşıyın.',
     task_assignee: 'Atanan',
     task_due: 'Bitiş',
     task_drag: 'Sürükle',
@@ -452,6 +473,11 @@ export const TRANSLATIONS = {
     task_edit: 'Düzenle',
     task_save: 'Kaydet',
     task_no_date: '—',
+    backlog_state_sprint_locked_help:
+      'Bu öğe zaten bir sprinte bağlı. Backlog durumunu değiştirmeden önce sprintten çıkarın.',
+    backlog_state_sprint_locked_alert:
+      'Bu öğe zaten bir sprinte bağlı. Backlog durumunu değiştirmeden önce sprintten çıkarın.',
+    badge_in_sprint: 'Sprintte',
 
     modal_add_task: 'Görev ekle',
     btn_cancel: 'İptal',

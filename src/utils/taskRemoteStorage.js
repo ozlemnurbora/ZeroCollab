@@ -1,5 +1,9 @@
 import { supabase } from './supabase.js'
-import { normalizeStoryPointsValue } from '../components/kanban/taskStorage.js'
+import {
+  normalizeStoryPointsValue,
+  normalizeTaskForStorage,
+  markTaskSoftDeleted,
+} from '../components/kanban/taskStorage.js'
 
 /** True when a task row should be upserted to Supabase `tasks` (project-scoped work items). */
 export function isSharedProjectTask(task) {
@@ -79,6 +83,23 @@ export function normalizeTaskForRemote(task, fallbackUserId) {
         ? task.updatedAt
         : Date.now(),
     doneAt: statusNorm === 'done' ? doneAt : null,
+    deleted:
+      task.deleted === true ||
+      task.deleted === 1 ||
+      task.deleted === 'true' ||
+      task.deleted === '1',
+    deletedAt: (() => {
+      const raw = task.deletedAt ?? task.deleted_at ?? null
+      if (raw == null || raw === '') return null
+      if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+      if (typeof raw === 'string' && raw.trim()) {
+        const n = Number(raw)
+        if (Number.isFinite(n)) return n
+        const p = Date.parse(raw)
+        return Number.isFinite(p) ? p : null
+      }
+      return null
+    })(),
   }
 
   return {
@@ -156,6 +177,23 @@ export function mapRemoteTask(row) {
       }
       return null
     })(),
+    deleted:
+      payload.deleted === true ||
+      payload.deleted === 1 ||
+      payload.deleted === 'true' ||
+      row?.deleted === true,
+    deletedAt: (() => {
+      const raw = payload.deletedAt ?? payload.deleted_at ?? row?.deleted_at ?? null
+      if (raw == null || raw === '') return null
+      if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+      if (typeof raw === 'string' && raw.trim()) {
+        const n = Number(raw)
+        if (Number.isFinite(n)) return n
+        const p = Date.parse(raw)
+        if (Number.isFinite(p)) return p
+      }
+      return null
+    })(),
   }
 }
 
@@ -193,15 +231,35 @@ export async function upsertRemoteTasks(tasks, userId) {
   }
 }
 
-export async function deleteRemoteTask(taskId, projectId) {
+/**
+ * Soft-delete on Supabase (tombstone upsert). Avoids resurrecting the row when other clients still have old payloads.
+ * @param {string} userId
+ * @param {object} [existingTask] Full task if available (richer payload).
+ */
+export async function deleteRemoteTask(taskId, projectId, userId = null, existingTask = null) {
   try {
-    if (!taskId || !projectId) return
-    const { error } = await supabase
-      .from('tasks')
-      .delete()
-      .eq('id', taskId)
-      .eq('project_id', projectId)
-    if (error) console.error('[TaskRemoteStorage] deleteRemoteTask error', error)
+    if (!taskId || !projectId || !userId) return
+    const now = Date.now()
+    const base =
+      existingTask && String(existingTask.id) === String(taskId)
+        ? markTaskSoftDeleted({ ...existingTask }, now)
+        : markTaskSoftDeleted(
+            {
+              id: taskId,
+              projectId,
+              calendarType: 'general',
+              calendarId: 'general',
+              title: '',
+              status: 'todo',
+              itemType: 'task',
+              backlogState: 'new',
+              createdAt: now,
+            },
+            now,
+          )
+    const norm = normalizeTaskForStorage(base, userId)
+    if (!norm || !isSharedProjectTask(norm)) return
+    await upsertRemoteTasks([norm], userId)
   } catch (err) {
     console.error('[TaskRemoteStorage] deleteRemoteTask exception', err)
   }

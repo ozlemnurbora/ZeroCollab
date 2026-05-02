@@ -3,7 +3,14 @@ import { MonthlyCalendar } from '../components/calendar/MonthlyCalendar.jsx'
 import { DayTasksModal } from '../components/calendar/DayTasksModal.jsx'
 import { AddTaskModal } from '../components/kanban/AddTaskModal.jsx'
 import { TaskDetailModal } from '../components/kanban/TaskDetailModal.jsx'
-import { loadTasks, saveTasks } from '../components/kanban/taskStorage.js'
+import {
+  loadTasks,
+  saveTasks,
+  normalizeTaskForStorage,
+  markTaskSoftDeleted,
+  isTaskDeleted,
+} from '../components/kanban/taskStorage.js'
+import { isSharedProjectTask, upsertRemoteTasks } from '../utils/taskRemoteStorage.js'
 import { deleteMeeting, loadMeetings, saveMeeting } from '../utils/meetingStorage.js'
 import {
   addDaysCalendar,
@@ -17,10 +24,9 @@ import { useAuth } from '../utils/AuthContext.jsx'
 import { broadcastTaskDelete } from '../utils/hubManager.js'
 import { on, sendToAllPeers, P2P_EVENTS } from '../utils/p2pManager.js'
 import {
-  canApplyIncomingTaskDelete,
+  applyAuthorizedGeneralTaskSoftDelete,
   filterTasksForVisibility,
   mergeTasksFromSync,
-  removeAuthorizedGeneralTaskById,
   shouldBroadcastGeneralTaskDelete,
   taskVisibleInActiveProject,
   tasksForP2PBroadcast,
@@ -219,17 +225,24 @@ export function CalendarPage() {
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
       if (data?.type === 'TASK_DELETE') {
         const { taskId, projectId } = data
-        if (!canApplyIncomingTaskDelete({ taskId, projectId }, memberProjectIds)) return
         setTasks((prev) => {
           const uid = ownerUserIdRef.current
-          const next = removeAuthorizedGeneralTaskById(
+          const { next, changed } = applyAuthorizedGeneralTaskSoftDelete(
             prev,
             taskId,
             projectId,
             memberProjectIds,
+            uid,
           )
-          if (next.length === prev.length) return prev
+          if (!changed) return prev
           if (uid) void saveTasks(next, uid, { allowEmpty: true, reason: 'incoming TASK_DELETE' })
+          const tomb = next.find(
+            (t) =>
+              t?.id === taskId &&
+              String(t?.projectId ?? '') === String(projectId) &&
+              isSharedProjectTask(t),
+          )
+          if (tomb && uid) void upsertRemoteTasks([tomb], uid)
           return next
         })
         return
@@ -278,18 +291,25 @@ export function CalendarPage() {
       const payload = e.detail || {}
       if (payload.action !== 'task-delete') return
       const { taskId, projectId } = payload
-      if (!canApplyIncomingTaskDelete({ taskId, projectId }, memberProjectIds)) return
       if (activeProject?.id && projectId && projectId !== activeProject.id) return
       setTasks((prev) => {
         const uid = ownerUserIdRef.current
-        const next = removeAuthorizedGeneralTaskById(
+        const { next, changed } = applyAuthorizedGeneralTaskSoftDelete(
           prev,
           taskId,
           projectId,
           memberProjectIds,
+          uid,
         )
-        if (next.length === prev.length) return prev
+        if (!changed) return prev
         if (uid) void saveTasks(next, uid, { allowEmpty: true, reason: 'hub task-delete' })
+        const tomb = next.find(
+          (t) =>
+            t?.id === taskId &&
+            String(t?.projectId ?? '') === String(projectId) &&
+            isSharedProjectTask(t),
+        )
+        if (tomb && uid) void upsertRemoteTasks([tomb], uid)
         return next
       })
     }
@@ -501,6 +521,8 @@ export function CalendarPage() {
 
   const updateTask = (taskId, updates) => {
     setTasks((prev) => {
+      const before = prev.find((t) => t.id === taskId)
+      if (before && isTaskDeleted(before)) return prev
       const next = prev.map((t) => (t.id === taskId ? { ...t, ...updates } : t))
       broadcastTasks(next)
       return next
@@ -509,21 +531,30 @@ export function CalendarPage() {
 
   const deleteTask = (taskId) => {
     const removed = tasksRef.current.find((t) => t.id === taskId) ?? null
+    if (!removed) return
+    const tombstone = normalizeTaskForStorage(
+      markTaskSoftDeleted({ ...removed }, Date.now()),
+      ownerUserId,
+    )
+    if (!tombstone) return
     setTasks((prev) => {
-      const next = prev.filter((t) => t.id !== taskId)
+      const next = prev.map((t) => (t.id === taskId ? tombstone : t))
       broadcastTasks(next)
       if (ownerUserId) {
         void saveTasks(next, ownerUserId, { allowEmpty: true, reason: 'deleteTask' })
       }
       return next
     })
-    if (removed && shouldBroadcastGeneralTaskDelete(removed, memberProjectIds)) {
+    if (shouldBroadcastGeneralTaskDelete(removed, memberProjectIds)) {
       sendToAllPeers({
         type: 'TASK_DELETE',
         taskId: removed.id,
         projectId: removed.projectId,
       })
       void broadcastTaskDelete(removed.id, removed.projectId)
+    }
+    if (isSharedProjectTask(tombstone) && tombstone.projectId && ownerUserId) {
+      void upsertRemoteTasks([tombstone], ownerUserId)
     }
   }
 
