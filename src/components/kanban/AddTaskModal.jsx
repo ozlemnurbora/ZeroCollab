@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { AssigneeInputWithDatalist } from './AssigneeInputWithDatalist.jsx'
 import { Button } from '../ui/Button.jsx'
 import { Modal } from '../ui/Modal.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
@@ -6,6 +7,12 @@ import {
   STORY_POINT_SELECT_OPTIONS,
   normalizeStoryPointsValue,
 } from './taskStorage.js'
+import {
+  INVEST_CHECKLIST_HELPER_TEXT,
+  INVEST_CHECKLIST_LABELS,
+  itemTypeRequiresInvestChecklist,
+  normalizeDefinitionOfReady,
+} from './definitionOfReady.js'
 
 const initialForm = {
   title: '',
@@ -18,6 +25,7 @@ const initialForm = {
   userStoryBenefit: '',
   acceptanceCriteria: '',
   backlogState: 'new',
+  definitionOfReady: normalizeDefinitionOfReady(null),
   storyPoints: 0,
   startDate: '',
   dueDate: '',
@@ -132,6 +140,7 @@ export function AddTaskModal({
                 priority: form.priority || 'must',
                 itemType: form.itemType || 'task',
                 backlogState: 'new',
+                definitionOfReady: normalizeDefinitionOfReady(form.definitionOfReady),
                 storyPoints: normalizeStoryPointsValue(form.storyPoints),
                 acceptanceCriteria: form.acceptanceCriteria.trim(),
                 userStoryRole: form.userStoryRole.trim(),
@@ -182,7 +191,13 @@ export function AddTaskModal({
           <select
             className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
             value={form.itemType || 'task'}
-            onChange={(e) => setForm((s) => ({ ...s, itemType: e.target.value }))}
+            onChange={(e) =>
+              setForm((s) => ({
+                ...s,
+                itemType: e.target.value,
+                definitionOfReady: normalizeDefinitionOfReady(s.definitionOfReady),
+              }))
+            }
           >
             <option value="epic">Epic</option>
             <option value="feature">Feature</option>
@@ -340,18 +355,61 @@ export function AddTaskModal({
           />
         </div>
 
+        {itemTypeRequiresInvestChecklist(form.itemType) ? (
+          <details
+            className="rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.25)] px-3 py-2"
+            open
+          >
+            <summary className="cursor-pointer text-sm font-medium text-[rgb(var(--zc-text))]">
+              Definition of Ready Checklist
+            </summary>
+            <p className="mt-2 text-xs text-[rgb(var(--zc-subtle))]">
+              {INVEST_CHECKLIST_HELPER_TEXT}
+            </p>
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {INVEST_CHECKLIST_LABELS.map(({ key, label }) => (
+                <label
+                  key={key}
+                  className="flex cursor-pointer items-center gap-2 text-sm text-[rgb(var(--zc-text))]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!form.definitionOfReady?.[key]}
+                    onChange={(e) =>
+                      setForm((s) => ({
+                        ...s,
+                        definitionOfReady: {
+                          ...normalizeDefinitionOfReady(s.definitionOfReady),
+                          [key]: e.target.checked,
+                        },
+                      }))
+                    }
+                    className="rounded border-[rgb(var(--zc-border))]"
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
+            </div>
+          </details>
+        ) : null}
+
         <div>
           <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
             {t('label_assignee')}
           </label>
-          <input
-            type="text"
-            className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-            placeholder="Enter assignee name..."
+          <AssigneeInputWithDatalist
+            projectMembers={activeProject?.projectMembers ?? []}
             value={form.assignee}
             onChange={(e) => setForm((s) => ({ ...s, assignee: e.target.value }))}
             onBlur={() => setTouched(true)}
+            placeholder="Type name or pick a project member…"
+            className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
           />
+          {activeProject?.projectMembers?.length ? (
+            <p className="mt-1 text-[11px] text-[rgb(var(--zc-subtle))]">
+              Suggestions from {activeProject.name}. You can still enter any name.
+            </p>
+          ) : null}
           {touched && errors.assignee ? (
             <p className="mt-1 text-xs text-rose-300">{errors.assignee}</p>
           ) : null}

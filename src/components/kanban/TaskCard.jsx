@@ -1,12 +1,11 @@
 import { formatDueDate, isOverdue } from './dateUtils.js'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 import { normalizeStoryPointsValue } from './taskStorage.js'
-
-function truncate(text, n) {
-  const s = String(text || '')
-  if (!s) return ''
-  return s.length > n ? `${s.slice(0, n)}…` : s
-}
+import {
+  investChecklistComplete,
+  itemTypeRequiresInvestChecklist,
+  normalizeDefinitionOfReady,
+} from './definitionOfReady.js'
 
 export function TaskCard({
   task,
@@ -48,6 +47,15 @@ export function TaskCard({
         : priority === 'could'
           ? { label: 'Could-have', classes: 'bg-green-500/20 text-green-400' }
           : { label: 'Won’t-have', classes: 'bg-gray-500/20 text-gray-400' }
+
+  const investRelevant = itemTypeRequiresInvestChecklist(itemType)
+  const investDone = investChecklistComplete(
+    normalizeDefinitionOfReady(task.definitionOfReady),
+  )
+  const showNeedsRefinementBadge =
+    investRelevant && backlogState === 'refined' && !investDone
+  const showReadyForSprintBadge =
+    investRelevant && investDone && backlogState !== 'ready'
 
   return (
     <div
@@ -126,7 +134,7 @@ export function TaskCard({
             </button>
           </span>
         </div>
-        <div className="mt-1 flex flex-wrap items-center gap-1.5">
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
           {showSprintTaskBadge ? (
             <span className="shrink-0 rounded-full bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-cyan-300">
               SPRINT TASK
@@ -151,6 +159,16 @@ export function TaskCard({
               SP: {storyPoints}
             </span>
           ) : null}
+          {showNeedsRefinementBadge ? (
+            <span className="shrink-0 rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-200/90">
+              Needs Refinement
+            </span>
+          ) : null}
+          {showReadyForSprintBadge ? (
+            <span className="shrink-0 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[10px] font-medium text-emerald-200/90">
+              Ready for Sprint
+            </span>
+          ) : null}
           {overdue && (
             <span className="shrink-0 rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[10px] font-medium text-rose-400">
               Overdue
@@ -158,11 +176,13 @@ export function TaskCard({
           )}
         </div>
         {task.description ? (
-          <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-            {truncate(task.description, 60)}
-          </p>
+          <div className="mt-2.5 rounded-md border border-[rgb(var(--zc-border)/0.35)] border-l-2 border-l-indigo-400/50 bg-slate-900/40 px-2.5 py-2">
+            <p className="line-clamp-3 text-sm leading-snug text-slate-200">
+              {task.description}
+            </p>
+          </div>
         ) : null}
-        <div className="mt-2 flex items-center gap-1.5">
+        <div className="mt-2.5 flex items-center gap-1.5">
           <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-500/20 text-[9px] font-semibold text-indigo-300">
             {(task.assignee || '?').slice(0, 2).toUpperCase()}
           </div>

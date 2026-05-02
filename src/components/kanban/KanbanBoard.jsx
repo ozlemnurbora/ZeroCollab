@@ -11,10 +11,7 @@ import {
   nextPositionForGroup,
   PRIORITY_RANK,
 } from './taskStorage.js'
-import {
-  DEFINITION_OF_READY_MESSAGE,
-  taskMeetsDefinitionOfReady,
-} from './definitionOfReady.js'
+import { validateReadyBacklogState } from './definitionOfReady.js'
 import { Button } from '../ui/Button.jsx'
 import { KanbanColumn } from './KanbanColumn.jsx'
 import { TaskDetailModal } from './TaskDetailModal.jsx'
@@ -830,13 +827,12 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
         return { ...t, ...merged, updatedAt: now, doneAt }
       })
       const afterTask = nextBeforeDedupe.find((t) => t.id === taskId)
-      if (
-        afterTask &&
-        (afterTask.backlogState || 'new') === 'ready' &&
-        !taskMeetsDefinitionOfReady(afterTask)
-      ) {
-        window.alert(DEFINITION_OF_READY_MESSAGE)
-        return prev
+      if (afterTask && (afterTask.backlogState || 'new') === 'ready') {
+        const dorCheck = validateReadyBacklogState(afterTask)
+        if (!dorCheck.ok) {
+          window.alert(dorCheck.message)
+          return prev
+        }
       }
       const statusChanged =
         !!beforeTask &&
@@ -869,7 +865,9 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
             o.assignee !== t.assignee ||
             o.itemType !== t.itemType ||
             o.backlogState !== t.backlogState ||
-            o.sprintId !== t.sprintId
+            o.sprintId !== t.sprintId ||
+            JSON.stringify(o.definitionOfReady ?? null) !==
+              JSON.stringify(t.definitionOfReady ?? null)
           )
         })
         if (toUpsert.length) void upsertRemoteTasks(toUpsert, uid)

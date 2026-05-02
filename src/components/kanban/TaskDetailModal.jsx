@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
+import { AssigneeInputWithDatalist } from './AssigneeInputWithDatalist.jsx'
 import { Modal } from '../ui/Modal.jsx'
 import { Button } from '../ui/Button.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
@@ -12,8 +14,11 @@ import {
 } from './taskStorage.js'
 import {
   DEFINITION_OF_READY_HELPER_TEXT,
-  DEFINITION_OF_READY_MESSAGE,
-  taskMeetsDefinitionOfReady,
+  INVEST_CHECKLIST_HELPER_TEXT,
+  INVEST_CHECKLIST_LABELS,
+  investChecklistComplete,
+  itemTypeRequiresInvestChecklist,
+  normalizeDefinitionOfReady,
   validateReadyBacklogState,
 } from './definitionOfReady.js'
 
@@ -84,6 +89,7 @@ export function TaskDetailModal({
 }) {
   const { t } = useLanguage()
   const { user } = useAuth()
+  const { projects, activeProject } = useWorkspace()
   const [isEditing, setIsEditing] = useState(!!initialEdit)
   const [form, setForm] = useState(() => (task ? { ...task } : null))
   const [messages, setMessages] = useState([])
@@ -112,6 +118,17 @@ export function TaskDetailModal({
     const match = calendarOptions.find((c) => c.id === id)
     return match?.name || id
   }, [calendarOptions, task])
+
+  const assigneeProjectMembers = useMemo(() => {
+    const pid = task?.projectId ?? null
+    if (pid) {
+      const match = projects.find((p) => String(p.id) === String(pid))
+      if (Array.isArray(match?.projectMembers) && match.projectMembers.length > 0) {
+        return match.projectMembers
+      }
+    }
+    return activeProject?.projectMembers ?? []
+  }, [task?.projectId, projects, activeProject])
 
   useEffect(() => {
     if (!open) return
@@ -239,6 +256,7 @@ export function TaskDetailModal({
     const nextStoryPoints = normalizeStoryPointsValue(
       form.storyPoints ?? form.story_points ?? 0,
     )
+    const nextDefinitionOfReady = normalizeDefinitionOfReady(form.definitionOfReady)
     if (nextBacklogState === 'ready') {
       const proposed = {
         ...task,
@@ -247,6 +265,7 @@ export function TaskDetailModal({
         acceptanceCriteria: trimmedAc,
         storyPoints: nextStoryPoints,
         backlogState: 'ready',
+        definitionOfReady: nextDefinitionOfReady,
       }
       const check = validateReadyBacklogState(proposed)
       if (!check.ok) {
@@ -277,6 +296,7 @@ export function TaskDetailModal({
       calendarId: calendarId || '',
       calendarType: nextCalendarType,
       storyPoints: nextStoryPoints,
+      definitionOfReady: nextDefinitionOfReady,
     })
     setIsEditing(false)
   }
@@ -348,14 +368,22 @@ export function TaskDetailModal({
               {t('task_assignee')}
             </label>
             {isEditing ? (
-              <input
-                type="text"
-                value={value.assignee || ''}
-                onChange={(e) =>
-                  setForm((s) => ({ ...(s || {}), assignee: e.target.value }))
-                }
-                className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-              />
+              <>
+                <AssigneeInputWithDatalist
+                  projectMembers={assigneeProjectMembers}
+                  value={value.assignee || ''}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...(s || {}), assignee: e.target.value }))
+                  }
+                  placeholder="Type name or pick a project member…"
+                  className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                />
+                {assigneeProjectMembers.length > 0 ? (
+                  <p className="mt-1 text-[11px] text-[rgb(var(--zc-subtle))]">
+                    Choose a project member or enter any assignee name.
+                  </p>
+                ) : null}
+              </>
             ) : (
               <p className="mt-2 text-sm text-[rgb(var(--zc-text))]">
                 {(value.assignee || '').trim() || t('task_no_date')}
@@ -435,7 +463,13 @@ export function TaskDetailModal({
                   <select
                     value={itemType}
                     onChange={(e) =>
-                      setForm((s) => ({ ...(s || {}), itemType: e.target.value }))
+                      setForm((s) => ({
+                        ...(s || {}),
+                        itemType: e.target.value,
+                        definitionOfReady: normalizeDefinitionOfReady(
+                          s?.definitionOfReady,
+                        ),
+                      }))
                     }
                     className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                   >
@@ -463,9 +497,13 @@ export function TaskDetailModal({
                             form.storyPoints ?? form.story_points ?? 0,
                           ),
                           backlogState: 'ready',
+                          definitionOfReady: normalizeDefinitionOfReady(
+                            form.definitionOfReady,
+                          ),
                         }
-                        if (!taskMeetsDefinitionOfReady(proposed)) {
-                          setDefinitionOfReadyError(DEFINITION_OF_READY_MESSAGE)
+                        const check = validateReadyBacklogState(proposed)
+                        if (!check.ok) {
+                          setDefinitionOfReadyError(check.message)
                           return
                         }
                       }
@@ -580,6 +618,45 @@ export function TaskDetailModal({
                   className="mt-1 min-h-[100px] w-full resize-y rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
                 />
               </div>
+
+              {itemTypeRequiresInvestChecklist(itemType) ? (
+                <details
+                  className="rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.25)] px-3 py-2"
+                  open
+                >
+                  <summary className="cursor-pointer text-sm font-medium text-[rgb(var(--zc-text))]">
+                    Definition of Ready Checklist
+                  </summary>
+                  <p className="mt-2 text-xs text-[rgb(var(--zc-subtle))]">
+                    {INVEST_CHECKLIST_HELPER_TEXT}
+                  </p>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    {INVEST_CHECKLIST_LABELS.map(({ key, label }) => (
+                      <label
+                        key={key}
+                        className="flex cursor-pointer items-center gap-2 text-sm text-[rgb(var(--zc-text))]"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={!!value.definitionOfReady?.[key]}
+                          onChange={(e) => {
+                            setDefinitionOfReadyError('')
+                            setForm((s) => ({
+                              ...(s || {}),
+                              definitionOfReady: {
+                                ...normalizeDefinitionOfReady(s?.definitionOfReady),
+                                [key]: e.target.checked,
+                              },
+                            }))
+                          }}
+                          className="rounded border-[rgb(var(--zc-border))]"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
             </div>
           ) : (
             <div className="mt-3 space-y-2 text-sm">
@@ -614,6 +691,14 @@ export function TaskDetailModal({
                     {value.acceptanceCriteria}
                   </p>
                 </div>
+              ) : null}
+              {itemTypeRequiresInvestChecklist(itemType) ? (
+                <p className="text-xs text-[rgb(var(--zc-muted))]">
+                  INVEST checklist:{' '}
+                  {investChecklistComplete(value.definitionOfReady)
+                    ? 'Complete'
+                    : 'Incomplete'}
+                </p>
               ) : null}
             </div>
           )}

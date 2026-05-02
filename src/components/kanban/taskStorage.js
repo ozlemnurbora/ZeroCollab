@@ -191,6 +191,20 @@ export function normalizeTaskForStorage(task, ownerUserId) {
   if (resolvedPosition != null) next.position = resolvedPosition
   else delete next.position
 
+  const dorRaw = task.definitionOfReady
+  const dor =
+    dorRaw && typeof dorRaw === 'object'
+      ? dorRaw
+      : {}
+  next.definitionOfReady = {
+    independent: !!dor.independent,
+    negotiable: !!dor.negotiable,
+    valuable: !!dor.valuable,
+    estimable: !!dor.estimable,
+    small: !!dor.small,
+    testable: !!dor.testable,
+  }
+
   return next
 }
 
