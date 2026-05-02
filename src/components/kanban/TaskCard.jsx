@@ -15,6 +15,7 @@ export function TaskCard({
   onDelete,
   onClick,
   onEdit,
+  onReorderByKeyboard,
   showSprintTaskBadge = false,
 }) {
   const { t, locale } = useLanguage()
@@ -50,6 +51,7 @@ export function TaskCard({
 
   return (
     <div
+      id={`task-card-${task.id}`}
       className={[
         'group rounded-lg border-y border-r bg-[rgb(var(--zc-panel)/0.6)] p-3 shadow-sm transition cursor-pointer',
         'border-[rgb(var(--zc-border))] hover:border-[rgb(var(--zc-border)/0.85)] hover:bg-[rgb(var(--zc-panel)/0.8)]',
@@ -67,8 +69,14 @@ export function TaskCard({
       onDragStart={(e) => onDragStart?.(e, task.id)}
       onClick={() => onClick?.(task)}
       role={onClick ? 'button' : undefined}
-      tabIndex={onClick ? 0 : undefined}
+      tabIndex={0}
       onKeyDown={(e) => {
+        const mod = e.ctrlKey || e.metaKey
+        if (mod && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+          e.preventDefault()
+          onReorderByKeyboard?.(task.id, e.key === 'ArrowUp' ? -1 : 1)
+          return
+        }
         if (!onClick) return
         if (e.key === 'Enter' || e.key === ' ') {
           e.preventDefault()
@@ -78,9 +86,17 @@ export function TaskCard({
     >
       <div className="min-w-0">
         <div className="flex items-start justify-between gap-2">
-          <p className="min-w-0 truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
-            {task.title}
-          </p>
+          <div className="flex min-w-0 flex-1 items-start gap-1.5">
+            <span
+              className="mt-0.5 shrink-0 cursor-grab select-none text-xs leading-none text-[rgb(var(--zc-muted2))] active:cursor-grabbing"
+              aria-label="Drag to reorder task"
+            >
+              ⋮⋮
+            </span>
+            <p className="min-w-0 truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
+              {task.title}
+            </p>
+          </div>
           <span className="ml-2 flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
             <button
               type="button"

@@ -6,6 +6,10 @@ import {
   saveTasks,
   normalizeTaskForStorage,
   normalizeStoryPointsValue,
+  compareKanbanTasksInColumn,
+  dedupeAndNormalizePositions,
+  nextPositionForGroup,
+  PRIORITY_RANK,
 } from './taskStorage.js'
 import { Button } from '../ui/Button.jsx'
 import { KanbanColumn } from './KanbanColumn.jsx'
@@ -196,7 +200,7 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
       if (cancelled) return
       const list = Array.isArray(existing) ? existing : []
       const normalized = list.map((t) => normalizeTaskForStorage(t, ownerUserId)).filter(Boolean)
-      setTasks(normalized)
+      setTasks(dedupeAndNormalizePositions(normalized))
       console.log('[KanbanBoard] loaded task count:', normalized.length)
       setHasLoadedTasks(true)
       setIsLoadingTasks(false)
@@ -216,7 +220,9 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
       if (cancelled) return
       const list = Array.isArray(existing) ? existing : []
       const normalized = list.map((t) => normalizeTaskForStorage(t, ownerUserId)).filter(Boolean)
-      setTasks((prev) => (Array.isArray(prev) && prev.length > 0 ? prev : normalized))
+      setTasks((prev) =>
+        Array.isArray(prev) && prev.length > 0 ? prev : dedupeAndNormalizePositions(normalized),
+      )
       setIsLoadingTasks(false)
     })()
     return () => {
@@ -234,9 +240,11 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
       if (cancelled) return
 
       const localAll = Array.isArray(tasksRef.current) ? tasksRef.current : []
-      const mergedAll = mergeTasksByIdPreferNewer(localAll, remoteTasks).map((t) =>
-        normalizeTaskForStorage(t, ownerUserId),
-      ).filter(Boolean)
+      const mergedAll = dedupeAndNormalizePositions(
+        mergeTasksByIdPreferNewer(localAll, remoteTasks)
+          .map((t) => normalizeTaskForStorage(t, ownerUserId))
+          .filter(Boolean),
+      )
 
       // Never let empty remote wipe local. Only write if we actually have tasks.
       if (mergedAll.length > 0) {
@@ -319,7 +327,9 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
         const nextBase = mergeTasksFromSync(prev, incomingGeneralTasks, visibilityOptions)
         if (incomingGeneralTasks.length === 0) return prev
         if (prev.length > 0 && nextBase.length === 0) return prev
-        const next = nextBase.map((t) => (uid ? { ...t, ownerUserId: uid } : t))
+        const next = dedupeAndNormalizePositions(
+          nextBase.map((t) => (uid ? { ...t, ownerUserId: uid } : t)),
+        )
         if (uid) void saveTasks(next, uid)
         if (uid) void upsertRemoteTasks(incomingGeneralTasks, uid)
         return next
@@ -425,7 +435,9 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
           const uid = ownerUserIdRef.current
           const nextBase = mergeTasksFromSync(prev, incomingTasks, visibilityOptions)
           if (prev.length > 0 && nextBase.length === 0) return prev
-          const next = nextBase.map((t) => (uid ? { ...t, ownerUserId: uid } : t))
+          const next = dedupeAndNormalizePositions(
+            nextBase.map((t) => (uid ? { ...t, ownerUserId: uid } : t)),
+          )
           if (uid) void saveTasks(next, uid)
           if (uid) void upsertRemoteTasks(incomingTasks, uid)
           return next
@@ -559,38 +571,188 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
   }, [boardScopedTasks, priorityFilter])
 
   const tasksByColumn = useMemo(() => {
-    const priorityOrder = { must: 0, should: 1, could: 2, wont: 3 }
     const map = new Map(KANBAN_COLUMNS.map((c) => [c.id, []]))
     for (const task of filteredTasks) {
       const col = map.get(task.status) ?? map.get('todo')
       col.push(task)
     }
     for (const [, colTasks] of map.entries()) {
-      colTasks.sort((a, b) => {
-        const ap = priorityOrder[a.priority || 'must'] ?? 0
-        const bp = priorityOrder[b.priority || 'must'] ?? 0
-        if (ap !== bp) return ap - bp
-        return (b.createdAt ?? 0) - (a.createdAt ?? 0)
-      })
+      colTasks.sort(compareKanbanTasksInColumn)
     }
     return map
   }, [filteredTasks])
 
-  const moveTask = (taskId, nextStatus) => {
+  const handleKanbanDrop = (taskId, columnId, insertBeforeTaskId) => {
     setTasks((prev) => {
+      const task = prev.find((t) => t.id === taskId)
+      if (!task) return prev
+
       const now = Date.now()
-      let changed = null
-      const next = prev.map((task) => {
-        if (task.id !== taskId) return task
-        const doneAt = resolveDoneAtForStatusChange(task, nextStatus, now)
-        changed = { ...task, status: nextStatus, updatedAt: now, doneAt }
-        return changed
+      const srcStatus = task.status || 'todo'
+      const srcPri = task.priority || 'must'
+      const crossColumn = srcStatus !== columnId
+
+      const oldGroupOrder = prev
+        .filter(
+          (t) =>
+            (t.status || 'todo') === srcStatus && (t.priority || 'must') === srcPri,
+        )
+        .sort(compareKanbanTasksInColumn)
+        .map((t) => t.id)
+      const oldIndexInGroup = oldGroupOrder.indexOf(taskId)
+
+      let working = prev.map((t) => ({ ...t }))
+      const ti = working.findIndex((t) => t.id === taskId)
+      if (ti < 0) return prev
+
+      let moved = working[ti]
+      if (crossColumn) {
+        const doneAt = resolveDoneAtForStatusChange(moved, columnId, now)
+        moved = { ...moved, status: columnId, updatedAt: now, doneAt }
+        working[ti] = moved
+      }
+
+      const finalPri = moved.priority || 'must'
+      const positionUpdates = new Map()
+
+      if (crossColumn) {
+        const sourcePeers = working.filter(
+          (t) =>
+            t.id !== taskId &&
+            (t.status || 'todo') === srcStatus &&
+            (t.priority || 'must') === srcPri,
+        )
+        const sourceOrder = [...sourcePeers].sort(compareKanbanTasksInColumn).map((t) => t.id)
+        sourceOrder.forEach((id, i) => positionUpdates.set(id, i))
+      }
+
+      const targetPeers = working.filter(
+        (t) =>
+          t.id !== taskId &&
+          (t.status || 'todo') === columnId &&
+          (t.priority || 'must') === finalPri,
+      )
+      const sortedTargetPeers = [...targetPeers].sort(compareKanbanTasksInColumn)
+      const orderedTargetIds = sortedTargetPeers.map((t) => t.id)
+
+      let insertAt = orderedTargetIds.length
+      if (insertBeforeTaskId === taskId) {
+        insertAt = oldIndexInGroup >= 0 ? oldIndexInGroup : 0
+      } else if (insertBeforeTaskId) {
+        const marker = working.find((t) => t.id === insertBeforeTaskId)
+        if (marker && (marker.status || 'todo') === columnId) {
+          const mkPri = marker.priority || 'must'
+          if (mkPri === finalPri) {
+            const idx = orderedTargetIds.indexOf(insertBeforeTaskId)
+            if (idx >= 0) insertAt = idx
+          } else {
+            const br = PRIORITY_RANK[mkPri] ?? 99
+            const dr = PRIORITY_RANK[finalPri] ?? 99
+            insertAt = br < dr ? 0 : orderedTargetIds.length
+          }
+        }
+      }
+
+      const newTargetOrder = [
+        ...orderedTargetIds.slice(0, insertAt),
+        taskId,
+        ...orderedTargetIds.slice(insertAt),
+      ]
+
+      if (!crossColumn && oldGroupOrder.join(',') === newTargetOrder.join(',')) return prev
+
+      newTargetOrder.forEach((id, i) => positionUpdates.set(id, i))
+
+      const prevSnap = new Map(prev.map((t) => [t.id, t]))
+      working = working.map((t) => {
+        let nt = { ...t }
+        if (t.id === taskId) nt = { ...moved }
+        if (positionUpdates.has(nt.id)) {
+          nt = { ...nt, position: positionUpdates.get(nt.id) }
+        }
+        return nt
+      })
+
+      const newIndexInGroup = newTargetOrder.indexOf(taskId)
+
+      const changedTasks = working.filter((t) => {
+        const o = prevSnap.get(t.id)
+        if (!o) return false
+        if (positionUpdates.has(t.id) && o.position !== t.position) return true
+        if (crossColumn && t.id === taskId) {
+          return (
+            o.status !== t.status ||
+            o.doneAt !== t.doneAt ||
+            o.updatedAt !== t.updatedAt ||
+            o.position !== t.position
+          )
+        }
+        return false
+      })
+
+      console.log('[TaskOrder] reordered', {
+        taskId,
+        status: columnId,
+        oldIndex: oldIndexInGroup,
+        newIndex: newIndexInGroup,
+        changed: changedTasks.length,
+      })
+
+      broadcastTasks(working)
+      const uid = ownerUserIdRef.current
+      if (uid) {
+        const shared = changedTasks.filter((t) => isSharedProjectTask(t))
+        if (shared.length) void upsertRemoteTasks(shared, uid)
+      }
+
+      return working
+    })
+  }
+
+  const reorderTaskInColumnByKeyboard = (taskId, delta) => {
+    setTasks((prev) => {
+      const task = prev.find((t) => t.id === taskId)
+      if (!task) return prev
+      const columnId = task.status || 'todo'
+      const pri = task.priority || 'must'
+      const group = prev.filter(
+        (t) => (t.status || 'todo') === columnId && (t.priority || 'must') === pri,
+      )
+      const sorted = [...group].sort(compareKanbanTasksInColumn)
+      const idx = sorted.findIndex((t) => t.id === taskId)
+      const j = idx + delta
+      if (idx < 0 || j < 0 || j >= sorted.length) return prev
+      const newOrder = [...sorted]
+      const [item] = newOrder.splice(idx, 1)
+      newOrder.splice(j, 0, item)
+      const orderedIds = newOrder.map((t) => t.id)
+      const positionUpdates = new Map(orderedIds.map((id, i) => [id, i]))
+      const prevSnap = new Map(prev.map((t) => [t.id, t]))
+      const next = prev.map((t) => {
+        const p = positionUpdates.get(t.id)
+        if (p === undefined) return t
+        return { ...t, position: p }
+      })
+      const changedTasks = next.filter((t) => {
+        const o = prevSnap.get(t.id)
+        return o && positionUpdates.has(t.id) && o.position !== t.position
+      })
+      console.log('[TaskOrder] reordered', {
+        taskId,
+        status: columnId,
+        oldIndex: idx,
+        newIndex: j,
+        changed: changedTasks.length,
       })
       broadcastTasks(next)
       const uid = ownerUserIdRef.current
-      if (uid && changed && isSharedProjectTask(changed)) {
-        void upsertRemoteTasks([changed], uid)
+      if (uid) {
+        const shared = changedTasks.filter((t) => isSharedProjectTask(t))
+        if (shared.length) void upsertRemoteTasks(shared, uid)
       }
+      requestAnimationFrame(() => {
+        document.getElementById(`task-card-${taskId}`)?.focus()
+      })
       return next
     })
   }
@@ -606,6 +768,8 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
     setTasks((prev) => {
       const projectId = activeProject?.id ? activeProject.id : null
       const id = typeof payload?.id === 'string' && payload.id.trim() ? payload.id.trim() : createId()
+      const newPriority = payload?.priority || 'must'
+      const position = nextPositionForGroup(prev, 'todo', newPriority)
       const created = {
         id,
         status: 'todo',
@@ -620,16 +784,17 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
         ),
         calendarType,
         projectId,
+        position,
         teamId:
           calendarType === 'general'
             ? activeTeam?.id || payload.teamId || null
             : null,
         ownerUserId: user?.id || null,
       }
-      const next = [
+      const next = dedupeAndNormalizePositions([
         created,
         ...(Array.isArray(prev) ? prev.filter((t) => t?.id !== id) : []),
-      ]
+      ])
       broadcastTasks(next)
       const uid = ownerUserIdRef.current
       if (uid && isSharedProjectTask(created)) {
@@ -642,8 +807,9 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
   const updateTask = (taskId, updates) => {
     setTasks((prev) => {
       const now = Date.now()
-      let changed = null
-      const next = prev.map((t) => {
+      const prevById = new Map(prev.map((t) => [t.id, t]))
+      const beforeTask = prev.find((t) => t.id === taskId)
+      const nextBeforeDedupe = prev.map((t) => {
         if (t.id !== taskId) return t
         const merged = { ...updates }
         delete merged.doneAt
@@ -657,13 +823,44 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
         const nextStatus =
           merged.status !== undefined ? merged.status : t.status
         const doneAt = resolveDoneAtForStatusChange(t, nextStatus, now)
-        changed = { ...t, ...merged, updatedAt: now, doneAt }
-        return changed
+        return { ...t, ...merged, updatedAt: now, doneAt }
       })
+      const afterTask = nextBeforeDedupe.find((t) => t.id === taskId)
+      const statusChanged =
+        !!beforeTask &&
+        !!afterTask &&
+        (beforeTask.status || 'todo') !== (afterTask.status || 'todo')
+      const priorityChanged =
+        !!beforeTask &&
+        !!afterTask &&
+        (beforeTask.priority || 'must') !== (afterTask.priority || 'must')
+      const next =
+        statusChanged || priorityChanged
+          ? dedupeAndNormalizePositions(nextBeforeDedupe)
+          : nextBeforeDedupe
       broadcastTasks(next)
       const uid = ownerUserIdRef.current
-      if (uid && changed && isSharedProjectTask(changed)) {
-        void upsertRemoteTasks([changed], uid)
+      if (uid) {
+        const toUpsert = next.filter((t) => {
+          if (!isSharedProjectTask(t)) return false
+          const o = prevById.get(t.id)
+          if (!o) return true
+          return (
+            o.position !== t.position ||
+            o.status !== t.status ||
+            o.priority !== t.priority ||
+            o.updatedAt !== t.updatedAt ||
+            o.doneAt !== t.doneAt ||
+            o.storyPoints !== t.storyPoints ||
+            o.title !== t.title ||
+            o.description !== t.description ||
+            o.assignee !== t.assignee ||
+            o.itemType !== t.itemType ||
+            o.backlogState !== t.backlogState ||
+            o.sprintId !== t.sprintId
+          )
+        })
+        if (toUpsert.length) void upsertRemoteTasks(toUpsert, uid)
       }
       return next
     })
@@ -967,7 +1164,8 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
               column={column}
               tasks={tasksByColumn.get(column.id) ?? []}
               sprintTaskBadge={isSprintBoard}
-              onDropTask={moveTask}
+              onDropTask={handleKanbanDrop}
+              onReorderTaskByKeyboard={reorderTaskInColumnByKeyboard}
               onDeleteTask={(id) => {
                 deleteTask(id)
                 if (selectedTaskId === id) setSelectedTaskId(null)

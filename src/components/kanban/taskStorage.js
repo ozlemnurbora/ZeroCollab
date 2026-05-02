@@ -3,6 +3,79 @@ import { replaceTasksForOwner, getTasksForOwner } from '../../utils/database.js'
 /** Fibonacci-style options for create/edit UI; values are not enforced server-side. */
 export const STORY_POINT_SELECT_OPTIONS = [0, 1, 2, 3, 5, 8, 13, 21]
 
+/** MoSCoW rank for board sort (ascending: must first). */
+export const PRIORITY_RANK = {
+  must: 1,
+  should: 2,
+  could: 3,
+  wont: 4,
+}
+
+/** Stable position within the same status column and priority group. */
+export function getTaskPosition(task) {
+  if (!task || typeof task !== 'object') return null
+  const raw = task.position ?? task.orderIndex ?? task.sortOrder
+  if (typeof raw === 'number' && Number.isFinite(raw)) return Math.round(raw)
+  if (typeof raw === 'string' && raw.trim()) {
+    const n = Number(raw)
+    if (Number.isFinite(n)) return Math.round(n)
+  }
+  return null
+}
+
+/**
+ * Sort for tasks in one Kanban column: priority rank, then position, then createdAt ascending.
+ */
+export function compareKanbanTasksInColumn(a, b) {
+  const ar = PRIORITY_RANK[a?.priority || 'must'] ?? 99
+  const br = PRIORITY_RANK[b?.priority || 'must'] ?? 99
+  if (ar !== br) return ar - br
+  const ap = getTaskPosition(a)
+  const bp = getTaskPosition(b)
+  if (ap != null && bp != null && ap !== bp) return ap - bp
+  if (ap != null && bp == null) return -1
+  if (ap == null && bp != null) return 1
+  return (a?.createdAt ?? 0) - (b?.createdAt ?? 0)
+}
+
+/**
+ * After load or merge: for each (status, priority) group, sort and assign contiguous positions.
+ */
+export function dedupeAndNormalizePositions(tasks) {
+  const list = Array.isArray(tasks) ? tasks.map((t) => ({ ...t })) : []
+  const byKey = new Map()
+  for (const t of list) {
+    if (!t?.id) continue
+    const status = t.status || 'todo'
+    const pri = t.priority || 'must'
+    const key = `${status}\0${pri}`
+    if (!byKey.has(key)) byKey.set(key, [])
+    byKey.get(key).push(t)
+  }
+  for (const group of byKey.values()) {
+    group.sort(compareKanbanTasksInColumn)
+    group.forEach((t, i) => {
+      t.position = i
+    })
+  }
+  return list
+}
+
+/** Next position when appending to a (status, priority) group. */
+export function nextPositionForGroup(tasks, status, priority) {
+  const list = Array.isArray(tasks) ? tasks : []
+  const pri = priority || 'must'
+  const st = status || 'todo'
+  let max = -1
+  for (const t of list) {
+    if ((t.status || 'todo') !== st) continue
+    if ((t.priority || 'must') !== pri) continue
+    const p = getTaskPosition(t)
+    if (p != null && p > max) max = p
+  }
+  return max + 1
+}
+
 export function normalizeStoryPointsValue(raw) {
   if (raw === '' || raw == null) return 0
   const n = Number(raw)
@@ -81,6 +154,8 @@ export function normalizeTaskForStorage(task, ownerUserId) {
         ? Date.parse(createdAtRaw) || null
         : null
 
+  const resolvedPosition = getTaskPosition(task)
+
   let doneAt = null
   if (status === 'done') {
     const doneAtRaw = task.doneAt ?? task.done_at ?? null
@@ -112,6 +187,9 @@ export function normalizeTaskForStorage(task, ownerUserId) {
     updatedAt: updatedAt ?? createdAt ?? Date.now(),
     doneAt,
   }
+
+  if (resolvedPosition != null) next.position = resolvedPosition
+  else delete next.position
 
   return next
 }

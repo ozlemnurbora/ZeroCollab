@@ -4,6 +4,7 @@ export function KanbanColumn({
   column,
   tasks,
   onDropTask,
+  onReorderTaskByKeyboard,
   onDeleteTask,
   onClickTask,
   onEditTask,
@@ -69,7 +70,7 @@ export function KanbanColumn({
         onDrop={(e) => {
           e.preventDefault()
           const taskId = e.dataTransfer.getData('text/task-id')
-          if (taskId) onDropTask?.(taskId, column.id)
+          if (taskId) onDropTask?.(taskId, column.id, null)
           setDropTargetColumnId?.(null)
         }}
       >
@@ -79,22 +80,49 @@ export function KanbanColumn({
           </div>
         ) : null}
 
-        {tasks.map((task) => (
-          <TaskCard
-            key={task.id}
-            task={task}
-            showSprintTaskBadge={sprintTaskBadge}
-            onDelete={onDeleteTask}
-            onClick={onClickTask}
-            onEdit={onEditTask}
-            isDragging={draggingTaskId === task.id}
-            onDragStart={(e, id) => {
-              setDraggingTaskId?.(id)
-              e.dataTransfer.setData('text/task-id', id)
-              e.dataTransfer.effectAllowed = 'move'
-            }}
-          />
-        ))}
+        {tasks.map((task, index) => {
+          const nextTask = tasks[index + 1]
+          return (
+            <div
+              key={task.id}
+              onDragOver={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                e.dataTransfer.dropEffect = 'move'
+              }}
+              onDrop={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                const dragId = e.dataTransfer.getData('text/task-id')
+                if (!dragId) return
+                const rect = e.currentTarget.getBoundingClientRect()
+                const before = e.clientY < rect.top + rect.height / 2
+                const insertBeforeTaskId = before
+                  ? task.id
+                  : nextTask
+                    ? nextTask.id
+                    : null
+                onDropTask?.(dragId, column.id, insertBeforeTaskId)
+                setDropTargetColumnId?.(null)
+              }}
+            >
+              <TaskCard
+                task={task}
+                showSprintTaskBadge={sprintTaskBadge}
+                onDelete={onDeleteTask}
+                onClick={onClickTask}
+                onEdit={onEditTask}
+                onReorderByKeyboard={onReorderTaskByKeyboard}
+                isDragging={draggingTaskId === task.id}
+                onDragStart={(e, id) => {
+                  setDraggingTaskId?.(id)
+                  e.dataTransfer.setData('text/task-id', id)
+                  e.dataTransfer.effectAllowed = 'move'
+                }}
+              />
+            </div>
+          )
+        })}
       </div>
     </section>
   )
