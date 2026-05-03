@@ -6,6 +6,12 @@ import { Button } from '../ui/Button.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 import { useAuth } from '../../utils/AuthContext.jsx'
 import { loadMessages, saveMessage } from '../chat/chatStorage.js'
+import {
+  canFetchRemoteTaskChat,
+  fetchTaskChatMessagesForTask,
+  persistMergedTaskChatForTask,
+  upsertTaskChatMessage,
+} from '../../utils/taskChatRemoteStorage.js'
 import { persistIncomingTaskChatIfEligible } from '../chat/taskChatInbound.js'
 import {
   isTaskChatMessageForTask,
@@ -152,17 +158,40 @@ export function TaskDetailModal({
       return
     }
     let cancelled = false
+    const taskId = task.id
+    const projectId = taskProjectKey
     void (async () => {
       const all = await loadMessages(currentUserId)
       if (cancelled) return
-      const thread = (Array.isArray(all) ? all : []).filter((m) =>
-        isTaskChatMessageForTask(m, task.id, taskProjectKey),
+      const localThread = (Array.isArray(all) ? all : []).filter((m) =>
+        isTaskChatMessageForTask(m, taskId, projectId),
       )
-      const merged = mergeTaskChatMessages([], thread)
+
+      let remote = []
+      if (
+        projectId != null &&
+        String(projectId).trim() !== '' &&
+        canFetchRemoteTaskChat(projectId, memberProjectIds, activeProject?.id ?? null)
+      ) {
+        remote = await fetchTaskChatMessagesForTask(projectId, taskId)
+      }
+      if (cancelled) return
+
+      const merged = mergeTaskChatMessages(localThread, remote)
       if (import.meta.env.DEV) {
-        console.log('[TaskChat] visible messages for task', task.id, {
+        console.log('[TaskChatBackfill] merged count', merged.length)
+      }
+
+      await persistMergedTaskChatForTask(currentUserId, taskId, projectId, merged)
+      if (cancelled) return
+      if (import.meta.env.DEV) {
+        console.log('[TaskChatBackfill] saved locally')
+      }
+
+      if (import.meta.env.DEV) {
+        console.log('[TaskChat] visible messages for task', taskId, {
           count: merged.length,
-          projectId: taskProjectKey,
+          projectId,
         })
       }
       setMessages(merged)
@@ -170,7 +199,16 @@ export function TaskDetailModal({
     return () => {
       cancelled = true
     }
-  }, [open, task?.id, task?.projectId, task?.project_id, currentUserId, taskProjectKey])
+  }, [
+    open,
+    task?.id,
+    task?.projectId,
+    task?.project_id,
+    currentUserId,
+    taskProjectKey,
+    memberProjectIds,
+    activeProject?.id,
+  ])
 
   useEffect(() => {
     if (!open || !task?.id || !currentUserId) return
@@ -251,6 +289,9 @@ export function TaskDetailModal({
     sendToAllPeers({ type: 'chat-message', payload: message })
     void broadcastMessage(message).catch((err) =>
       console.error('[TaskDetailModal] task chat broadcast failed:', err),
+    )
+    void upsertTaskChatMessage(message).catch((err) =>
+      console.error('[TaskDetailModal] task chat remote persist failed:', err),
     )
   }
 
