@@ -39,6 +39,10 @@ import {
   shouldAcceptIncomingChatPayload,
   userParticipatesInDmPair,
 } from './chatDmIds.js'
+import {
+  isTaskChatPayload,
+  persistIncomingTaskChatIfEligible,
+} from './taskChatInbound.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -72,7 +76,9 @@ export function ChatShell() {
   const ownerUserId = user?.id ?? null
   const ownerUserIdRef = useRef(ownerUserId)
   const userEmailRef = useRef(user?.email ?? '')
-  const { activeProject, teams } = useWorkspace()
+  const { activeProject, teams, memberProjectIds = [] } = useWorkspace()
+  const memberProjectIdsRef = useRef(memberProjectIds)
+  const activeProjectIdRef = useRef(activeProject?.id ?? null)
   const [onlineMembers, setOnlineMembers] = useState([])
 
   const memberNameFromAny = (member) =>
@@ -175,6 +181,14 @@ export function ChatShell() {
   useEffect(() => {
     ownerUserIdRef.current = ownerUserId
   }, [ownerUserId])
+
+  useEffect(() => {
+    memberProjectIdsRef.current = Array.isArray(memberProjectIds) ? memberProjectIds : []
+  }, [memberProjectIds])
+
+  useEffect(() => {
+    activeProjectIdRef.current = activeProject?.id ?? null
+  }, [activeProject?.id])
 
   useEffect(() => {
     userEmailRef.current = user?.email ?? ''
@@ -644,6 +658,17 @@ export function ChatShell() {
         const incoming = data.payload
         if (!incoming || !incoming.id) return
         const uid = ownerUserIdRef.current
+        if (incoming.kind === 'task-chat' && isTaskChatPayload(incoming)) {
+          if (uid) {
+            void persistIncomingTaskChatIfEligible(
+              incoming,
+              uid,
+              memberProjectIdsRef.current,
+              activeProjectIdRef.current,
+            )
+          }
+          return
+        }
         if (!shouldAcceptIncomingChatPayload(incoming, uid, userEmailRef.current)) return
         const stamped = uid ? { ...incoming, ownerUserId: uid } : incoming
         setMessages((prev) => {
@@ -911,6 +936,17 @@ export function ChatShell() {
       const msg = e.detail
       if (!msg || msg.action === 'task-sync' || msg.action === 'task-delete') return
       const uid = ownerUserIdRef.current
+      if (msg.kind === 'task-chat' && isTaskChatPayload(msg)) {
+        if (uid) {
+          void persistIncomingTaskChatIfEligible(
+            msg,
+            uid,
+            memberProjectIdsRef.current,
+            activeProjectIdRef.current,
+          )
+        }
+        return
+      }
       if (!shouldAcceptIncomingChatPayload(msg, uid, userEmailRef.current)) return
       const stamped = uid ? { ...msg, ownerUserId: uid } : msg
       setMessages((prev) => {

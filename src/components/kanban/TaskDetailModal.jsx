@@ -6,6 +6,7 @@ import { Button } from '../ui/Button.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 import { useAuth } from '../../utils/AuthContext.jsx'
 import { loadMessages, saveMessage } from '../chat/chatStorage.js'
+import { persistIncomingTaskChatIfEligible } from '../chat/taskChatInbound.js'
 import { broadcastMessage } from '../../utils/hubManager.js'
 import { on, P2P_EVENTS, sendToAllPeers } from '../../utils/p2pManager.js'
 import {
@@ -48,8 +49,10 @@ function formatMessageTime(timestamp) {
 
 function isTaskChatMessage(message, taskId, projectId) {
   if (!message || message.kind !== 'task-chat') return false
-  if (message.taskId !== taskId) return false
-  return (message.projectId ?? null) === (projectId ?? null)
+  if (String(message.taskId ?? message.task_id ?? '') !== String(taskId ?? '')) return false
+  const mp = message.projectId ?? message.project_id
+  const tp = projectId ?? null
+  return String(mp ?? '') === String(tp ?? '')
 }
 
 function getItemTypeLabel(itemType) {
@@ -95,7 +98,7 @@ export function TaskDetailModal({
 }) {
   const { t } = useLanguage()
   const { user } = useAuth()
-  const { projects, activeProject } = useWorkspace()
+  const { projects, activeProject, memberProjectIds = [] } = useWorkspace()
   const [isEditing, setIsEditing] = useState(!!initialEdit)
   const [form, setForm] = useState(() => (task ? { ...task } : null))
   const [messages, setMessages] = useState([])
@@ -136,6 +139,8 @@ export function TaskDetailModal({
     return activeProject?.projectMembers ?? []
   }, [task?.projectId, projects, activeProject])
 
+  const taskProjectKey = task?.projectId ?? task?.project_id ?? null
+
   useEffect(() => {
     if (!open) return
     setIsEditing(!!initialEdit)
@@ -154,24 +159,38 @@ export function TaskDetailModal({
       const all = await loadMessages(currentUserId)
       if (cancelled) return
       const filtered = (Array.isArray(all) ? all : [])
-        .filter((m) => isTaskChatMessage(m, task.id, task.projectId))
+        .filter((m) => isTaskChatMessage(m, task.id, taskProjectKey))
         .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+      if (import.meta.env.DEV) {
+        console.log('[TaskChat] visible messages for task', task.id, {
+          count: filtered.length,
+          projectId: taskProjectKey,
+        })
+      }
       setMessages(filtered)
     })()
     return () => {
       cancelled = true
     }
-  }, [open, task?.id, task?.projectId, currentUserId])
+  }, [open, task?.id, task?.projectId, task?.project_id, currentUserId, taskProjectKey])
 
   useEffect(() => {
     if (!open || !task?.id || !currentUserId) return
     const pushIncoming = (incoming) => {
-      if (!isTaskChatMessage(incoming, task.id, task.projectId)) return
+      if (!isTaskChatMessage(incoming, task.id, taskProjectKey)) return
+      if (import.meta.env.DEV) {
+        console.log('[TaskChat] received peer/hub message for open task', incoming.id)
+      }
       setMessages((prev) => {
         if (prev.some((m) => m.id === incoming.id)) return prev
         return [...prev, incoming].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
       })
-      void saveMessage({ ...incoming, ownerUserId: currentUserId }, currentUserId)
+      void persistIncomingTaskChatIfEligible(
+        incoming,
+        currentUserId,
+        memberProjectIds,
+        activeProject?.id ?? null,
+      )
     }
 
     const offP2PMessage = on(P2P_EVENTS.MESSAGE, ({ data }) => {
@@ -190,7 +209,16 @@ export function TaskDetailModal({
       offP2PMessage()
       window.removeEventListener('hub:message', onHubMessage)
     }
-  }, [open, task?.id, task?.projectId, currentUserId])
+  }, [
+    open,
+    task?.id,
+    task?.projectId,
+    task?.project_id,
+    currentUserId,
+    memberProjectIds,
+    activeProject?.id,
+    taskProjectKey,
+  ])
 
   const handleSendMessage = async () => {
     const text = input.trim()
@@ -199,13 +227,20 @@ export function TaskDetailModal({
       id: createMessageId(),
       channelId: taskChannelId,
       taskId: task.id,
-      projectId: task.projectId ?? null,
+      projectId: taskProjectKey,
       sender: currentUserName,
       senderUserId: currentUserId,
       text,
       createdAt: Date.now(),
       kind: 'task-chat',
       ownerUserId: currentUserId,
+    }
+    if (import.meta.env.DEV) {
+      console.log('[TaskChat] sending message', {
+        id: message.id,
+        taskId: message.taskId,
+        projectId: message.projectId,
+      })
     }
     await saveMessage(message, currentUserId)
     setMessages((prev) =>

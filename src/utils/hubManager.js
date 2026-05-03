@@ -172,6 +172,8 @@ export async function broadcastProjectDeleted(projectId) {
 
 export async function broadcastMessage(message) {
   if (!activeChannel) return
+  const resolvedProjectId =
+    message?.projectId ?? message?.project_id ?? currentProjectId ?? null
   await activeChannel.send({
     type: 'broadcast',
     event: 'message',
@@ -179,7 +181,7 @@ export async function broadcastMessage(message) {
       ...message,
       senderId: currentUserId,
       senderEmail: currentUserEmail,
-      projectId: currentProjectId,
+      projectId: resolvedProjectId,
     },
   })
 }

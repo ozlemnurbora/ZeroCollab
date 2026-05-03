@@ -8,6 +8,7 @@ import { ProjectDetailModal } from '../components/workspace/ProjectDetailModal.j
 import { TeamDetailModal } from '../components/workspace/TeamDetailModal.jsx'
 import { InvitationsPanel } from '../components/workspace/InvitationsPanel.jsx'
 import { MiniMeetingDock } from '../components/meetings/MiniMeetingDock.jsx'
+import { TaskChatInboundSync } from '../components/chat/TaskChatInboundSync.jsx'
 
 export function SidebarLayout() {
   const { t } = useLanguage()
@@ -515,6 +516,7 @@ export function SidebarLayout() {
 
         <main className="flex-1 px-4 py-4 md:px-6 md:py-6">
           <div className="w-full">
+            {user ? <TaskChatInboundSync /> : null}
             <Outlet />
           </div>
         </main>

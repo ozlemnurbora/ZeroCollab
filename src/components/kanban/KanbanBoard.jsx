@@ -25,7 +25,6 @@ import { useLanguage } from '../../utils/LanguageContext.jsx'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import { useAuth } from '../../utils/AuthContext.jsx'
 import { loadMeetings } from '../../utils/meetingStorage.js'
-import { saveMessage } from '../chat/chatStorage.js'
 import {
   broadcastMeetingUpdate,
   broadcastTaskDelete,
@@ -68,15 +67,6 @@ function isSprintCommittedKanbanTask(task) {
   if (!task) return false
   const sid = task.sprintId
   return sid != null && String(sid).trim() !== ''
-}
-
-function isTaskChatMessage(message) {
-  return (
-    !!message &&
-    message.kind === 'task-chat' &&
-    typeof message.taskId === 'string' &&
-    message.taskId.length > 0
-  )
 }
 
 export function KanbanBoard({ headerActions = null, variant = 'default' }) {
@@ -253,22 +243,6 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
     let hideTimer
     let peerBroadcastTimer
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
-      if (data?.type === 'chat-message') {
-        const incomingChat = data.payload
-        if (!isTaskChatMessage(incomingChat)) return
-        if (incomingChat.projectId && !memberProjectIds.includes(incomingChat.projectId))
-          return
-        if (
-          activeProject?.id &&
-          incomingChat.projectId &&
-          incomingChat.projectId !== activeProject.id
-        ) {
-          return
-        }
-        const uid = ownerUserIdRef.current
-        if (uid) void saveMessage(incomingChat, uid)
-        return
-      }
       if (data?.type === 'TASK_DELETE') {
         const { taskId, projectId } = data
         setTasks((prev) => {
@@ -386,14 +360,6 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
   useEffect(() => {
     const handleHubMessage = (e) => {
       const payload = e.detail || {}
-      if (isTaskChatMessage(payload)) {
-        if (payload.projectId && !memberProjectIds.includes(payload.projectId)) return
-        if (activeProject?.id && payload.projectId && payload.projectId !== activeProject.id)
-          return
-        const uid = ownerUserIdRef.current
-        if (uid) void saveMessage(payload, uid)
-        return
-      }
       const { action, tasks: incomingTasks, projectId, taskId } = payload
       if (action === 'task-delete') {
         if (activeProject?.id && projectId && projectId !== activeProject.id) return
