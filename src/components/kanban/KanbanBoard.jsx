@@ -39,6 +39,13 @@ import {
   taskVisibleInActiveProject,
   tasksForP2PBroadcast,
 } from '../../utils/taskP2PSync.js'
+import {
+  filterBacklogTasks,
+  filterReadyBacklogTasks,
+  filterRefinementSessionTasks,
+  filterSprintBoardScopedTasks,
+  filterSprintTasksForActiveSprint,
+} from '../../utils/kanbanBoardFilters.js'
 import { checkTaskReminders, startReminderChecker } from '../../utils/taskReminder.js'
 import { useScopedCustomCalendars } from '../../utils/useScopedCustomCalendars.js'
 import {
@@ -60,13 +67,6 @@ function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
     return crypto.randomUUID()
   return `task_${Date.now()}_${Math.random().toString(16).slice(2)}`
-}
-
-/** True when task.sprintId is set (committed to a sprint). */
-function isSprintCommittedKanbanTask(task) {
-  if (!task) return false
-  const sid = task.sprintId
-  return sid != null && String(sid).trim() !== ''
 }
 
 export function KanbanBoard({ headerActions = null, variant = 'default' }) {
@@ -447,47 +447,31 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
   }, [hasLoadedTasks, tasks, visibleProjectTasks, activeProject?.id, memberProjectIds])
 
   /** Tasks committed to the workspace active sprint (matches Tasks → Active Sprint). */
-  const sprintTasks = useMemo(() => {
-    if (!activeSprint?.id) return []
-    const sid = String(activeSprint.id)
-    return visibleProjectTasks.filter(
-      (task) => task && String(task.sprintId) === sid,
-    )
-  }, [visibleProjectTasks, activeSprint?.id])
+  const sprintTasks = useMemo(
+    () => filterSprintTasksForActiveSprint(visibleProjectTasks, activeSprint?.id),
+    [visibleProjectTasks, activeSprint?.id],
+  )
 
   /** Not sprint-committed; New or Refined only (Ready stays in All Tasks + Sprint Planning). */
-  const backlogTasks = useMemo(() => {
-    return visibleProjectTasks.filter((task) => {
-      if (!task) return false
-      if (isSprintCommittedKanbanTask(task)) return false
-      const bs = String(task.backlogState || 'new').toLowerCase()
-      return ['new', 'refined'].includes(bs)
-    })
-  }, [visibleProjectTasks])
+  const backlogTasks = useMemo(
+    () => filterBacklogTasks(visibleProjectTasks),
+    [visibleProjectTasks],
+  )
 
   /** Not sprint-committed; Refined only. */
-  const refinementSessionTasks = useMemo(() => {
-    return visibleProjectTasks.filter((task) => {
-      if (!task) return false
-      if (isSprintCommittedKanbanTask(task)) return false
-      return String(task.backlogState || '').toLowerCase() === 'refined'
-    })
-  }, [visibleProjectTasks])
+  const refinementSessionTasks = useMemo(
+    () => filterRefinementSessionTasks(visibleProjectTasks),
+    [visibleProjectTasks],
+  )
 
   /**
    * Ready, not sprint-committed, active project only (Tasks → Ready Backlog).
    * visibleProjectTasks already excludes deleted tasks.
    */
-  const readyBacklogTasks = useMemo(() => {
-    if (!activeProject?.id) return []
-    const pid = String(activeProject.id)
-    return visibleProjectTasks.filter((task) => {
-      if (!task || isTaskDeleted(task)) return false
-      if (String(task.projectId ?? '') !== pid) return false
-      if (isSprintCommittedKanbanTask(task)) return false
-      return String(task.backlogState || '').toLowerCase() === 'ready'
-    })
-  }, [visibleProjectTasks, activeProject?.id])
+  const readyBacklogTasks = useMemo(
+    () => filterReadyBacklogTasks(visibleProjectTasks, activeProject?.id),
+    [visibleProjectTasks, activeProject?.id],
+  )
 
   const refinementSessionMetrics = useMemo(() => {
     const list = refinementSessionTasks
@@ -501,12 +485,10 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
 
   const boardScopedTasks = useMemo(() => {
     if (isSprintBoard) {
-      if (!activeProject?.id || !activeSprint?.id) return []
-      return visibleProjectTasks.filter(
-        (task) =>
-          task &&
-          String(task.projectId) === String(activeProject.id) &&
-          String(task.sprintId) === String(activeSprint.id),
+      return filterSprintBoardScopedTasks(
+        visibleProjectTasks,
+        activeProject?.id,
+        activeSprint?.id,
       )
     }
     if (boardView === 'active_sprint') return hasActiveSprint ? sprintTasks : []

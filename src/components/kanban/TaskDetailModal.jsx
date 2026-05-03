@@ -7,6 +7,11 @@ import { useLanguage } from '../../utils/LanguageContext.jsx'
 import { useAuth } from '../../utils/AuthContext.jsx'
 import { loadMessages, saveMessage } from '../chat/chatStorage.js'
 import { persistIncomingTaskChatIfEligible } from '../chat/taskChatInbound.js'
+import {
+  isTaskChatMessageForTask,
+  mergeTaskChatMessages,
+  shouldAcceptIncomingTaskChatMessage,
+} from '../../utils/taskChatUtils.js'
 import { broadcastMessage } from '../../utils/hubManager.js'
 import { on, P2P_EVENTS, sendToAllPeers } from '../../utils/p2pManager.js'
 import {
@@ -45,14 +50,6 @@ function formatMessageTime(timestamp) {
   } catch {
     return ''
   }
-}
-
-function isTaskChatMessage(message, taskId, projectId) {
-  if (!message || message.kind !== 'task-chat') return false
-  if (String(message.taskId ?? message.task_id ?? '') !== String(taskId ?? '')) return false
-  const mp = message.projectId ?? message.project_id
-  const tp = projectId ?? null
-  return String(mp ?? '') === String(tp ?? '')
 }
 
 function getItemTypeLabel(itemType) {
@@ -158,16 +155,17 @@ export function TaskDetailModal({
     void (async () => {
       const all = await loadMessages(currentUserId)
       if (cancelled) return
-      const filtered = (Array.isArray(all) ? all : [])
-        .filter((m) => isTaskChatMessage(m, task.id, taskProjectKey))
-        .sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
+      const thread = (Array.isArray(all) ? all : []).filter((m) =>
+        isTaskChatMessageForTask(m, task.id, taskProjectKey),
+      )
+      const merged = mergeTaskChatMessages([], thread)
       if (import.meta.env.DEV) {
         console.log('[TaskChat] visible messages for task', task.id, {
-          count: filtered.length,
+          count: merged.length,
           projectId: taskProjectKey,
         })
       }
-      setMessages(filtered)
+      setMessages(merged)
     })()
     return () => {
       cancelled = true
@@ -177,14 +175,23 @@ export function TaskDetailModal({
   useEffect(() => {
     if (!open || !task?.id || !currentUserId) return
     const pushIncoming = (incoming) => {
-      if (!isTaskChatMessage(incoming, task.id, taskProjectKey)) return
+      if (!isTaskChatMessageForTask(incoming, task.id, taskProjectKey)) return
       if (import.meta.env.DEV) {
-        console.log('[TaskChat] received peer/hub message for open task', incoming.id)
+        console.log('[TaskChat] received', { id: incoming.id, projectId: incoming.projectId })
       }
-      setMessages((prev) => {
-        if (prev.some((m) => m.id === incoming.id)) return prev
-        return [...prev, incoming].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0))
-      })
+      if (
+        !shouldAcceptIncomingTaskChatMessage(
+          incoming,
+          memberProjectIds,
+          activeProject?.id ?? null,
+        )
+      ) {
+        return
+      }
+      if (import.meta.env.DEV) {
+        console.log('[TaskChat] accepted for project', incoming.projectId ?? incoming.project_id)
+      }
+      setMessages((prev) => mergeTaskChatMessages(prev, [incoming]))
       void persistIncomingTaskChatIfEligible(
         incoming,
         currentUserId,
@@ -236,16 +243,10 @@ export function TaskDetailModal({
       ownerUserId: currentUserId,
     }
     if (import.meta.env.DEV) {
-      console.log('[TaskChat] sending message', {
-        id: message.id,
-        taskId: message.taskId,
-        projectId: message.projectId,
-      })
+      console.log('[TaskChat] sending', { id: message.id, taskId: message.taskId, projectId: message.projectId })
     }
     await saveMessage(message, currentUserId)
-    setMessages((prev) =>
-      [...prev, message].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0)),
-    )
+    setMessages((prev) => mergeTaskChatMessages(prev, [message]))
     setInput('')
     sendToAllPeers({ type: 'chat-message', payload: message })
     void broadcastMessage(message).catch((err) =>
