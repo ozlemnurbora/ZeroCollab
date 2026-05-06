@@ -363,6 +363,7 @@ export async function pruneSharedTasksByProjectIds(projectIds, ownerUserId) {
   const ids = new Set(Array.isArray(projectIds) ? projectIds.filter(Boolean) : [])
   if (ids.size === 0) return
   const current = await loadTasks(ownerUserId)
+  const before = current.length
   const next = current.filter((task) => {
     if (!task?.projectId) return true
     return !ids.has(task.projectId)
@@ -371,6 +372,11 @@ export async function pruneSharedTasksByProjectIds(projectIds, ownerUserId) {
     await saveTasks(next, ownerUserId, {
       allowEmpty: true,
       reason: 'pruneSharedTasksByProjectIds',
+    })
+    console.log('[TaskStorage] pruned tasks for deleted projects:', {
+      projectIds: Array.from(ids),
+      before,
+      after: next.length,
     })
   }
 }

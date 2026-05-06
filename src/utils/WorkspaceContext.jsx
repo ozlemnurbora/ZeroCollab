@@ -379,8 +379,12 @@ export function WorkspaceProvider({ children }) {
 
     if (isProjOwner) {
       await dbDeleteProject(projectId, user.id)
+      await pruneSharedTasksByProjectIds([projectId], user.id)
+      await pruneMeetingsByProjectIds([projectId], user.id)
     } else if (memberSource === 'direct') {
       await dbLeaveProject(projectId, user.id)
+      await pruneSharedTasksByProjectIds([projectId], user.id)
+      await pruneMeetingsByProjectIds([projectId], user.id)
     } else {
       console.warn(
         '[WorkspaceContext] removeProject blocked: only direct-invite members may leave',

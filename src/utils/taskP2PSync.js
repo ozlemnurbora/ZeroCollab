@@ -181,13 +181,22 @@ export function filterTasksForVisibility(tasks, options = {}) {
   const { allowedProjectIds = [], currentUserId = null } = options
   const allowed = normalizeSet(allowedProjectIds)
   const normalized = list.map(normalizeTaskShape).filter(Boolean)
-  // Backward-compat: if membership/projects haven't loaded yet, do not hide everything.
-  if (allowed.size === 0) return normalized
-  return normalized.filter(
+
+  // Always remove deleted/tombstone tasks first (even when no projects are allowed).
+  const nonDeleted = normalized.filter((task) => !isTaskDeleted(task))
+
+  // If there are no allowed projects, never show project-scoped tasks.
+  // Only keep personal/local tasks that do NOT have a projectId.
+  if (allowed.size === 0) {
+    return nonDeleted.filter(
+      (task) => !task.projectId && isOwnedPersonalTask(task, currentUserId),
+    )
+  }
+
+  return nonDeleted.filter(
     (task) =>
-      !isTaskDeleted(task) &&
-      (isOwnedPersonalTaskInAllowedProjects(task, currentUserId, allowedProjectIds) ||
-        isAuthorizedProjectTask(task, allowed)),
+      isOwnedPersonalTaskInAllowedProjects(task, currentUserId, allowedProjectIds) ||
+      isAuthorizedProjectTask(task, allowed),
   )
 }
 

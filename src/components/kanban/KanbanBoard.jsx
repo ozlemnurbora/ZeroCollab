@@ -872,6 +872,20 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
   const deleteTask = (taskId) => {
     const removed = tasksRef.current.find((t) => t.id === taskId) ?? null
     if (!removed) return
+    // Personal/no-project tasks: remove locally immediately.
+    if (!removed.projectId) {
+      setTasks((prev) => {
+        const next = prev.filter((t) => t?.id !== taskId)
+        broadcastTasks(next)
+        if (ownerUserId) {
+          void saveTasks(next, ownerUserId, { allowEmpty: true, reason: 'deleteTask personal' })
+        }
+        return next
+      })
+      return
+    }
+
+    // Project-scoped tasks: keep tombstone soft-delete for remote/P2P sync.
     const tombstone = normalizeTaskForStorage(
       markTaskSoftDeleted({ ...removed }, Date.now()),
       ownerUserId,
