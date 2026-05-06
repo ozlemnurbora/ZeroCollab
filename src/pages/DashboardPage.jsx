@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
-import { loadTasks, isTaskDeleted } from '../components/kanban/taskStorage.js'
+import { loadTasks } from '../components/kanban/taskStorage.js'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
+import { filterTasksForVisibility } from '../utils/taskP2PSync.js'
 import {
   Line,
   LineChart,
@@ -26,12 +27,30 @@ function statusPieColor(id) {
   return '#4b5563'
 }
 
+export function getVisibleDashboardTasks(
+  rawTasks,
+  memberProjectIds,
+  currentUserId,
+  activeProjectId = null,
+) {
+  const allowed = Array.isArray(memberProjectIds) ? memberProjectIds : []
+  const scoped = filterTasksForVisibility(rawTasks, {
+    allowedProjectIds: allowed,
+    currentUserId: currentUserId ?? null,
+  })
+  if (!activeProjectId) return scoped
+  // Preserve existing dashboard behavior: when a project is active, scope to that project's tasks
+  // plus personal/no-project tasks (recovery).
+  return scoped.filter((t) => t?.projectId === activeProjectId || !t?.projectId)
+}
+
 export function DashboardPage() {
   const { t } = useLanguage()
   const { user } = useAuth()
   const {
     activeProject,
     teams,
+    memberProjectIds,
   } = useWorkspace()
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
@@ -62,14 +81,17 @@ export function DashboardPage() {
   }, [user?.id])
 
   const visibleTasks = useMemo(() => {
-    const alive = (Array.isArray(tasks) ? tasks : []).filter((t) => t && !isTaskDeleted(t))
-    if (!activeProject) return alive
-    return alive.filter(
-      (t) => t.projectId === activeProject.id || !t.projectId,
+    return getVisibleDashboardTasks(
+      tasks,
+      memberProjectIds,
+      user?.id ?? null,
+      activeProject?.id ?? null,
     )
-  }, [tasks, activeProject])
+  }, [tasks, memberProjectIds, user?.id, activeProject?.id])
 
   const projectMembers = useMemo(() => {
+    // No visible tasks → do not infer phantom members.
+    if (!visibleTasks || visibleTasks.length === 0) return []
     if (!activeProject || !teams || teams.length === 0) {
       const assignees = new Set()
       visibleTasks.forEach((task) => {
@@ -188,6 +210,10 @@ export function DashboardPage() {
     }
   }, [visibleTasks, t, projectMembers])
 
+  const showStrictEmpty =
+    (Array.isArray(memberProjectIds) ? memberProjectIds.length : 0) === 0 &&
+    stats.total === 0
+
   return (
     <section>
       <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
@@ -255,7 +281,7 @@ export function DashboardPage() {
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <Panel title={t('dash_recent_tasks')} subtitle={t('dash_recent_tasks_sub')}>
           {stats.recent.length === 0 ? (
-            <EmptyState>{t('dash_empty_recent')}</EmptyState>
+            <EmptyState>{showStrictEmpty ? 'No visible tasks yet.' : t('dash_empty_recent')}</EmptyState>
           ) : (
             <ul className="divide-y divide-[rgb(var(--zc-border))]">
               {stats.recent.map((task) => (
@@ -279,33 +305,39 @@ export function DashboardPage() {
         </Panel>
 
         <Panel title={t('dash_team_workload')} subtitle={t('dash_team_workload_sub')}>
-          <ul className="space-y-3">
-            {stats.workload.map((m) => (
-              <li
-                key={m.name}
-                className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] p-3"
-              >
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-[rgb(var(--zc-text))]">{m.name}</p>
-                  <span className="rounded-md bg-[rgb(var(--zc-bg)/0.4)] px-2 py-1 text-xs text-[rgb(var(--zc-muted))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
-                    {m.count}{' '}
-                    {m.count === 1 ? t('dash_task_one') : t('dash_task_many')}
-                  </span>
-                </div>
-                <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[rgb(var(--zc-panel))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
-                  <div
-                    className="h-full rounded-full bg-indigo-500/70"
-                    style={{
-                      width:
-                        stats.total === 0
-                          ? '0%'
-                          : `${Math.round((m.count / stats.total) * 100)}%`,
-                    }}
-                  />
-                </div>
-              </li>
-            ))}
-          </ul>
+          {stats.workload.length === 0 ? (
+            <EmptyState>
+              {showStrictEmpty ? 'No workload data available.' : t('dash_no_members')}
+            </EmptyState>
+          ) : (
+            <ul className="space-y-3">
+              {stats.workload.map((m) => (
+                <li
+                  key={m.name}
+                  className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] p-3"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-sm font-medium text-[rgb(var(--zc-text))]">{m.name}</p>
+                    <span className="rounded-md bg-[rgb(var(--zc-bg)/0.4)] px-2 py-1 text-xs text-[rgb(var(--zc-muted))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
+                      {m.count}{' '}
+                      {m.count === 1 ? t('dash_task_one') : t('dash_task_many')}
+                    </span>
+                  </div>
+                  <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[rgb(var(--zc-panel))] ring-1 ring-inset ring-[rgb(var(--zc-border))]">
+                    <div
+                      className="h-full rounded-full bg-indigo-500/70"
+                      style={{
+                        width:
+                          stats.total === 0
+                            ? '0%'
+                            : `${Math.round((m.count / stats.total) * 100)}%`,
+                      }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </Panel>
       </div>
 
