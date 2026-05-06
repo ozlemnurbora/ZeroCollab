@@ -61,6 +61,15 @@ describe('kanban board filters', () => {
     expect(rb.map((t) => t.id)).toEqual(['ready-1'])
   })
 
+  it('Ready backlog keeps Ready items even if status is done (until sprintId is set)', () => {
+    const list = [
+      mk({ id: 'ready-done', backlogState: 'ready', sprintId: null, status: 'done' }),
+      mk({ id: 'ready-in-sprint', backlogState: 'ready', sprintId: sprint1, status: 'done' }),
+    ]
+    const rb = filterReadyBacklogTasks(list, pid)
+    expect(rb.map((t) => t.id)).toEqual(['ready-done'])
+  })
+
   it('Active sprint list includes only tasks with that sprintId', () => {
     const st = filterSprintTasksForActiveSprint(tasks, sprint1)
     expect(st.map((t) => t.id)).toEqual(['sprint-1'])

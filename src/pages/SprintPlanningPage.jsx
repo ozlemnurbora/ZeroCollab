@@ -249,8 +249,7 @@ export function SprintPlanningPage() {
         (t) =>
           t.backlogState === 'ready' &&
           !t.sprintId &&
-          isSprintCompatibleItemType(t.itemType || 'task') &&
-          t.status !== 'done',
+          isSprintCompatibleItemType(t.itemType || 'task'),
       ),
     [projectTasks],
   )
