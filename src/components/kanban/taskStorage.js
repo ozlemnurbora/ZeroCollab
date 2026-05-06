@@ -353,6 +353,13 @@ export async function saveTasks(tasks, ownerUserId, options = {}) {
     if (!allowEmpty && normalized.length === 0) return
     console.log('[TaskStorage] saving full task list count:', normalized.length, { ownerUserId, reason })
     await replaceTasksForOwner(ownerUserId, normalized, { allowEmpty, reason })
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('zc-tasks-changed', {
+          detail: { ownerUserId, reason, count: normalized.length },
+        }),
+      )
+    }
   } catch {
     // ignore storage errors
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { getVisibleDashboardTasks } from '../../pages/DashboardPage.jsx'
+import { getVisibleDashboardTasks } from '../dashboard/dashboardTaskUtils.js'
 
 const mk = (overrides) => ({
   id: `t_${Math.random().toString(16).slice(2)}`,
@@ -14,7 +14,12 @@ describe('getVisibleDashboardTasks', () => {
       mk({ id: 'orphan', projectId: 'proj-1', calendarType: 'general' }),
       mk({ id: 'personal', projectId: null, calendarType: 'personal', ownerUserId: 'u1' }),
     ]
-    const visible = getVisibleDashboardTasks(raw, [], 'u1', null)
+    const visible = getVisibleDashboardTasks({
+      rawTasks: raw,
+      memberProjectIds: [],
+      currentUserId: 'u1',
+      activeProjectId: null,
+    })
     expect(visible.map((t) => t.id)).toEqual(['personal'])
   })
 
@@ -23,13 +28,23 @@ describe('getVisibleDashboardTasks', () => {
       mk({ id: 'del', deleted: true, projectId: null, calendarType: 'personal' }),
       mk({ id: 'ok', projectId: null, calendarType: 'personal' }),
     ]
-    const visible = getVisibleDashboardTasks(raw, [], 'u1', null)
+    const visible = getVisibleDashboardTasks({
+      rawTasks: raw,
+      memberProjectIds: [],
+      currentUserId: 'u1',
+      activeProjectId: null,
+    })
     expect(visible.map((t) => t.id)).toEqual(['ok'])
   })
 
   it('personal task with no projectId can be counted', () => {
     const raw = [mk({ id: 'p', projectId: null, calendarType: 'personal' })]
-    const visible = getVisibleDashboardTasks(raw, [], 'u1', null)
+    const visible = getVisibleDashboardTasks({
+      rawTasks: raw,
+      memberProjectIds: [],
+      currentUserId: 'u1',
+      activeProjectId: null,
+    })
     expect(visible.map((t) => t.id)).toEqual(['p'])
   })
 
@@ -38,7 +53,12 @@ describe('getVisibleDashboardTasks', () => {
       mk({ id: 'orphan', projectId: 'proj-x', calendarType: 'general', assignee: 'Ghost' }),
       mk({ id: 'p', projectId: null, calendarType: 'personal', assignee: 'Me' }),
     ]
-    const visible = getVisibleDashboardTasks(raw, [], 'u1', null)
+    const visible = getVisibleDashboardTasks({
+      rawTasks: raw,
+      memberProjectIds: [],
+      currentUserId: 'u1',
+      activeProjectId: null,
+    })
     expect(visible.some((t) => t.assignee === 'Ghost')).toBe(false)
     expect(visible.some((t) => t.assignee === 'Me')).toBe(true)
   })
@@ -48,7 +68,12 @@ describe('getVisibleDashboardTasks', () => {
       mk({ id: 'p1', projectId: 'proj-1', calendarType: 'general' }),
       mk({ id: 'p2', projectId: 'proj-2', calendarType: 'general' }),
     ]
-    const visible = getVisibleDashboardTasks(raw, ['proj-2'], 'u1', null)
+    const visible = getVisibleDashboardTasks({
+      rawTasks: raw,
+      memberProjectIds: ['proj-2'],
+      currentUserId: 'u1',
+      activeProjectId: null,
+    })
     expect(visible.map((t) => t.id)).toEqual(['p2'])
   })
 })

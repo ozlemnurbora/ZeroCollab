@@ -1,9 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { loadTasks } from '../components/kanban/taskStorage.js'
+import {
+  loadTasks,
+  mergeTaskListsByIdPreferNewer,
+  normalizeTaskForStorage,
+} from '../components/kanban/taskStorage.js'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
-import { filterTasksForVisibility } from '../utils/taskP2PSync.js'
+import {
+  calculateDashboardMetrics,
+  buildDashboardMembers,
+  getVisibleDashboardTasks,
+} from '../utils/dashboard/dashboardTaskUtils.js'
+import { fetchRemoteProjectTasks } from '../utils/taskRemoteStorage.js'
 import {
   Line,
   LineChart,
@@ -27,23 +36,6 @@ function statusPieColor(id) {
   return '#4b5563'
 }
 
-export function getVisibleDashboardTasks(
-  rawTasks,
-  memberProjectIds,
-  currentUserId,
-  activeProjectId = null,
-) {
-  const allowed = Array.isArray(memberProjectIds) ? memberProjectIds : []
-  const scoped = filterTasksForVisibility(rawTasks, {
-    allowedProjectIds: allowed,
-    currentUserId: currentUserId ?? null,
-  })
-  if (!activeProjectId) return scoped
-  // Preserve existing dashboard behavior: when a project is active, scope to that project's tasks
-  // plus personal/no-project tasks (recovery).
-  return scoped.filter((t) => t?.projectId === activeProjectId || !t?.projectId)
-}
-
 export function DashboardPage() {
   const { t } = useLanguage()
   const { user } = useAuth()
@@ -55,11 +47,6 @@ export function DashboardPage() {
   const [tasks, setTasks] = useState([])
   const [isLoadingTasks, setIsLoadingTasks] = useState(true)
 
-  const memberNameFromAny = (member) =>
-    typeof member === 'string'
-      ? member
-      : member?.name || member?.email || 'Unknown'
-
   useEffect(() => {
     const ownerUserId = user?.id ?? null
     if (!ownerUserId) {
@@ -68,147 +55,123 @@ export function DashboardPage() {
       return
     }
     let cancelled = false
-    ;(async () => {
+    const refresh = async () => {
       setIsLoadingTasks(true)
-      const next = await loadTasks(ownerUserId)
+      const rawLocal = await loadTasks(ownerUserId)
+      const localArr = Array.isArray(rawLocal) ? rawLocal : []
+
+      const projectId = activeProject?.id ?? null
+      let remote = []
+      if (projectId) {
+        try {
+          remote = await fetchRemoteProjectTasks(projectId)
+        } catch {
+          remote = []
+        }
+      }
+
+      const merged = mergeTaskListsByIdPreferNewer(
+        localArr,
+        Array.isArray(remote) ? remote : [],
+      )
+      const next = merged
+        .map((t) => normalizeTaskForStorage(t, ownerUserId))
+        .filter(Boolean)
       if (cancelled) return
-      setTasks(Array.isArray(next) ? next : [])
+      setTasks((prev) => {
+        const a = JSON.stringify(Array.isArray(prev) ? prev : [])
+        const b = JSON.stringify(Array.isArray(next) ? next : [])
+        return a === b ? prev : next
+      })
       setIsLoadingTasks(false)
-    })()
+    }
+    void refresh()
+
+    const onTasksChanged = (e) => {
+      const owner = e?.detail?.ownerUserId ?? null
+      if (owner && String(owner) !== String(ownerUserId)) return
+      void refresh()
+    }
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    window.addEventListener('zc-tasks-changed', onTasksChanged)
+    document.addEventListener('visibilitychange', onVis)
     return () => {
       cancelled = true
+      window.removeEventListener('zc-tasks-changed', onTasksChanged)
+      document.removeEventListener('visibilitychange', onVis)
     }
-  }, [user?.id])
+  }, [user?.id, activeProject?.id])
 
   const visibleTasks = useMemo(() => {
-    return getVisibleDashboardTasks(
-      tasks,
+    return getVisibleDashboardTasks({
+      rawTasks: tasks,
       memberProjectIds,
-      user?.id ?? null,
-      activeProject?.id ?? null,
-    )
+      currentUserId: user?.id ?? null,
+      activeProjectId: activeProject?.id ?? null,
+    })
   }, [tasks, memberProjectIds, user?.id, activeProject?.id])
 
-  const projectMembers = useMemo(() => {
-    // No visible tasks → do not infer phantom members.
-    if (!visibleTasks || visibleTasks.length === 0) return []
-    if (!activeProject || !teams || teams.length === 0) {
-      const assignees = new Set()
-      visibleTasks.forEach((task) => {
-        if (task.assignee) assignees.add(task.assignee)
-      })
-      return Array.from(assignees)
-    }
+  // (Debug logs removed to avoid noisy rerenders)
 
-    const projectTeamIds = activeProject.teamIds || []
-    const projectTeams = teams.filter((team) => projectTeamIds.includes(team.id))
-
-    const members = new Set()
-    projectTeams.forEach((team) => {
-      ;(team.members || []).forEach((member) =>
-        members.add(memberNameFromAny(member)),
-      )
-    })
-
-    if (members.size === 0) {
-      visibleTasks.forEach((task) => {
-        if (task.assignee) members.add(task.assignee)
-      })
-    }
-
-    return Array.from(members)
+  const members = useMemo(() => {
+    return buildDashboardMembers({ activeProject, teams, visibleTasks })
   }, [activeProject, teams, visibleTasks])
 
   const stats = useMemo(() => {
-    const total = visibleTasks.length
-    const inProgress = visibleTasks.filter((task) => task.status === 'in_progress').length
-    const inReview = visibleTasks.filter((task) => task.status === 'in_review').length
-    const done = visibleTasks.filter((task) => task.status === 'done').length
+    const metrics = calculateDashboardMetrics({ visibleTasks })
 
-    const recent = [...visibleTasks]
-      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
-      .slice(0, 5)
-
-    const workload = projectMembers.map((name) => ({
-      name,
-      count: visibleTasks.filter((task) => task.assignee === name).length,
-    }))
-
-    const todo = visibleTasks.filter((task) => {
-      const s = task.status
-      return s !== 'in_progress' && s !== 'in_review' && s !== 'done'
-    }).length
-
-    const createdByDay = new Map()
-    const completedByDay = new Map()
-
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(today)
-      d.setDate(today.getDate() - i)
-      const key = d.toISOString().slice(0, 10)
-      createdByDay.set(key, 0)
-      completedByDay.set(key, 0)
-    }
-
-    for (const task of visibleTasks) {
-      if (task.createdAt) {
-        const d = new Date(task.createdAt)
-        d.setHours(0, 0, 0, 0)
-        const key = d.toISOString().slice(0, 10)
-        if (createdByDay.has(key)) {
-          createdByDay.set(key, createdByDay.get(key) + 1)
-        }
-      }
-      if (task.status === 'done' && task.completedAt) {
-        const d = new Date(task.completedAt)
-        d.setHours(0, 0, 0, 0)
-        const key = d.toISOString().slice(0, 10)
-        if (completedByDay.has(key)) {
-          completedByDay.set(key, completedByDay.get(key) + 1)
-        }
-      }
-    }
-
-    const weeklyActivity = Array.from(createdByDay.keys()).map((key) => {
-      const d = new Date(key)
-      const label = `${d.getMonth() + 1}/${d.getDate()}`
-      return {
-        date: label,
-        created: createdByDay.get(key) ?? 0,
-        completed: completedByDay.get(key) ?? 0,
-      }
-    })
-
-    const progressPct = total === 0 ? 0 : Math.round((done / total) * 100)
-
+    // Keep existing shape expected by the UI below.
     const statusPie = [
-      { id: 'todo', name: t('status_todo'), value: todo },
-      { id: 'in_progress', name: t('status_in_progress'), value: inProgress },
-      { id: 'in_review', name: t('status_in_review'), value: inReview },
-      { id: 'done', name: t('status_done'), value: done },
+      { id: 'todo', name: t('status_todo'), value: metrics.taskStatusCounts.todo },
+      {
+        id: 'in_progress',
+        name: t('status_in_progress'),
+        value: metrics.taskStatusCounts.in_progress,
+      },
+      {
+        id: 'in_review',
+        name: t('status_in_review'),
+        value: metrics.taskStatusCounts.in_review,
+      },
+      { id: 'done', name: t('status_done'), value: metrics.taskStatusCounts.done },
     ]
 
     const projectProgressPie = [
-      { id: 'completed', name: t('chart_completed'), value: progressPct },
-      { id: 'remaining', name: t('chart_remaining'), value: 100 - progressPct },
+      { id: 'completed', name: t('chart_completed'), value: metrics.completionPercent },
+      { id: 'remaining', name: t('chart_remaining'), value: 100 - metrics.completionPercent },
     ]
 
-    return {
-      total,
-      inProgress,
-      inReview,
-      done,
-      recent,
+    const countsByKey = new Map(
+      (metrics.workloadByMember || []).map((x) => [x.key, x.count]),
+    )
+    const workload = (members || []).map((m) => ({
+      name: m.display,
+      count: countsByKey.get(m.key) ?? 0,
+    }))
+
+    const out = {
+      total: metrics.totalTasks,
+      inProgress: metrics.inProgressTasks,
+      inReview: metrics.inReviewTasks,
+      done: metrics.completedTasks,
+      recent: metrics.recentTasks,
       workload,
       statusPie,
       projectProgressPie,
-      weeklyActivity,
-      progressPct,
+      weeklyActivity: metrics.weeklyActivity,
+      progressPct: metrics.completionPercent,
     }
-  }, [visibleTasks, t, projectMembers])
+
+    console.log('[Dashboard Workload Debug]', {
+      visibleTasks,
+      members,
+      workloadByMember: workload,
+    })
+
+    return out
+  }, [visibleTasks, t, members, activeProject])
 
   const showStrictEmpty =
     (Array.isArray(memberProjectIds) ? memberProjectIds.length : 0) === 0 &&
@@ -272,8 +235,8 @@ export function DashboardPage() {
         />
         <SummaryCard
           title={t('dash_team_members')}
-          value={projectMembers.length}
-          helper={projectMembers.join(', ') || t('dash_no_members')}
+          value={members.length}
+          helper={members.map((m) => m.display).join(', ') || t('dash_no_members')}
           color="text-violet-400"
         />
       </div>

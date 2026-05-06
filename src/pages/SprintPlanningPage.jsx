@@ -8,6 +8,7 @@ import {
   mergeTaskListsByIdPreferNewer,
   isTaskDeleted,
 } from '../components/kanban/taskStorage.js'
+import { getTasksForActiveSprint } from '../utils/sprint/sprintProgressUtils.js'
 import {
   tasksForP2PBroadcast,
   mergeTasksFromSync,
@@ -266,14 +267,13 @@ export function SprintPlanningPage() {
   )
 
   const sprintBacklog = useMemo(() => {
-    if (!activeSprint?.id || !activeProject?.id) return []
-    return projectTasks.filter(
-      (t) =>
-        t &&
-        String(t.projectId) === String(activeProject.id) &&
-        String(t.sprintId) === String(activeSprint.id),
-    )
+    return getTasksForActiveSprint(projectTasks, activeSprint, activeProject?.id ?? null)
   }, [projectTasks, activeSprint?.id, activeProject?.id])
+
+  useEffect(() => {
+    // TEMP DEBUG: ensure Sprint Planning and Project Overview are using the same sprint backlog definition
+    console.log('[SprintPlanning Debug] Sprint Backlog Items', sprintBacklog)
+  }, [sprintBacklog])
 
   const projectForMembers = useMemo(() => {
     if (!activeProject?.id) return activeProject
@@ -290,13 +290,7 @@ export function SprintPlanningPage() {
     currentMember?.custom_role === 'project_manager'
 
   const sprintTasks = useMemo(() => {
-    if (!activeSprint?.id || !activeProject?.id) return []
-    return projectTasks.filter(
-      (t) =>
-        t &&
-        String(t.projectId) === String(activeProject.id) &&
-        String(t.sprintId) === String(activeSprint.id),
-    )
+    return getTasksForActiveSprint(projectTasks, activeSprint, activeProject?.id ?? null)
   }, [projectTasks, activeSprint?.id, activeProject?.id])
 
   const hasSprintGoal = Boolean(

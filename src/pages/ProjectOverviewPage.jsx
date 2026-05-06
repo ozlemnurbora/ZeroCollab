@@ -1,10 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
-import { loadTasks, isTaskDeleted } from '../components/kanban/taskStorage.js'
+import {
+  loadTasks,
+  isTaskDeleted,
+  mergeTaskListsByIdPreferNewer,
+  normalizeTaskForStorage,
+  saveTasks,
+} from '../components/kanban/taskStorage.js'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { SprintCreationModal } from '../components/workspace/SprintCreationModal.jsx'
 import { getSprintRemainingDays } from '../utils/sprintDateUtils.js'
+import { fetchRemoteProjectTasks } from '../utils/taskRemoteStorage.js'
+import { calculateSprintProgress } from '../utils/sprint/sprintProgressUtils.js'
 
 function fmtDate(value) {
   if (!value) return '—'
@@ -40,14 +48,45 @@ export function ProjectOverviewPage() {
       return
     }
     let cancelled = false
-    void (async () => {
-      const next = await loadTasks(user.id)
-      if (!cancelled) setTasks(Array.isArray(next) ? next : [])
-    })()
+    const refresh = async () => {
+      const rawLocal = await loadTasks(user.id)
+      const localArr = Array.isArray(rawLocal) ? rawLocal : []
+      const projectId = activeProject?.id ?? null
+      let remote = []
+      if (projectId) {
+        try {
+          remote = await fetchRemoteProjectTasks(projectId)
+        } catch {
+          remote = []
+        }
+      }
+      const merged = mergeTaskListsByIdPreferNewer(
+        localArr,
+        Array.isArray(remote) ? remote : [],
+      )
+      const normalized = merged
+        .map((t) => normalizeTaskForStorage(t, user.id))
+        .filter(Boolean)
+      if (cancelled) return
+      setTasks(normalized)
+      if (projectId && normalized.length > 0) {
+        // Keep local cache aligned with sprint planning (which also persists the merge).
+        await saveTasks(normalized, user.id, { reason: 'ProjectOverview remote merge' })
+      }
+    }
+    void refresh()
+
+    const onTasksChanged = (e) => {
+      const owner = e?.detail?.ownerUserId ?? null
+      if (owner && String(owner) !== String(user.id)) return
+      void refresh()
+    }
+    window.addEventListener('zc-tasks-changed', onTasksChanged)
     return () => {
       cancelled = true
+      window.removeEventListener('zc-tasks-changed', onTasksChanged)
     }
-  }, [user?.id])
+  }, [user?.id, activeProject?.id])
 
   const projectTasks = useMemo(() => {
     if (!activeProject?.id) return []
@@ -57,12 +96,22 @@ export function ProjectOverviewPage() {
   }, [tasks, activeProject?.id])
 
   const progress = useMemo(() => {
-    const total = projectTasks.length
-    const completed = projectTasks.filter((t) => t.status === 'done').length
-    const inProgress = projectTasks.filter((t) => t.status === 'in_progress').length
-    const completionPct = total > 0 ? Math.round((completed / total) * 100) : 0
-    return { total, completed, inProgress, completionPct }
-  }, [projectTasks])
+    const projectId = activeProject?.id ?? null
+
+    console.log('[ProjectOverview Debug] Active Sprint', activeSprint ?? null)
+    console.log('[ProjectOverview Debug] Project ID', projectId)
+    console.log('[ProjectOverview Debug] All Tasks', Array.isArray(tasks) ? tasks : [])
+
+    const p = calculateSprintProgress(projectTasks, activeSprint, projectId)
+    console.log('[ProjectOverview Debug] Sprint Progress', p)
+
+    return {
+      total: p.totalTasks,
+      completed: p.completedTasks,
+      inProgress: p.inProgressTasks,
+      completionPct: p.completionPercent,
+    }
+  }, [projectTasks, activeSprint, activeProject?.id, tasks])
 
   const assignedTeams = useMemo(() => {
     if (!activeProject?.teamIds?.length) return []
