@@ -107,6 +107,7 @@ export function SidebarLayout() {
       { to: '/calendar', label: t('nav_calendar') },
       { to: '/chat', label: t('nav_chat') },
       { to: '/evaluation', label: t('nav_evaluation') },
+      { to: '/token-economics', label: 'Token Economics' },
       { to: '/settings', label: t('nav_settings') },
     ],
     [t],

@@ -10,6 +10,10 @@ import {
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
 import { loadOntologyText, loadGradeThresholds } from '../utils/ontologyLoader.js'
+import {
+  canRunEvaluation,
+  recordEvaluationRun,
+} from '../utils/tokenEconomics/quotaGuardService.js'
 
 const ANTHROPIC_API_KEY_STORAGE = 'zc-anthropic-key'
 
@@ -309,6 +313,13 @@ export function EvaluationPage() {
       return
     }
 
+    if (!canRunEvaluation()) {
+      alert(
+        'Your current tier has reached the AI evaluation limit. Hold more ZC tokens to unlock more evaluations.',
+      )
+      return
+    }
+
     setIsEvaluating(true)
     setEvalLogs([])
     setEvalProgress(0)
@@ -432,6 +443,7 @@ Respond with ONLY this JSON format, no markdown:
         ...(ownerUserId ? { ownerUserId } : {}),
       }
       setHistory((prev) => [snapshot, ...prev])
+      recordEvaluationRun()
     } catch (err) {
       console.error('[EvaluationPage] AI error:', err)
       addLog(`Failed: ${err.message}`, 'error')

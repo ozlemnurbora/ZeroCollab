@@ -12,6 +12,10 @@ import {
 } from '../../utils/invitationManager.js'
 import { supabase } from '../../utils/supabase.js'
 import { joinProjectAsMember } from '../../utils/workspaceDB.js'
+import {
+  canAddTeamMember,
+  recordTeamMemberAdded,
+} from '../../utils/tokenEconomics/quotaGuardService.js'
 
 export function InvitationsPanel() {
   const { user } = useAuth()
@@ -87,6 +91,15 @@ export function InvitationsPanel() {
 
   const handleAcceptTeam = async (invitation) => {
     try {
+      if (!canAddTeamMember()) {
+        if (typeof window !== 'undefined') {
+          window.alert(
+            'Your current tier has reached the team member limit. Hold more ZC tokens to add more members.',
+          )
+        }
+        return
+      }
+
       await respondToTeamInvitation(invitation.id, 'accepted')
 
       const { error } = await supabase.from('team_members').upsert(
@@ -99,8 +112,11 @@ export function InvitationsPanel() {
         { onConflict: 'team_id,user_id' },
       )
 
-      if (error)
+      if (error) {
         console.error('[InvitationsPanel] team member insert error:', error)
+      } else {
+        recordTeamMemberAdded()
+      }
 
       const { data: projectTeams } = await supabase
         .from('project_teams')
@@ -154,9 +170,19 @@ export function InvitationsPanel() {
     if (!joinCode.trim()) return
 
     try {
+      if (!canAddTeamMember()) {
+        if (typeof window !== 'undefined') {
+          window.alert(
+            'Your current tier has reached the team member limit. Hold more ZC tokens to add more members.',
+          )
+        }
+        return
+      }
+
       setJoinStatus('joining')
       setJoinError('')
       await joinTeamWithCode(joinCode)
+      recordTeamMemberAdded()
       setJoinCode('')
       setJoinStatus('success')
       await Promise.all([reloadTeams(), reloadProjects()])

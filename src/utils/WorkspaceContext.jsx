@@ -12,6 +12,10 @@ import { pruneSharedTasksByProjectIds } from '../components/kanban/taskStorage.j
 import { pruneMeetingsByProjectIds } from './meetingStorage.js'
 import { isAdminRole, normalizeProjectRole } from './roleOntology.js'
 import {
+  canCreateProject,
+  recordProjectCreated,
+} from './tokenEconomics/quotaGuardService.js'
+import {
   fetchMyProjects,
   fetchMyTeams,
   fetchProjectTeams,
@@ -338,6 +342,14 @@ export function WorkspaceProvider({ children }) {
 
   const addProject = async (name, color) => {
     if (!user) return null
+    if (!canCreateProject()) {
+      if (typeof window !== 'undefined') {
+        window.alert(
+          'Your current tier has reached the project limit. Hold more ZC tokens to unlock more active projects.',
+        )
+      }
+      return null
+    }
     const newProject = {
       id: `proj_${Date.now()}`,
       name,
@@ -350,6 +362,7 @@ export function WorkspaceProvider({ children }) {
     }
     await createProject(newProject, user.id, user.email)
     await loadProjects()
+    recordProjectCreated()
     return newProject
   }
 

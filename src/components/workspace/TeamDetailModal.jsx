@@ -16,6 +16,7 @@ import {
   isManagerRole,
   normalizeTeamRole,
 } from '../../utils/roleOntology.js'
+import { canAddTeamMember } from '../../utils/tokenEconomics/quotaGuardService.js'
 
 export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLeave }) {
   const { selectTeam, kickTeamMember, updateTeamMemberRole, reloadTeams } = useWorkspace()
@@ -188,6 +189,15 @@ export function TeamDetailModal({ open, onClose, team, onUpdate, onDelete, onLea
   const handleInvite = async () => {
     if (!inviteEmail.trim() || !user?.email) return
     setInviteError('')
+
+    if (!canAddTeamMember()) {
+      if (typeof window !== 'undefined') {
+        window.alert(
+          'Your current tier has reached the team member limit. Hold more ZC tokens to add more members.',
+        )
+      }
+      return
+    }
 
     const email = inviteEmail.trim().toLowerCase()
     const existingKeys = new Set((members || []).map(normalizedMemberKey).filter(Boolean))
