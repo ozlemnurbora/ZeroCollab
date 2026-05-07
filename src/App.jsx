@@ -8,6 +8,8 @@ import { connectToPeer, initP2P } from './utils/p2pManager.js'
 import { requestNotificationPermission } from './utils/taskReminder.js'
 import { SidebarLayout } from './layouts/SidebarLayout.jsx'
 import { DashboardPage } from './pages/DashboardPage.jsx'
+import { ProductBacklogPage } from './pages/ProductBacklogPage.jsx'
+import { ProductRoadmapPage } from './pages/ProductRoadmapPage.jsx'
 import { ProjectOverviewPage } from './pages/ProjectOverviewPage.jsx'
 import { SprintPlanningPage } from './pages/SprintPlanningPage.jsx'
 import { SprintBoardPage } from './pages/SprintBoardPage.jsx'
@@ -39,6 +41,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<SidebarLayout />}>
         <Route index element={<DashboardPage />} />
+        <Route path="product-backlog" element={<ProductBacklogPage />} />
+        <Route path="product-roadmap" element={<ProductRoadmapPage />} />
         <Route path="project-overview" element={<ProjectOverviewPage />} />
         <Route path="sprint-planning" element={<SprintPlanningPage />} />
         <Route path="sprint-board" element={<SprintBoardPage />} />

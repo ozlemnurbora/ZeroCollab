@@ -99,6 +99,8 @@ export function TasksPage() {
       </div>
 
       <KanbanBoard
+        // Tasks page intentionally creates only Task items as part of Agile hierarchy separation.
+        createOnlyTask
         headerActions={
           <Button variant="secondary" onClick={() => setIsAddMeetingOpen(true)}>
             📅 Schedule Meeting

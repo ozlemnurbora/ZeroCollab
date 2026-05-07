@@ -20,6 +20,9 @@ const initialForm = {
   assignee: '',
   priority: 'must',
   itemType: 'task',
+  parentEpicId: '',
+  parentFeatureId: '',
+  parentStoryId: '',
   userStoryRole: '',
   userStoryCapability: '',
   userStoryBenefit: '',
@@ -57,6 +60,7 @@ export function AddTaskModal({
   onClose,
   onCreate,
   initialValues,
+  forceItemType = null,
   customCalendars,
   activeProject,
   activeTeam,
@@ -78,6 +82,12 @@ export function AddTaskModal({
     if (!open) return
     setTeamScopeError('')
   }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    if (!forceItemType) return
+    setForm((s) => ({ ...s, itemType: forceItemType }))
+  }, [forceItemType, open])
 
   const errors = useMemo(() => {
     const next = {}
@@ -118,6 +128,7 @@ export function AddTaskModal({
             onClick={() => {
               setTouched(true)
               if (!canSubmit) return
+              const effectiveItemType = forceItemType || form.itemType || 'task'
               const calendarId = form.calendarId || 'personal'
               const calendarType = calendarId === 'general' ? 'general' : 'personal'
               const isGeneral = calendarType === 'general'
@@ -138,7 +149,13 @@ export function AddTaskModal({
                 description: form.description.trim(),
                 assignee: form.assignee.trim(),
                 priority: form.priority || 'must',
-                itemType: form.itemType || 'task',
+                itemType: effectiveItemType,
+                type: effectiveItemType === 'task' ? 'Task' : undefined,
+                parentEpicId: form.parentEpicId ? form.parentEpicId.trim() : null,
+                parentFeatureId: form.parentFeatureId
+                  ? form.parentFeatureId.trim()
+                  : null,
+                parentStoryId: form.parentStoryId ? form.parentStoryId.trim() : null,
                 backlogState: 'new',
                 definitionOfReady: normalizeDefinitionOfReady(form.definitionOfReady),
                 storyPoints: normalizeStoryPointsValue(form.storyPoints),
@@ -147,7 +164,7 @@ export function AddTaskModal({
                 userStoryCapability: form.userStoryCapability.trim(),
                 userStoryBenefit: form.userStoryBenefit.trim(),
                 userStoryText:
-                  form.itemType === 'user_story'
+                  effectiveItemType === 'user_story'
                     ? `As a ${form.userStoryRole.trim()}, I want ${form.userStoryCapability.trim()}, so that ${form.userStoryBenefit.trim()}.`
                     : '',
                 startDate: form.startDate || '',
@@ -188,25 +205,36 @@ export function AddTaskModal({
           <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
             Item Type
           </label>
-          <select
-            className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-            value={form.itemType || 'task'}
-            onChange={(e) =>
-              setForm((s) => ({
-                ...s,
-                itemType: e.target.value,
-                definitionOfReady: normalizeDefinitionOfReady(s.definitionOfReady),
-              }))
-            }
-          >
-            <option value="epic">Epic</option>
-            <option value="feature">Feature</option>
-            <option value="user_story">User Story</option>
-            <option value="task">Task</option>
-          </select>
+          {forceItemType ? (
+            <select
+              className="mt-1 w-full cursor-not-allowed rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] opacity-80 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+              value={forceItemType}
+              disabled
+              aria-label="Item type (locked)"
+            >
+              <option value="task">Task</option>
+            </select>
+          ) : (
+            <select
+              className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+              value={form.itemType || 'task'}
+              onChange={(e) =>
+                setForm((s) => ({
+                  ...s,
+                  itemType: e.target.value,
+                  definitionOfReady: normalizeDefinitionOfReady(s.definitionOfReady),
+                }))
+              }
+            >
+              <option value="epic">Epic</option>
+              <option value="feature">Feature</option>
+              <option value="user_story">User Story</option>
+              <option value="task">Task</option>
+            </select>
+          )}
         </div>
 
-        {form.itemType === 'user_story' ? (
+        {form.itemType === 'user_story' && !forceItemType ? (
           <div className="grid gap-4">
             <div>
               <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
@@ -258,6 +286,62 @@ export function AddTaskModal({
             </div>
           </div>
         ) : null}
+
+        {(() => {
+          const effectiveItemType = forceItemType || form.itemType || 'task'
+          if (effectiveItemType === 'feature') {
+            return (
+              <div>
+                <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
+                  Parent Epic ID (optional)
+                </label>
+                <input
+                  className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  placeholder="epic_..."
+                  value={form.parentEpicId}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, parentEpicId: e.target.value }))
+                  }
+                />
+              </div>
+            )
+          }
+          if (effectiveItemType === 'user_story') {
+            return (
+              <div>
+                <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
+                  Parent Feature ID (optional)
+                </label>
+                <input
+                  className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  placeholder="feature_..."
+                  value={form.parentFeatureId}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, parentFeatureId: e.target.value }))
+                  }
+                />
+              </div>
+            )
+          }
+          if (effectiveItemType === 'task') {
+            return (
+              <div>
+                <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">
+                  Parent User Story ID (optional)
+                </label>
+                <input
+                  className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  placeholder="story_..."
+                  value={form.parentStoryId}
+                  onChange={(e) =>
+                    setForm((s) => ({ ...s, parentStoryId: e.target.value }))
+                  }
+                />
+              </div>
+            )
+          }
+          return null
+        })()}
 
         <div>
           <label className="block text-sm font-medium text-[rgb(var(--zc-muted))]">

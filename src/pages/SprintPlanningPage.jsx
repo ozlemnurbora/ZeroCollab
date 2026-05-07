@@ -23,6 +23,15 @@ import {
 } from '../utils/taskRemoteStorage.js'
 import { normalizeCapacityPoints } from '../utils/workspaceDB.js'
 import { ConfirmDialog } from '../components/common/ConfirmDialog.jsx'
+import {
+  calculateSprintCapacityLoad,
+  commitIndependentTaskToSprint,
+  commitStoryToSprint,
+  getLinkedTasksForStory,
+  getReadySprintCandidates,
+  removeIndependentTaskFromSprint,
+  removeStoryFromSprint,
+} from '../utils/sprint/sprintPlanningHierarchyUtils.js'
 
 function formatPlanningCompletedAt(value) {
   if (!value) return ''
@@ -52,15 +61,23 @@ const STATUS_LABELS = {
   done: 'Done',
 }
 
+function normalizeItemType(item) {
+  if (!item) return 'task'
+  const it = String(item.itemType ?? '').toLowerCase().trim()
+  if (it) return it
+  const t = String(item.type ?? '').trim()
+  if (t === 'Epic') return 'epic'
+  if (t === 'Feature') return 'feature'
+  if (t === 'User Story' || t === 'UserStory') return 'user_story'
+  if (t === 'Task') return 'task'
+  return 'task'
+}
+
 function getStoryPoints(task) {
   if (task?.storyPoints != null) return task.storyPoints
   if (task?.story_points != null) return task.story_points
   if (task?.points != null) return task.points
   return null
-}
-
-function isSprintCompatibleItemType(itemType) {
-  return itemType === 'task' || itemType === 'user_story'
 }
 
 export function SprintPlanningPage() {
@@ -244,16 +261,9 @@ export function SprintPlanningPage() {
     )
   }, [tasks, activeProject?.id])
 
-  const readyBacklog = useMemo(
-    () =>
-      projectTasks.filter(
-        (t) =>
-          t.backlogState === 'ready' &&
-          !t.sprintId &&
-          isSprintCompatibleItemType(t.itemType || 'task'),
-      ),
-    [projectTasks],
-  )
+  const { readyStories, readyIndependentTasks } = useMemo(() => {
+    return getReadySprintCandidates(projectTasks)
+  }, [projectTasks])
 
   const hasReadyNonSprintItems = useMemo(
     () =>
@@ -266,14 +276,52 @@ export function SprintPlanningPage() {
     [projectTasks],
   )
 
-  const sprintBacklog = useMemo(() => {
-    return getTasksForActiveSprint(projectTasks, activeSprint, activeProject?.id ?? null)
+  const sprintItems = useMemo(() => {
+    return getTasksForActiveSprint(
+      projectTasks,
+      activeSprint,
+      activeProject?.id ?? null,
+    )
   }, [projectTasks, activeSprint?.id, activeProject?.id])
+
+  const sprintStories = useMemo(
+    () => sprintItems.filter((it) => normalizeItemType(it) === 'user_story'),
+    [sprintItems],
+  )
+
+  const sprintTasksOnly = useMemo(
+    () => sprintItems.filter((it) => normalizeItemType(it) === 'task'),
+    [sprintItems],
+  )
+
+  const sprintLinkedTasksByStory = useMemo(() => {
+    const map = new Map()
+    for (const t of sprintTasksOnly) {
+      if (!t?.parentStoryId) continue
+      const list = map.get(t.parentStoryId) ?? []
+      list.push(t)
+      map.set(t.parentStoryId, list)
+    }
+    return map
+  }, [sprintTasksOnly])
+
+  const sprintIndependentTasks = useMemo(
+    () => sprintTasksOnly.filter((t) => !t?.parentStoryId),
+    [sprintTasksOnly],
+  )
+
+  const featureById = useMemo(() => {
+    return new Map(
+      projectTasks
+        .filter((it) => normalizeItemType(it) === 'feature')
+        .map((f) => [f.id, f]),
+    )
+  }, [projectTasks])
 
   useEffect(() => {
     // TEMP DEBUG: ensure Sprint Planning and Project Overview are using the same sprint backlog definition
-    console.log('[SprintPlanning Debug] Sprint Backlog Items', sprintBacklog)
-  }, [sprintBacklog])
+    console.log('[SprintPlanning Debug] Sprint Backlog Items', sprintItems)
+  }, [sprintItems])
 
   const projectForMembers = useMemo(() => {
     if (!activeProject?.id) return activeProject
@@ -308,14 +356,13 @@ export function SprintPlanningPage() {
     hasSprintGoal &&
     hasCommittedItems
 
-  const selectedStoryPoints = useMemo(
-    () =>
-      sprintTasks.reduce((sum, task) => {
-        const sp = Number(task.storyPoints || task.story_points || 0)
-        return sum + (Number.isFinite(sp) ? sp : 0)
-      }, 0),
-    [sprintTasks],
-  )
+  const selectedStoryPoints = useMemo(() => {
+    return calculateSprintCapacityLoad(
+      projectTasks,
+      activeSprint,
+      activeProject?.id ?? null,
+    )
+  }, [projectTasks, activeSprint, activeProject?.id])
 
   const capacityPoints = useMemo(
     () =>
@@ -359,7 +406,8 @@ export function SprintPlanningPage() {
       totalTasks: tasks.length,
       projectTasks: projectTasks.length,
       sprintTasks: sprintTasks.length,
-      readyBacklogTasks: readyBacklog.length,
+      readyBacklogStories: readyStories.length,
+      readyBacklogIndependentTasks: readyIndependentTasks.length,
       currentRole: currentMember?.customRole || currentMember?.custom_role,
     })
   }, [
@@ -368,7 +416,8 @@ export function SprintPlanningPage() {
     tasks.length,
     projectTasks.length,
     sprintTasks.length,
-    readyBacklog.length,
+    readyStories.length,
+    readyIndependentTasks.length,
     currentMember?.customRole,
     currentMember?.custom_role,
   ])
@@ -405,7 +454,7 @@ export function SprintPlanningPage() {
     await broadcastTaskSync(generalTasks, activeProject.id)
   }
 
-  const updateTaskSprint = async (taskId, shouldAssign) => {
+  const updateSprintCommitment = async (itemId, shouldAssign) => {
     if (!user?.id || !canMutateSprintPlanning) return
     const projectId = activeProject?.id
     if (!projectId || !activeSprint?.id) return
@@ -428,68 +477,56 @@ export function SprintPlanningPage() {
     const now = Date.now()
     const sprintNo =
       activeSprint?.sprint_number ?? activeSprint?.sprintNumber ?? null
-    let changed = null
-    const nextRaw = list.map((task) => {
-      if (task?.id !== taskId) return task
-      if (shouldAssign) {
-        const rawBs = task.backlogState || 'ready'
-        const backlogStateForSprint =
-          String(rawBs).toLowerCase() === 'refined' ? 'ready' : rawBs
-        changed = {
-          ...task,
-          sprintId: activeSprint.id,
-          sprintNumber: sprintNo,
-          sprintCommittedAt: now,
-          backlogState: backlogStateForSprint,
-          calendarType: 'general',
-          calendarId: 'general',
-          updatedAt: now,
-        }
-        return changed
-      }
-      changed = {
-        ...task,
-        sprintId: null,
-        sprintNumber: null,
-        sprintCommittedAt: null,
-        backlogState: 'ready',
-        calendarType: 'general',
-        calendarId: 'general',
-        updatedAt: now,
-      }
-      return changed
-    })
-    const next = nextRaw
-      .map((t) => normalizeTaskForStorage(t, user.id))
-      .filter(Boolean)
-
-    if (!changed) {
-      console.warn('[SprintPlanning] updateTaskSprint: task not in merged list', taskId)
+    const target = list.find((it) => it?.id === itemId) ?? null
+    if (!target) {
+      console.warn('[SprintPlanning] updateSprintCommitment: item not in merged list', itemId)
       return
     }
 
+    const type = normalizeItemType(target)
+    let result
+    if (type === 'user_story') {
+      result = shouldAssign
+        ? commitStoryToSprint(itemId, activeSprint.id, list, {
+            now,
+            sprintNumber: sprintNo,
+          })
+        : removeStoryFromSprint(itemId, list, { now })
+    } else if (type === 'task') {
+      // Only independent tasks are directly commit-able from Sprint Planning.
+      if (target.parentStoryId) {
+        console.warn('[SprintPlanning] refusing to commit linked task directly', itemId)
+        return
+      }
+      result = shouldAssign
+        ? commitIndependentTaskToSprint(itemId, activeSprint.id, list, {
+            now,
+            sprintNumber: sprintNo,
+          })
+        : removeIndependentTaskFromSprint(itemId, list, { now })
+    } else {
+      // Epic/Feature cannot be committed.
+      return
+    }
+
+    const next = (result?.nextItems ?? [])
+      .map((t) => normalizeTaskForStorage(t, user.id))
+      .filter(Boolean)
+    const changedItems = (result?.changedItems ?? [])
+      .map((t) => normalizeTaskForStorage(t, user.id))
+      .filter(Boolean)
+
     setTasks(next)
-    await saveTasks(next, user.id, { reason: 'SprintPlanningPage updateTaskSprint' })
+    await saveTasks(next, user.id, { reason: 'SprintPlanningPage updateSprintCommitment' })
     console.log('[SprintPlanning] saved full task count:', next.length)
     await broadcastUpdatedTasks(next)
 
-    if (String(changed.projectId) === String(projectId)) {
-      if (shouldAssign) {
-        console.log('[SprintPlanning] addToSprint persisted', {
-          taskId: changed.id,
-          sprintId: changed.sprintId,
-          projectId: changed.projectId,
-          storyPoints: changed.storyPoints,
-        })
-      } else {
-        console.log('[SprintPlanning] removeFromSprint persisted', {
-          taskId: changed.id,
-          sprintId: changed.sprintId,
-          projectId: changed.projectId,
-        })
-      }
-      await upsertRemoteTasks([changed], user.id)
-      console.log('[SprintPlanning] remote upsert done', changed.id)
+    const remoteChanged = changedItems.filter(
+      (c) => String(c?.projectId ?? '') === String(projectId),
+    )
+    if (remoteChanged.length > 0) {
+      await upsertRemoteTasks(remoteChanged, user.id)
+      console.log('[SprintPlanning] remote upsert done', remoteChanged.length)
     }
   }
 
@@ -525,7 +562,7 @@ export function SprintPlanningPage() {
         Sprint Planning
       </h2>
       <p className="text-sm text-[rgb(var(--zc-muted2))]">
-        Only Ready User Stories and Tasks can be committed to the sprint.
+        Sprint Planning commits User Stories and their linked Tasks, while Epics and Features remain in Product Backlog/Roadmap.
       </p>
       {hasReadyNonSprintItems ? (
         <p className="text-xs text-[rgb(var(--zc-subtle))]">
@@ -756,51 +793,125 @@ export function SprintPlanningPage() {
             <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
               Loading tasks…
             </div>
-          ) : readyBacklog.length === 0 ? (
+          ) : readyStories.length === 0 && readyIndependentTasks.length === 0 ? (
             <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
               No ready backlog items. Mark items as Ready from task details.
             </div>
           ) : (
-            <ul className="mt-4 space-y-2 text-sm">
-              {readyBacklog.map((task) => (
-                <li
-                  key={task.id}
-                  className="flex items-start justify-between gap-2 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-2"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-[rgb(var(--zc-text))]">
-                      {task.title || task.name || 'Untitled'}
-                    </p>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
-                        {ITEM_TYPE_LABELS[task.itemType] || 'Task'}
-                      </span>
-                      <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
-                        {PRIORITY_LABELS[task.priority] || 'Must'}
-                      </span>
-                      {Number(task.storyPoints || task.story_points || 0) > 0 ? (
-                        <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
-                          SP: {getStoryPoints(task)}
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                      Assignee: {task.assignee || 'Unassigned'}
-                    </p>
-                  </div>
-                  {canMutateSprintPlanning ? (
-                    <button
-                      type="button"
-                      disabled={!canPlan}
-                      onClick={() => updateTaskSprint(task.id, true)}
-                      className="shrink-0 rounded-md bg-emerald-500/20 px-2 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
-                    >
-                      Add to Sprint
-                    </button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
+            <div className="mt-4 space-y-4">
+              {readyStories.length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+                    Ready User Stories
+                  </p>
+                  <ul className="mt-2 space-y-2 text-sm">
+                    {readyStories.map((story) => {
+                      const linked = getLinkedTasksForStory(story.id, projectTasks)
+                      const featureTitle = story.parentFeatureId
+                        ? featureById.get(story.parentFeatureId)?.title || null
+                        : null
+                      return (
+                        <li
+                          key={story.id}
+                          className="flex items-start justify-between gap-2 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium text-[rgb(var(--zc-text))]">
+                              {story.title || story.name || 'Untitled'}
+                            </p>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
+                                User Story
+                              </span>
+                              <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
+                                {PRIORITY_LABELS[story.priority] || 'Must'}
+                              </span>
+                              {Number(story.storyPoints || story.story_points || 0) > 0 ? (
+                                <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
+                                  SP: {getStoryPoints(story)}
+                                </span>
+                              ) : null}
+                              <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">
+                                Tasks: {linked.length}
+                              </span>
+                            </div>
+                            {featureTitle ? (
+                              <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                                Feature: {featureTitle}
+                              </p>
+                            ) : null}
+                            <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                              State: ready
+                            </p>
+                          </div>
+                          {canMutateSprintPlanning ? (
+                            <button
+                              type="button"
+                              disabled={!canPlan}
+                              onClick={() => updateSprintCommitment(story.id, true)}
+                              className="shrink-0 rounded-md bg-emerald-500/20 px-2 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+                            >
+                              Add to Sprint
+                            </button>
+                          ) : null}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+
+              {readyIndependentTasks.length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+                    Ready Independent Tasks
+                  </p>
+                  <ul className="mt-2 space-y-2 text-sm">
+                    {readyIndependentTasks.map((task) => (
+                      <li
+                        key={task.id}
+                        className="flex items-start justify-between gap-2 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium text-[rgb(var(--zc-text))]">
+                            {task.title || task.name || 'Untitled'}
+                          </p>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
+                              Task
+                            </span>
+                            <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">
+                              Independent Task
+                            </span>
+                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
+                              {PRIORITY_LABELS[task.priority] || 'Must'}
+                            </span>
+                            {Number(task.storyPoints || task.story_points || 0) > 0 ? (
+                              <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
+                                SP: {getStoryPoints(task)}
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                            State: ready
+                          </p>
+                        </div>
+                        {canMutateSprintPlanning ? (
+                          <button
+                            type="button"
+                            disabled={!canPlan}
+                            onClick={() => updateSprintCommitment(task.id, true)}
+                            className="shrink-0 rounded-md bg-emerald-500/20 px-2 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+                          >
+                            Add to Sprint
+                          </button>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
           )}
         </section>
 
@@ -815,54 +926,145 @@ export function SprintPlanningPage() {
             <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
               Loading tasks…
             </div>
-          ) : sprintBacklog.length === 0 ? (
+          ) : sprintItems.length === 0 ? (
             <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
               No items in this sprint yet.
             </div>
           ) : (
-            <ul className="mt-4 space-y-2 text-sm">
-              {sprintBacklog.map((task) => (
-                <li
-                  key={task.id}
-                  className="flex items-start justify-between gap-2 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-2"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-medium text-[rgb(var(--zc-text))]">
-                      {task.title || task.name || 'Untitled'}
-                    </p>
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
-                        {ITEM_TYPE_LABELS[task.itemType] || 'Task'}
-                      </span>
-                      <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
-                        {PRIORITY_LABELS[task.priority] || 'Must'}
-                      </span>
-                      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
-                        {STATUS_LABELS[task.status] || 'To Do'}
-                      </span>
-                      {Number(task.storyPoints || task.story_points || 0) > 0 ? (
-                        <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
-                          SP: {getStoryPoints(task)}
-                        </span>
-                      ) : null}
-                    </div>
-                    <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                      Assignee: {task.assignee || 'Unassigned'}
-                    </p>
-                  </div>
-                  {canMutateSprintPlanning ? (
-                    <button
-                      type="button"
-                      disabled={!canPlan}
-                      onClick={() => updateTaskSprint(task.id, false)}
-                      className="shrink-0 rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-300 hover:bg-rose-500/25 disabled:opacity-50"
-                    >
-                      Remove
-                    </button>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
+            <div className="mt-4 space-y-4 text-sm">
+              {sprintStories.length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+                    Committed User Stories
+                  </p>
+                  <ul className="mt-2 space-y-2">
+                    {sprintStories.map((story) => {
+                      const linked = sprintLinkedTasksByStory.get(story.id) ?? []
+                      return (
+                        <li
+                          key={story.id}
+                          className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-medium text-[rgb(var(--zc-text))]">
+                                {story.title || story.name || 'Untitled'}
+                              </p>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
+                                  User Story
+                                </span>
+                                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
+                                  {PRIORITY_LABELS[story.priority] || 'Must'}
+                                </span>
+                                {Number(story.storyPoints || story.story_points || 0) > 0 ? (
+                                  <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
+                                    SP: {getStoryPoints(story)}
+                                  </span>
+                                ) : null}
+                                <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">
+                                  Tasks: {linked.length}
+                                </span>
+                              </div>
+                            </div>
+                            {canMutateSprintPlanning ? (
+                              <button
+                                type="button"
+                                disabled={!canPlan}
+                                onClick={() => updateSprintCommitment(story.id, false)}
+                                className="shrink-0 rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-300 hover:bg-rose-500/25 disabled:opacity-50"
+                              >
+                                Remove
+                              </button>
+                            ) : null}
+                          </div>
+                          {linked.length > 0 ? (
+                            <ul className="mt-2 space-y-1">
+                              {linked.map((task) => (
+                                <li
+                                  key={task.id}
+                                  className="flex items-start justify-between gap-2 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.25)] px-2 py-2"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-xs font-medium text-[rgb(var(--zc-text))]">
+                                      {task.title || task.name || 'Untitled'}
+                                    </p>
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                      <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
+                                        Task
+                                      </span>
+                                      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
+                                        {STATUS_LABELS[task.status] || 'To Do'}
+                                      </span>
+                                      {Number(task.storyPoints || task.story_points || 0) > 0 ? (
+                                        <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
+                                          SP: {getStoryPoints(task)}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+
+              {sprintIndependentTasks.length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+                    Committed Independent Tasks
+                  </p>
+                  <ul className="mt-2 space-y-2">
+                    {sprintIndependentTasks.map((task) => (
+                      <li
+                        key={task.id}
+                        className="flex items-start justify-between gap-2 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-2"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-medium text-[rgb(var(--zc-text))]">
+                            {task.title || task.name || 'Untitled'}
+                          </p>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
+                              Task
+                            </span>
+                            <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">
+                              Independent Task
+                            </span>
+                            <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
+                              {PRIORITY_LABELS[task.priority] || 'Must'}
+                            </span>
+                            <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
+                              {STATUS_LABELS[task.status] || 'To Do'}
+                            </span>
+                            {Number(task.storyPoints || task.story_points || 0) > 0 ? (
+                              <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
+                                SP: {getStoryPoints(task)}
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+                        {canMutateSprintPlanning ? (
+                          <button
+                            type="button"
+                            disabled={!canPlan}
+                            onClick={() => updateSprintCommitment(task.id, false)}
+                            className="shrink-0 rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-300 hover:bg-rose-500/25 disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
           )}
         </section>
       </div>

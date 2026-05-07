@@ -69,7 +69,21 @@ function createId() {
   return `task_${Date.now()}_${Math.random().toString(16).slice(2)}`
 }
 
-export function KanbanBoard({ headerActions = null, variant = 'default' }) {
+function isAgileHierarchyTaskItem(item) {
+  // Agile hierarchy refactor: the Tasks page (and all task boards) intentionally render only Task items.
+  // Epics/Features/User Stories are stored but must not appear here.
+  if (!item) return false
+  if ('type' in item) return item.type === 'Task'
+  // Back-compat: legacy tasks may not have a `type` yet; treat canonical task markers as Task.
+  const it = String(item.itemType ?? '').toLowerCase()
+  return it === 'task'
+}
+
+export function KanbanBoard({
+  headerActions = null,
+  variant = 'default',
+  createOnlyTask = false,
+}) {
   const { t } = useLanguage()
   const { user } = useAuth()
   const ownerUserId = user?.id ?? null
@@ -412,13 +426,15 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
     const withPriority = visible.map((task) =>
       task?.priority ? task : { ...task, priority: 'must' },
     )
-    if (!activeProject) return withPriority
-    const scoped = withPriority.filter((task) =>
+    // Agile hierarchy refactor: only render Task items in task boards.
+    const taskOnly = withPriority.filter(isAgileHierarchyTaskItem)
+    if (!activeProject) return taskOnly
+    const scoped = taskOnly.filter((task) =>
       taskVisibleInActiveProject(task, activeProject.id, ownerUserId),
     )
     // Keep legacy tasks without projectId visible even when an active project is selected,
     // so users can recover/edit them from All Tasks.
-    const legacyNoProject = withPriority.filter((t) => t && !t.projectId)
+    const legacyNoProject = taskOnly.filter((t) => t && !t.projectId)
     const merged = [...scoped]
     const seen = new Set(scoped.map((t) => t?.id).filter(Boolean))
     for (const t of legacyNoProject) {
@@ -428,6 +444,7 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
     console.log('[KanbanBoard] visibility debug', {
       totalTasks: Array.isArray(tasks) ? tasks.length : 0,
       visibleAfterMembership: Array.isArray(withPriority) ? withPriority.length : 0,
+      visibleAfterTaskTypeFilter: Array.isArray(taskOnly) ? taskOnly.length : 0,
       visibleProjectTasks: Array.isArray(merged) ? merged.length : 0,
       activeProjectId: activeProject?.id ?? null,
       memberProjectIds: Array.isArray(memberProjectIds) ? memberProjectIds : [],
@@ -742,29 +759,40 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
       payload?.calendarType === 'general' && canCreateSharedTask
         ? 'general'
         : 'personal'
+    // Agile hierarchy separation: Tasks page is an execution board and must only create Task items.
+    const normalizedPayload = createOnlyTask
+      ? { ...payload, itemType: 'task', type: 'Task' }
+      : payload
     setTasks((prev) => {
       const projectId = activeProject?.id ? activeProject.id : null
-      const id = typeof payload?.id === 'string' && payload.id.trim() ? payload.id.trim() : createId()
-      const newPriority = payload?.priority || 'must'
+      const id =
+        typeof normalizedPayload?.id === 'string' && normalizedPayload.id.trim()
+          ? normalizedPayload.id.trim()
+          : createId()
+      const newPriority = normalizedPayload?.priority || 'must'
       const position = nextPositionForGroup(prev, 'todo', newPriority)
       const created = {
         id,
         status: 'todo',
         createdAt: now,
         updatedAt: now,
-        ...payload,
-        itemType: payload?.itemType ?? payload?.type ?? 'task',
-        backlogState: payload?.backlogState ?? 'new',
-        sprintId: payload?.sprintId ?? null,
+        ...normalizedPayload,
+        type: normalizedPayload?.type ?? undefined,
+        itemType: normalizedPayload?.itemType ?? normalizedPayload?.type ?? 'task',
+        backlogState: normalizedPayload?.backlogState ?? 'new',
+        sprintId: normalizedPayload?.sprintId ?? null,
         storyPoints: normalizeStoryPointsValue(
-          payload?.storyPoints ?? payload?.story_points ?? payload?.points ?? 0,
+          normalizedPayload?.storyPoints ??
+            normalizedPayload?.story_points ??
+            normalizedPayload?.points ??
+            0,
         ),
         calendarType,
         projectId,
         position,
         teamId:
           calendarType === 'general'
-            ? activeTeam?.id || payload.teamId || null
+            ? activeTeam?.id || normalizedPayload.teamId || null
             : null,
         ownerUserId: user?.id || null,
       }
@@ -1283,6 +1311,7 @@ export function KanbanBoard({ headerActions = null, variant = 'default' }) {
           open={isAddOpen}
           onClose={() => setIsAddOpen(false)}
           onCreate={createTask}
+          forceItemType={createOnlyTask ? 'task' : null}
           customCalendars={customCalendars}
           activeProject={activeProject}
           activeTeam={activeTeam}

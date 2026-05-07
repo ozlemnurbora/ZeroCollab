@@ -100,6 +100,8 @@ export function SidebarLayout() {
   const navItems = useMemo(
     () => [
       { to: '/', label: t('nav_dashboard'), end: true },
+      { to: '/product-backlog', label: 'Product Backlog' },
+      { to: '/product-roadmap', label: 'Product Roadmap' },
       { to: '/project-overview', label: 'Project Overview' },
       { to: '/sprint-planning', label: 'Sprint Planning' },
       { to: '/sprint-board', label: 'Sprint Board' },

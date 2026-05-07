@@ -1,5 +1,13 @@
 import { filterTasksForVisibility } from '../taskP2PSync.js'
 
+function isAgileHierarchyTaskItem(item) {
+  // Agile hierarchy refactor: dashboard metrics should reflect Tasks only (no Epic/Feature/User Story).
+  if (!item) return false
+  if ('type' in item) return item.type === 'Task'
+  const it = String(item.itemType ?? '').toLowerCase()
+  return it === 'task'
+}
+
 function isDeletedLike(task) {
   if (!task) return true
   if (task.deleted === true) return true
@@ -142,7 +150,9 @@ export function getVisibleDashboardTasks({
   activeProjectId = null,
 }) {
   const rawList = Array.isArray(rawTasks) ? rawTasks : []
-  const prefiltered = rawList.filter((t) => t && !isDeletedLike(t))
+  const prefiltered = rawList
+    .filter((t) => t && !isDeletedLike(t))
+    .filter(isAgileHierarchyTaskItem)
   const allowed = Array.isArray(memberProjectIds) ? memberProjectIds : []
   const scoped = filterTasksForVisibility(prefiltered, {
     allowedProjectIds: allowed,

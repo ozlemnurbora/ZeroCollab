@@ -5,6 +5,8 @@ const mk = (overrides) => ({
   id: `t_${Math.random().toString(16).slice(2)}`,
   title: 'x',
   status: 'todo',
+  type: 'Task',
+  itemType: 'task',
   ...overrides,
 })
 
