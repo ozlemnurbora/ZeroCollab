@@ -8,13 +8,18 @@ import { BacklogItemDetailModal } from '../components/backlog/BacklogItemDetailM
 import {
   dedupeAndNormalizePositions,
   loadTasks,
+  markTaskSoftDeleted,
   normalizeTaskForStorage,
   saveTasks,
 } from '../components/kanban/taskStorage.js'
 import {
   filterTasksForVisibility,
+  tasksForP2PBroadcast,
   taskVisibleInActiveProject,
 } from '../utils/taskP2PSync.js'
+import { broadcastTaskSync } from '../utils/hubManager.js'
+import { sendToAllPeers } from '../utils/p2pManager.js'
+import { upsertRemoteTasks } from '../utils/taskRemoteStorage.js'
 
 function normalizeItemType(item) {
   if (!item) return 'task'
@@ -57,6 +62,20 @@ export function ProductBacklogPage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [selectedItemId, setSelectedItemId] = useState(null)
 
+  const activeProjectId = activeProject?.id ?? null
+
+  const agileSyncDebugEnabled = useMemo(() => {
+    try {
+      return (
+        typeof window !== 'undefined' &&
+        (window.__ZC_AGILE_SYNC_DEBUG === true ||
+          window.localStorage?.getItem('zc-agile-sync-debug') === '1')
+      )
+    } catch {
+      return false
+    }
+  }, [])
+
   useEffect(() => {
     ownerUserIdRef.current = ownerUserId
   }, [ownerUserId])
@@ -91,6 +110,88 @@ export function ProductBacklogPage() {
     }),
     [memberProjectIds, ownerUserId],
   )
+
+  const syncAgileItems = async (changedItems, fullList) => {
+    if (!ownerUserId) return
+    if (!activeProjectId) return
+    if (!Array.isArray(memberProjectIds) || !memberProjectIds.includes(activeProjectId)) return
+    const list = Array.isArray(changedItems) ? changedItems : []
+    const normalized = list.map((it) => {
+      if (!it?.projectId) return it
+      // Project-scoped backlog items must be shared/general for teammate consistency.
+      return { ...it, calendarType: 'general', calendarId: 'general' }
+    })
+    const outgoing = tasksForP2PBroadcast(normalized, {
+      activeProjectId,
+      allowedProjectIds: memberProjectIds,
+    })
+    if (outgoing.length === 0) return
+
+    if (agileSyncDebugEnabled) {
+      console.log('[Agile Sync Debug] outgoing payload', {
+        projectId: activeProjectId,
+        count: outgoing.length,
+        sample: outgoing.slice(0, 3),
+      })
+    }
+
+    sendToAllPeers({
+      type: 'TASK_SYNC',
+      tasks: outgoing,
+      projectId: activeProjectId,
+    })
+    await broadcastTaskSync(outgoing, activeProjectId)
+    await upsertRemoteTasks(outgoing, ownerUserId)
+  }
+
+  // One-time migration: if legacy backlog items were created as "personal" but have a projectId,
+  // flip them to shared/general so they sync consistently across teammates.
+  useEffect(() => {
+    if (!ownerUserId || !activeProjectId) return
+    if (!Array.isArray(memberProjectIds) || !memberProjectIds.includes(activeProjectId)) return
+    if (isLoading) return
+    const key = `zc-agile-sync-migrated:${ownerUserId}:${activeProjectId}`
+    try {
+      if (typeof window !== 'undefined' && window.localStorage?.getItem(key) === '1') return
+    } catch {
+      // ignore
+    }
+    const candidates = (Array.isArray(items) ? items : []).filter(
+      (it) =>
+        it &&
+        String(it.projectId ?? '') === String(activeProjectId) &&
+        (it.calendarType === 'personal' || it.calendarType === 'custom'),
+    )
+    if (candidates.length === 0) {
+      try {
+        if (typeof window !== 'undefined') window.localStorage?.setItem(key, '1')
+      } catch {
+        // ignore
+      }
+      return
+    }
+    const migrated = candidates.map((it) => ({
+      ...it,
+      calendarType: 'general',
+      calendarId: 'general',
+      updatedAt: Date.now(),
+    }))
+    setItems((prev) => {
+      const uid = ownerUserIdRef.current
+      const merged = Array.isArray(prev) ? [...prev] : []
+      const byId = new Map(merged.map((x) => [x?.id, x]))
+      for (const m of migrated) byId.set(m.id, m)
+      const next = Array.from(byId.values()).map((t) => normalizeTaskForStorage(t, uid)).filter(Boolean)
+      void saveTasks(next, uid, { reason: 'Agile sync migration' })
+      void syncAgileItems(migrated, next)
+      return next
+    })
+    try {
+      if (typeof window !== 'undefined') window.localStorage?.setItem(key, '1')
+    } catch {
+      // ignore
+    }
+  }, [ownerUserId, activeProjectId, memberProjectIds, isLoading, items])
 
   const visibleItems = useMemo(() => {
     const visible = filterTasksForVisibility(items, visibilityOptions)
@@ -185,6 +286,8 @@ export function ProductBacklogPage() {
         return { ...it, ...merged, updatedAt: now }
       })
       if (uid) void saveTasks(next, uid, { reason: 'ProductBacklog update' })
+      const changed = next.find((it) => it?.id === itemId) ?? null
+      if (changed) void syncAgileItems([changed], next)
       return next
     })
   }
@@ -193,7 +296,14 @@ export function ProductBacklogPage() {
     setItems((prev) => {
       const uid = ownerUserIdRef.current
       const now = Date.now()
-      const merged = { ...updatedItem, updatedAt: now }
+      const merged = {
+        ...updatedItem,
+        // Ensure project-scoped backlog items are shared/general for sync.
+        ...(updatedItem?.projectId
+          ? { calendarType: 'general', calendarId: 'general' }
+          : {}),
+        updatedAt: now,
+      }
       const normalized = uid ? normalizeTaskForStorage(merged, uid) : merged
       if (!normalized) return prev
       const next = dedupeAndNormalizePositions([
@@ -201,6 +311,7 @@ export function ProductBacklogPage() {
         ...(Array.isArray(prev) ? prev.filter((it) => it?.id !== normalized.id) : []),
       ])
       if (uid) void saveTasks(next, uid, { reason: 'ProductBacklog upsert' })
+      void syncAgileItems([normalized], next)
       return next
     })
   }
@@ -223,8 +334,21 @@ export function ProductBacklogPage() {
   const deleteItem = (itemId) => {
     setItems((prev) => {
       const uid = ownerUserIdRef.current
-      const next = Array.isArray(prev) ? prev.filter((it) => it?.id !== itemId) : prev
+      const list = Array.isArray(prev) ? prev : []
+      const existing = list.find((it) => it?.id === itemId) ?? null
+      if (!existing) return prev
+      // For project-scoped items, use tombstone delete so peers/Supabase receive the deletion.
+      const isProjectScoped = !!existing.projectId
+      const next = isProjectScoped
+        ? list.map((it) =>
+            it?.id === itemId ? markTaskSoftDeleted({ ...existing }, Date.now()) : it,
+          )
+        : list.filter((it) => it?.id !== itemId)
       if (uid) void saveTasks(next, uid, { allowEmpty: true, reason: 'ProductBacklog delete' })
+      if (isProjectScoped) {
+        const tomb = next.find((it) => it?.id === itemId)
+        if (tomb) void syncAgileItems([tomb], next)
+      }
       return next
     })
   }

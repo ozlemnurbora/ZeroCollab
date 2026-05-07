@@ -6,6 +6,18 @@ import {
   markTaskSoftDeleted,
 } from '../components/kanban/taskStorage.js'
 
+function agileSyncDebugEnabled() {
+  try {
+    if (typeof window === 'undefined') return false
+    return (
+      window.__ZC_AGILE_SYNC_DEBUG === true ||
+      window.localStorage?.getItem('zc-agile-sync-debug') === '1'
+    )
+  } catch {
+    return false
+  }
+}
+
 function normalizeSet(values) {
   return new Set(Array.isArray(values) ? values.filter(Boolean) : [])
 }
@@ -100,12 +112,20 @@ export function tasksForP2PBroadcast(tasks, options = {}) {
   const { activeProjectId = null, allowedProjectIds = [] } = options
   const allowed = normalizeSet(allowedProjectIds)
   if (!activeProjectId || !allowed.has(activeProjectId)) return []
-  return list.filter(
+  const outgoing = list.filter(
     (task) =>
       isGeneralTask(task) &&
       task.projectId === activeProjectId &&
       allowed.has(task.projectId),
   )
+  if (agileSyncDebugEnabled()) {
+    console.log('[Agile Sync Debug] outgoing payload', {
+      activeProjectId,
+      count: outgoing.length,
+      sample: outgoing.slice(0, 3),
+    })
+  }
+  return outgoing
 }
 
 export function mergeTasksFromSync(localTasks, incomingTasks, options = {}) {
@@ -113,6 +133,13 @@ export function mergeTasksFromSync(localTasks, incomingTasks, options = {}) {
   const incoming = Array.isArray(incomingTasks) ? incomingTasks : []
   const { allowedProjectIds = [] } = options
   const allowed = normalizeSet(allowedProjectIds)
+
+  if (agileSyncDebugEnabled()) {
+    console.log('[Agile Sync Debug] incoming items', {
+      incomingCount: incoming.length,
+      sample: incoming.slice(0, 3),
+    })
+  }
 
   // Non-destructive merge:
   // - always keep existing local tasks (even if not in allowed projects)
@@ -159,6 +186,14 @@ export function mergeTasksFromSync(localTasks, incomingTasks, options = {}) {
   }
   for (const [id, value] of mergedById.entries()) {
     if (!seen.has(id)) out.push(value)
+  }
+
+  if (agileSyncDebugEnabled()) {
+    console.log('[Agile Sync Debug] merged items', {
+      localCount: local.length,
+      incomingCount: incoming.length,
+      mergedCount: out.length,
+    })
   }
 
   return out

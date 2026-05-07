@@ -6,13 +6,18 @@ import { BacklogItemDetailModal } from '../components/backlog/BacklogItemDetailM
 import {
   dedupeAndNormalizePositions,
   loadTasks,
+  markTaskSoftDeleted,
   normalizeTaskForStorage,
   saveTasks,
 } from '../components/kanban/taskStorage.js'
 import {
   filterTasksForVisibility,
+  tasksForP2PBroadcast,
   taskVisibleInActiveProject,
 } from '../utils/taskP2PSync.js'
+import { broadcastTaskSync } from '../utils/hubManager.js'
+import { sendToAllPeers } from '../utils/p2pManager.js'
+import { upsertRemoteTasks } from '../utils/taskRemoteStorage.js'
 
 function normalizeItemType(item) {
   if (!item) return 'task'
@@ -64,6 +69,20 @@ export function ProductRoadmapPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [selectedItemId, setSelectedItemId] = useState(null)
 
+  const activeProjectId = activeProject?.id ?? null
+
+  const agileSyncDebugEnabled = useMemo(() => {
+    try {
+      return (
+        typeof window !== 'undefined' &&
+        (window.__ZC_AGILE_SYNC_DEBUG === true ||
+          window.localStorage?.getItem('zc-agile-sync-debug') === '1')
+      )
+    } catch {
+      return false
+    }
+  }, [])
+
   useEffect(() => {
     ownerUserIdRef.current = ownerUserId
   }, [ownerUserId])
@@ -98,6 +117,32 @@ export function ProductRoadmapPage() {
     }),
     [memberProjectIds, ownerUserId],
   )
+
+  const syncAgileItems = async (changedItems) => {
+    if (!ownerUserId) return
+    if (!activeProjectId) return
+    if (!Array.isArray(memberProjectIds) || !memberProjectIds.includes(activeProjectId)) return
+    const list = Array.isArray(changedItems) ? changedItems : []
+    const normalized = list.map((it) => {
+      if (!it?.projectId) return it
+      return { ...it, calendarType: 'general', calendarId: 'general' }
+    })
+    const outgoing = tasksForP2PBroadcast(normalized, {
+      activeProjectId,
+      allowedProjectIds: memberProjectIds,
+    })
+    if (outgoing.length === 0) return
+    if (agileSyncDebugEnabled) {
+      console.log('[Agile Sync Debug] outgoing payload', {
+        projectId: activeProjectId,
+        count: outgoing.length,
+        sample: outgoing.slice(0, 3),
+      })
+    }
+    sendToAllPeers({ type: 'TASK_SYNC', tasks: outgoing, projectId: activeProjectId })
+    await broadcastTaskSync(outgoing, activeProjectId)
+    await upsertRemoteTasks(outgoing, ownerUserId)
+  }
 
   const visibleItems = useMemo(() => {
     const visible = filterTasksForVisibility(items, visibilityOptions)
@@ -230,9 +275,17 @@ export function ProductRoadmapPage() {
         if ('roadmapBucket' in merged) merged.roadmapBucket = normalizeBucket(merged.roadmapBucket)
         if ('roadmapOrder' in merged) merged.roadmapOrder = safeOrder(merged.roadmapOrder)
         if ('backlogState' in merged) merged.backlogState = normalizeBacklogState(merged.backlogState)
-        return { ...it, ...merged, updatedAt: now }
+        const base = { ...it, ...merged, updatedAt: now }
+        // Project-scoped roadmap edits must be shared/general for sync.
+        if (base?.projectId) {
+          base.calendarType = 'general'
+          base.calendarId = 'general'
+        }
+        return base
       })
       void saveTasks(next, uid, { reason: 'ProductRoadmap update' })
+      const changed = next.find((it) => it?.id === itemId) ?? null
+      if (changed) void syncAgileItems([changed])
       return next
     })
   }
@@ -241,8 +294,20 @@ export function ProductRoadmapPage() {
     setItems((prev) => {
       const uid = ownerUserIdRef.current
       if (!uid) return prev
-      const next = Array.isArray(prev) ? prev.filter((it) => it?.id !== itemId) : prev
+      const list = Array.isArray(prev) ? prev : []
+      const existing = list.find((it) => it?.id === itemId) ?? null
+      if (!existing) return prev
+      const isProjectScoped = !!existing.projectId
+      const next = isProjectScoped
+        ? list.map((it) =>
+            it?.id === itemId ? markTaskSoftDeleted({ ...existing }, Date.now()) : it,
+          )
+        : list.filter((it) => it?.id !== itemId)
       void saveTasks(next, uid, { allowEmpty: true, reason: 'ProductRoadmap delete' })
+      if (isProjectScoped) {
+        const tomb = next.find((it) => it?.id === itemId)
+        if (tomb) void syncAgileItems([tomb])
+      }
       return next
     })
   }
