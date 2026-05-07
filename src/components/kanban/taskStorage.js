@@ -1,4 +1,5 @@
 import { replaceTasksForOwner, getTasksForOwner } from '../../utils/database.js'
+import { getAgileItemType } from '../../utils/agile/getAgileItemType.js'
 
 /** Fibonacci-style options for create/edit UI; values are not enforced server-side. */
 export const STORY_POINT_SELECT_OPTIONS = [0, 1, 2, 3, 5, 8, 13, 21]
@@ -187,11 +188,9 @@ export function normalizeTaskForStorage(task, ownerUserId) {
       ? statusRaw.trim().toLowerCase()
       : 'todo'
 
-  const itemTypeRaw = task.itemType ?? task.type
-  const itemType =
-    typeof itemTypeRaw === 'string' && itemTypeRaw.trim()
-      ? itemTypeRaw.trim()
-      : 'task'
+  // taskStorage currently stores all Agile work items for backward compatibility.
+  const { itemTypeKey, displayType } = getAgileItemType(task)
+  const itemType = itemTypeKey ?? 'task'
 
   const backlogStateRaw = task.backlogState
   const backlogState =
@@ -262,6 +261,7 @@ export function normalizeTaskForStorage(task, ownerUserId) {
     id,
     status,
     itemType,
+    type: task.type ?? displayType ?? task.type,
     backlogState,
     sprintId,
     sprintNumber,

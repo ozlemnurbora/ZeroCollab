@@ -4,6 +4,7 @@ import {
   normalizeTaskForStorage,
   markTaskSoftDeleted,
 } from '../components/kanban/taskStorage.js'
+import { getAgileItemType } from './agile/getAgileItemType.js'
 
 /** True when a task row should be upserted to Supabase `tasks` (project-scoped work items). */
 export function isSharedProjectTask(task) {
@@ -61,13 +62,16 @@ export function normalizeTaskForRemote(task, fallbackUserId) {
       ? task.status.trim().toLowerCase()
       : 'todo'
 
+  const { itemTypeKey, displayType } = getAgileItemType(task)
+
   const normalized = {
     ...task,
     id,
     projectId,
     status: statusNorm,
     priority: typeof task.priority === 'string' && task.priority.trim() ? task.priority.trim() : 'must',
-    itemType: typeof task.itemType === 'string' && task.itemType.trim() ? task.itemType.trim() : 'task',
+    itemType: itemTypeKey ?? (typeof task.itemType === 'string' && task.itemType.trim() ? task.itemType.trim() : 'task'),
+    type: task.type ?? displayType ?? task.type,
     backlogState: typeof task.backlogState === 'string' && task.backlogState.trim() ? task.backlogState.trim() : 'new',
     storyPoints: normalizeStoryPointsValue(
       task.storyPoints ?? task.story_points ?? task.points ?? 0,
@@ -152,7 +156,11 @@ export function mapRemoteTask(row) {
     assignee: payload.assignee ?? row.assignee ?? '',
     status: payload.status ?? row.status ?? 'todo',
     priority: payload.priority ?? row.priority ?? 'must',
-    itemType: payload.itemType ?? row.item_type ?? 'task',
+    itemType: (() => {
+      const { itemTypeKey } = getAgileItemType({ itemType: payload.itemType ?? row.item_type, type: payload.type })
+      return itemTypeKey ?? payload.itemType ?? row.item_type ?? 'task'
+    })(),
+    type: payload.type ?? null,
     backlogState: payload.backlogState ?? row.backlog_state ?? 'new',
     storyPoints: normalizeStoryPointsValue(
       payload.storyPoints ?? row.story_points ?? 0,

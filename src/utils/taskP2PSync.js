@@ -5,6 +5,7 @@ import {
   mergeTaskVersionsPreferringTombstone,
   markTaskSoftDeleted,
 } from '../components/kanban/taskStorage.js'
+import { getAgileItemType } from './agile/getAgileItemType.js'
 
 function agileSyncDebugEnabled() {
   try {
@@ -30,11 +31,8 @@ function normalizeTaskShape(task) {
     typeof statusRaw === 'string' && statusRaw.trim()
       ? statusRaw.trim().toLowerCase()
       : 'todo'
-  const itemTypeRaw = task.itemType ?? task.type
-  const itemType =
-    typeof itemTypeRaw === 'string' && itemTypeRaw.trim()
-      ? itemTypeRaw.trim()
-      : 'task'
+  const { itemTypeKey, displayType } = getAgileItemType(task)
+  const itemType = itemTypeKey ?? 'task'
   const backlogStateRaw = task.backlogState
   const backlogState =
     typeof backlogStateRaw === 'string' && backlogStateRaw.trim()
@@ -61,6 +59,7 @@ function normalizeTaskShape(task) {
     ...task,
     status,
     itemType,
+    type: task.type ?? displayType ?? task.type,
     backlogState,
     sprintId,
     calendarType,
