@@ -12,11 +12,12 @@ import {
 } from '../components/kanban/taskStorage.js'
 import {
   filterTasksForVisibility,
+  mergeTasksFromSync,
   tasksForP2PBroadcast,
   taskVisibleInActiveProject,
 } from '../utils/taskP2PSync.js'
 import { broadcastTaskSync } from '../utils/hubManager.js'
-import { sendToAllPeers } from '../utils/p2pManager.js'
+import { on, P2P_EVENTS, sendToAllPeers } from '../utils/p2pManager.js'
 import { upsertRemoteTasks } from '../utils/taskRemoteStorage.js'
 
 function normalizeItemType(item) {
@@ -117,6 +118,66 @@ export function ProductRoadmapPage() {
     }),
     [memberProjectIds, ownerUserId],
   )
+
+  // Keep page state fresh when other pages save to IndexedDB.
+  useEffect(() => {
+    if (!ownerUserId) return
+    const onChanged = (e) => {
+      const detail = e?.detail || {}
+      if (detail.ownerUserId && detail.ownerUserId !== ownerUserId) return
+      void (async () => {
+        const existing = await loadTasks(ownerUserId)
+        const list = Array.isArray(existing) ? existing : []
+        const normalized = list.map((it) => normalizeTaskForStorage(it, ownerUserId)).filter(Boolean)
+        setItems(dedupeAndNormalizePositions(normalized))
+      })()
+    }
+    window.addEventListener('zc-tasks-changed', onChanged)
+    return () => window.removeEventListener('zc-tasks-changed', onChanged)
+  }, [ownerUserId])
+
+  // Inbound sync listeners (P2P + hub) similar to KanbanBoard; includes ALL item types.
+  useEffect(() => {
+    if (!ownerUserId) return
+    const applyIncoming = (incomingItems, projectId) => {
+      const incoming = Array.isArray(incomingItems) ? incomingItems : []
+      if (incoming.length === 0) return
+      if (projectId && !memberProjectIds.includes(projectId)) return
+      if (activeProject?.id && projectId && projectId !== activeProject.id) return
+
+      console.log('[ProductRoadmap Sync] incoming', incoming)
+
+      setItems((prev) => {
+        const uid = ownerUserIdRef.current
+        const nextBase = mergeTasksFromSync(prev, incoming, visibilityOptions)
+        if (incoming.length === 0) return prev
+        if (prev.length > 0 && nextBase.length === 0) return prev
+        const next = dedupeAndNormalizePositions(
+          nextBase.map((t) => (uid ? { ...t, ownerUserId: uid } : t)),
+        )
+        if (uid) void saveTasks(next, uid, { reason: 'ProductRoadmap inbound sync' })
+        if (uid) void upsertRemoteTasks(incoming, uid)
+        console.log('[ProductRoadmap Sync] merged count', next.length)
+        return next
+      })
+    }
+
+    const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
+      if (data?.type !== 'TASK_SYNC') return
+      applyIncoming(data.tasks, data.projectId ?? null)
+    })
+
+    const onHub = (e) => {
+      const payload = e.detail || {}
+      if (payload?.action !== 'task-sync') return
+      applyIncoming(payload.tasks, payload.projectId ?? null)
+    }
+    window.addEventListener('hub:message', onHub)
+    return () => {
+      unsubMsg()
+      window.removeEventListener('hub:message', onHub)
+    }
+  }, [ownerUserId, memberProjectIds, activeProject?.id, visibilityOptions])
 
   const syncAgileItems = async (changedItems) => {
     if (!ownerUserId) return
