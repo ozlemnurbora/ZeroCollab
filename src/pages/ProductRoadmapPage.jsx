@@ -110,6 +110,10 @@ export function ProductRoadmapPage() {
   }, [ownerUserId])
 
   useEffect(() => {
+    console.log('[Roadmap Persistence Debug] ownerUserId', ownerUserId)
+  }, [ownerUserId])
+
+  useEffect(() => {
     itemsRef.current = items
   }, [items])
 
@@ -166,16 +170,17 @@ export function ProductRoadmapPage() {
       const remoteItems = await fetchRemoteProjectTasks(projectId)
       if (cancelled) return
       const localAll = Array.isArray(itemsRef.current) ? itemsRef.current : []
-      console.log('[Roadmap Hydration] local', localAll.length)
-      console.log('[Roadmap Hydration] remote', Array.isArray(remoteItems) ? remoteItems.length : 0)
+      const remoteCount = Array.isArray(remoteItems) ? remoteItems.length : 0
+      console.log('[Roadmap Hydration Persist] local', localAll.length, 'remote', remoteCount, 'merged', 'pending')
 
       const merged = dedupeAndNormalizePositions(mergeAgileWorkItems(localAll, remoteItems))
-      console.log('[Roadmap Hydration] merged', merged.length)
+      console.log('[Roadmap Hydration Persist] local', localAll.length, 'remote', remoteCount, 'merged', merged.length)
 
       // Never let empty remote wipe local. Only write if we actually have items.
-      if (merged.length > 0 && !areAgileItemsEqual(localAll, merged)) {
-        setItems(merged)
-        await saveTasks(merged, ownerUserId, { reason: 'ProductRoadmap remote merge' })
+      if (merged.length > 0) {
+        await saveTasks(merged, ownerUserId, { reason: 'ProductRoadmap hydration persist' })
+        console.log('[Roadmap Hydration Persist] saved to IndexedDB', merged.length)
+        if (!areAgileItemsEqual(localAll, merged)) setItems(merged)
       }
 
       // Backfill: if local has shared project items missing in Supabase, upsert them.
@@ -258,15 +263,14 @@ export function ProductRoadmapPage() {
           after: next.length,
         })
 
-        if (!areAgileItemsEqual(prev, next)) {
-          if (uid) void saveTasks(next, uid, { reason: 'ProductRoadmap inbound central sync' })
-          if (uid) {
-            console.log('[WorkItem Remote Upsert] count', incoming.length)
-            void upsertRemoteTasks(incoming, uid)
-          }
-          return next
+        if (uid && next.length > 0) {
+          void saveTasks(next, uid, { reason: 'ProductRoadmap inbound central sync persist' })
         }
-        return prev
+        if (uid) {
+          console.log('[WorkItem Remote Upsert] count', incoming.length)
+          void upsertRemoteTasks(incoming, uid)
+        }
+        return areAgileItemsEqual(prev, next) ? prev : next
       })
     }
 
