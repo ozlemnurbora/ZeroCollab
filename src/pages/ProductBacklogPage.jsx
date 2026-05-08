@@ -73,8 +73,6 @@ export function ProductBacklogPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [hasLoadedItems, setHasLoadedItems] = useState(false)
   const itemsRef = useRef(items)
-  const hasHydratedRef = useRef(false)
-  const lastNonEmptyItemsRef = useRef([])
 
   const [createType, setCreateType] = useState(null) // epic|feature|user_story|task
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -109,14 +107,7 @@ export function ProductBacklogPage() {
   }, [ownerUserId])
 
   useEffect(() => {
-    console.log('[Backlog Navigation Guard] activeProject', activeProject?.id ?? null)
-  }, [activeProject?.id])
-
-  useEffect(() => {
     itemsRef.current = items
-    if (Array.isArray(items) && items.length > 0) {
-      lastNonEmptyItemsRef.current = items
-    }
   }, [items])
 
   useEffect(() => {
@@ -135,23 +126,7 @@ export function ProductBacklogPage() {
       const normalized = list
         .map((it) => normalizeTaskForStorage(it, ownerUserId))
         .filter(Boolean)
-      const loadedNext = dedupeAndNormalizePositions(normalized)
-      console.log('[Backlog Navigation Guard] loaded', loadedNext.length)
-      setItems((prev) => {
-        console.log('[Backlog Navigation Guard] previous', Array.isArray(prev) ? prev.length : 0)
-        if (loadedNext.length === 0) {
-          const last = lastNonEmptyItemsRef.current
-          if (Array.isArray(prev) && prev.length > 0) {
-            console.warn('[Backlog Navigation Guard] prevented empty navigation wipe')
-            return prev
-          }
-          if (Array.isArray(last) && last.length > 0) {
-            console.warn('[Backlog Navigation Guard] prevented empty navigation wipe')
-            return last
-          }
-        }
-        return loadedNext
-      })
+      setItems(dedupeAndNormalizePositions(normalized))
       setIsLoading(false)
       setHasLoadedItems(true)
     })()
@@ -163,7 +138,6 @@ export function ProductBacklogPage() {
   // When active project changes, reload safely without wiping current state while loading.
   useEffect(() => {
     if (!ownerUserId || !hasLoadedItems) return
-    if (!activeProject?.id) return
     let cancelled = false
     ;(async () => {
       setIsLoading(true)
@@ -172,17 +146,7 @@ export function ProductBacklogPage() {
       const list = Array.isArray(existing) ? existing : []
       const normalized = list.map((it) => normalizeTaskForStorage(it, ownerUserId)).filter(Boolean)
       const next = dedupeAndNormalizePositions(normalized)
-      setItems((prev) => {
-        if (next.length === 0) {
-          const last = lastNonEmptyItemsRef.current
-          if (Array.isArray(prev) && prev.length > 0) return prev
-          if (Array.isArray(last) && last.length > 0) {
-            console.warn('[Backlog Navigation Guard] prevented empty navigation wipe')
-            return last
-          }
-        }
-        return Array.isArray(prev) && prev.length > 0 ? prev : next
-      })
+      setItems((prev) => (Array.isArray(prev) && prev.length > 0 ? prev : next))
       setIsLoading(false)
     })()
     return () => {
@@ -211,9 +175,6 @@ export function ProductBacklogPage() {
         await saveTasks(merged, ownerUserId, { reason: 'ProductBacklog hydration persist' })
         console.log('[Backlog Hydration Persist] saved to IndexedDB', merged.length)
         if (!areAgileItemsEqual(localAll, merged)) setItems(merged)
-        hasHydratedRef.current = true
-      } else {
-        hasHydratedRef.current = true
       }
 
       // Backfill: if local has shared project items missing in Supabase, upsert them.
@@ -256,17 +217,7 @@ export function ProductBacklogPage() {
             .map((it) => normalizeTaskForStorage(it, ownerUserId))
             .filter(Boolean)
           const next = dedupeAndNormalizePositions(normalized)
-          setItems((prev) => {
-            if (next.length === 0) {
-              const last = lastNonEmptyItemsRef.current
-              if (Array.isArray(prev) && prev.length > 0) return prev
-              if (Array.isArray(last) && last.length > 0) {
-                console.warn('[Backlog Navigation Guard] prevented empty navigation wipe')
-                return last
-              }
-            }
-            return areAgileItemsEqual(prev, next) ? prev : next
-          })
+          setItems((prev) => (areAgileItemsEqual(prev, next) ? prev : next))
         })()
       }, 150)
     }
