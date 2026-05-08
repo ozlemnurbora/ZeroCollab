@@ -12,7 +12,6 @@ import {
 } from '../components/kanban/taskStorage.js'
 import {
   filterTasksForVisibility,
-  mergeTasksFromSync,
   tasksForP2PBroadcast,
   taskVisibleInActiveProject,
 } from '../utils/taskP2PSync.js'
@@ -20,7 +19,15 @@ import { broadcastTaskSync } from '../utils/hubManager.js'
 import { on, P2P_EVENTS, sendToAllPeers } from '../utils/p2pManager.js'
 import { upsertRemoteTasks } from '../utils/taskRemoteStorage.js'
 import { getPeerId } from '../utils/p2pManager.js'
-import { hasSeenSync, markSyncSeen } from '../utils/sync/syncDedupe.js'
+import {
+  normalizeAgileWorkItem,
+  mergeAgileWorkItems,
+  areAgileItemsEqual,
+  buildAgileSyncPayload,
+  shouldIgnoreIncomingSync,
+  extractAgileItemsFromSyncMessage,
+} from '../features/agile/sync/agileSyncEngine.js'
+import { hasSeenSync, markSyncSeen } from '../features/agile/sync/syncDedupe.js'
 
 function normalizeItemType(item) {
   if (!item) return 'task'
@@ -89,37 +96,7 @@ export function ProductRoadmapPage() {
   const buildSyncMeta = () => {
     const sourceUserId = ownerUserIdRef.current ?? null
     const sourcePeerId = getPeerId?.() ?? null
-    const syncId = `${sourceUserId}-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    return { sourceUserId, sourcePeerId, syncId, sentAt: Date.now(), projectId: activeProjectId }
-  }
-
-  const agileItemsSignature = (list) => {
-    const arr = Array.isArray(list) ? list : []
-    const parts = arr
-      .filter((it) => it?.id)
-      .map((it) => {
-        const u = Number(it.updatedAt ?? it.updated_at ?? 0) || 0
-        const d = Number(it.deletedAt ?? it.deleted_at ?? 0) || 0
-        return [
-          it.id,
-          u,
-          d,
-          it.type ?? '',
-          it.itemType ?? '',
-          it.projectId ?? '',
-          it.calendarType ?? '',
-          it.sprintId ?? '',
-          it.backlogState ?? '',
-          it.parentEpicId ?? '',
-          it.parentFeatureId ?? '',
-          it.parentStoryId ?? '',
-          it.roadmapBucket ?? '',
-          it.plannedSprint ?? '',
-          it.roadmapOrder ?? '',
-        ].join('|')
-      })
-      .sort()
-    return parts.join('\n')
+    return { sourceUserId, sourcePeerId }
   }
 
   useEffect(() => {
@@ -173,7 +150,7 @@ export function ProductRoadmapPage() {
             .map((it) => normalizeTaskForStorage(it, ownerUserId))
             .filter(Boolean)
           const next = dedupeAndNormalizePositions(normalized)
-          setItems((prev) => (agileItemsSignature(prev) === agileItemsSignature(next) ? prev : next))
+          setItems((prev) => (areAgileItemsEqual(prev, next) ? prev : next))
         })()
       }, 150)
     }
@@ -187,64 +164,55 @@ export function ProductRoadmapPage() {
   // Inbound sync listeners (P2P + hub) similar to KanbanBoard; includes ALL item types.
   useEffect(() => {
     if (!ownerUserId) return
-    const applyIncoming = (incomingItems, projectId) => {
-      const incoming = Array.isArray(incomingItems) ? incomingItems : []
-      if (incoming.length === 0) {
-        console.log('[Agile Sync Stable] ignored empty payload')
-        return
-      }
+    const applyIncomingPayload = (payload) => {
+      const incoming = extractAgileItemsFromSyncMessage(payload)
+      if (!Array.isArray(incoming) || incoming.length === 0) return
+
+      const projectId = payload?.projectId ?? null
       if (projectId && !memberProjectIds.includes(projectId)) return
       if (activeProject?.id && projectId && projectId !== activeProject.id) return
 
-      console.log('[ProductRoadmap Sync] incoming', incoming)
+      console.log('[Roadmap Central Sync] incoming', {
+        count: incoming.length,
+        syncId: payload?.syncId ?? null,
+      })
 
       setItems((prev) => {
         const uid = ownerUserIdRef.current
-        const nextBase = mergeTasksFromSync(prev, incoming, visibilityOptions)
-        if (incoming.length === 0) return prev
-        if (prev.length > 0 && nextBase.length === 0) return prev
+        const mergedBase = mergeAgileWorkItems(prev, incoming)
+        if (mergedBase.length === 0 && prev.length > 0) return prev
         const next = dedupeAndNormalizePositions(
-          nextBase.map((t) => (uid ? { ...t, ownerUserId: uid } : t)),
+          mergedBase.map((t) => (uid ? { ...t, ownerUserId: uid } : t)),
         )
-        if (uid) void saveTasks(next, uid, { reason: 'ProductRoadmap inbound sync' })
-        if (uid) void upsertRemoteTasks(incoming, uid)
-        console.log('[ProductRoadmap Sync] merged count', next.length)
-        console.log('[Agile Sync Stable] merged', { before: prev.length, incoming: incoming.length, after: next.length })
-        return next
+
+        console.log('[Roadmap Central Sync] merged', {
+          before: Array.isArray(prev) ? prev.length : 0,
+          after: next.length,
+        })
+
+        if (!areAgileItemsEqual(prev, next)) {
+          if (uid) void saveTasks(next, uid, { reason: 'ProductRoadmap inbound central sync' })
+          if (uid) void upsertRemoteTasks(incoming, uid)
+          return next
+        }
+        return prev
       })
     }
 
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
       if (data?.type !== 'TASK_SYNC') return
-      const syncId = data?.syncId ?? null
-      const sourceUserId = data?.sourceUserId ?? null
-      if (syncId && hasSeenSync(syncId)) {
-        console.log('[Agile Sync Stable] ignored duplicate sync', syncId)
-        return
-      }
-      if (sourceUserId && sourceUserId === ownerUserIdRef.current) {
-        console.log('[Agile Sync Stable] ignored own sync', syncId)
-        return
-      }
-      if (syncId) markSyncSeen(syncId)
-      applyIncoming(data.items ?? data.tasks, data.projectId ?? null)
+      const payload = data
+      if (shouldIgnoreIncomingSync(payload, ownerUserIdRef.current, hasSeenSync)) return
+      if (payload?.syncId) markSyncSeen(payload.syncId)
+      applyIncomingPayload(payload)
     })
 
     const onHub = (e) => {
       const payload = e.detail || {}
       if (payload?.action !== 'task-sync') return
-      const syncId = payload?.syncId ?? null
-      const sourceUserId = payload?.sourceUserId ?? null
-      if (syncId && hasSeenSync(syncId)) {
-        console.log('[Agile Sync Stable] ignored duplicate sync', syncId)
-        return
-      }
-      if (sourceUserId && sourceUserId === ownerUserIdRef.current) {
-        console.log('[Agile Sync Stable] ignored own sync', syncId)
-        return
-      }
-      if (syncId) markSyncSeen(syncId)
-      applyIncoming(payload.items ?? payload.tasks, payload.projectId ?? null)
+      if (shouldIgnoreIncomingSync(payload, ownerUserIdRef.current, hasSeenSync)) return
+      if (payload?.syncId) markSyncSeen(payload.syncId)
+      applyIncomingPayload(payload)
     }
     window.addEventListener('hub:message', onHub)
     return () => {
@@ -275,9 +243,16 @@ export function ProductRoadmapPage() {
       })
     }
     const meta = buildSyncMeta()
-    sendToAllPeers({ type: 'TASK_SYNC', items: outgoing, projectId: activeProjectId, ...meta })
-    await broadcastTaskSync(outgoing, activeProjectId, meta)
-    await upsertRemoteTasks(outgoing, ownerUserId)
+    const outgoingNormalized = outgoing.map(normalizeAgileWorkItem).filter(Boolean)
+    const payload = buildAgileSyncPayload({
+      items: outgoingNormalized,
+      projectId: activeProjectId,
+      sourceUserId: meta.sourceUserId,
+      sourcePeerId: meta.sourcePeerId,
+    })
+    sendToAllPeers(payload)
+    await broadcastTaskSync(payload.items, activeProjectId, payload)
+    await upsertRemoteTasks(payload.items, ownerUserId)
   }
 
   const visibleItems = useMemo(() => {
