@@ -36,7 +36,13 @@ import { hasSeenSync, markSyncSeen } from '../features/agile/sync/syncDedupe.js'
 function normalizeItemType(item) {
   if (!item) return 'task'
   const it = String(item.itemType ?? '').toLowerCase().trim()
-  if (it) return it
+  if (it) {
+    if (it === 'epic') return 'epic'
+    if (it === 'feature') return 'feature'
+    if (it === 'user_story' || it === 'user story' || it === 'userstory') return 'user_story'
+    if (it === 'task') return 'task'
+    return 'task'
+  }
   const t = String(item.type ?? '').trim()
   if (t === 'Epic') return 'epic'
   if (t === 'Feature') return 'feature'
@@ -201,10 +207,15 @@ export function ProductRoadmapPage() {
 
   const visibilityOptions = useMemo(
     () => ({
-      allowedProjectIds: memberProjectIds,
+      allowedProjectIds:
+        Array.isArray(memberProjectIds) && memberProjectIds.length > 0
+          ? memberProjectIds
+          : activeProjectId
+            ? [activeProjectId]
+            : [],
       currentUserId: ownerUserId,
     }),
-    [memberProjectIds, ownerUserId],
+    [memberProjectIds, ownerUserId, activeProjectId],
   )
 
   // Keep page state fresh when other pages save to IndexedDB.
@@ -331,16 +342,26 @@ export function ProductRoadmapPage() {
   }
 
   const visibleItems = useMemo(() => {
+    try {
+      console.log('[Roadmap Render Debug] raw items', Array.isArray(items) ? items.length : 0)
+    } catch {
+      // ignore
+    }
     const visible = filterTasksForVisibility(items, visibilityOptions)
     if (!activeProject) return visible
     const scoped = visible.filter((it) =>
-      taskVisibleInActiveProject(it, activeProject.id, ownerUserId),
+      taskVisibleInActiveProject(it, String(activeProject.id), ownerUserId),
     )
     const legacyNoProject = visible.filter((it) => it && !it.projectId)
     const merged = [...scoped]
     const seen = new Set(scoped.map((it) => it?.id).filter(Boolean))
     for (const it of legacyNoProject) {
       if (it?.id && !seen.has(it.id)) merged.push(it)
+    }
+    try {
+      console.log('[Roadmap Render Debug] visible items', Array.isArray(merged) ? merged.length : 0)
+    } catch {
+      // ignore
     }
     return merged
   }, [items, visibilityOptions, activeProject, ownerUserId])

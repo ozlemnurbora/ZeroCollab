@@ -38,7 +38,14 @@ import { hasSeenSync, markSyncSeen } from '../features/agile/sync/syncDedupe.js'
 function normalizeItemType(item) {
   if (!item) return 'task'
   const it = String(item.itemType ?? '').toLowerCase().trim()
-  if (it) return it
+  if (it) {
+    if (it === 'epic') return 'epic'
+    if (it === 'feature') return 'feature'
+    if (it === 'user_story' || it === 'user story' || it === 'userstory') return 'user_story'
+    if (it === 'task') return 'task'
+    // Unknown: treat as task for grouping.
+    return 'task'
+  }
   const t = String(item.type ?? '').trim()
   if (t === 'Epic') return 'epic'
   if (t === 'Feature') return 'feature'
@@ -195,10 +202,17 @@ export function ProductBacklogPage() {
 
   const visibilityOptions = useMemo(
     () => ({
-      allowedProjectIds: memberProjectIds,
+      // IMPORTANT: Workspace membership can be temporarily empty during navigation/remount.
+      // We still need to render active project items already in local cache.
+      allowedProjectIds:
+        Array.isArray(memberProjectIds) && memberProjectIds.length > 0
+          ? memberProjectIds
+          : activeProjectId
+            ? [activeProjectId]
+            : [],
       currentUserId: ownerUserId,
     }),
-    [memberProjectIds, ownerUserId],
+    [memberProjectIds, ownerUserId, activeProjectId],
   )
 
   // Keep page state fresh when other pages (KanbanBoard/Sprint Planning/etc) save to IndexedDB.
@@ -377,16 +391,33 @@ export function ProductBacklogPage() {
   }, [ownerUserId, activeProjectId, memberProjectIds, isLoading, items])
 
   const visibleItems = useMemo(() => {
+    // Render debug (filtering/derivation)
+    try {
+      const types = (Array.isArray(items) ? items : []).map((i) => i?.type || i?.itemType).filter(Boolean)
+      const projIds = Array.from(new Set((Array.isArray(items) ? items : []).map((i) => i?.projectId).filter(Boolean)))
+      console.log('[Backlog Render Debug] raw items', Array.isArray(items) ? items.length : 0)
+      console.log('[Backlog Render Debug] item types', types)
+      console.log('[Backlog Render Debug] project ids', projIds)
+      console.log('[Backlog Render Debug] activeProject', activeProject?.id ?? null)
+    } catch {
+      // ignore
+    }
+
     const visible = filterTasksForVisibility(items, visibilityOptions)
     if (!activeProject) return visible
     const scoped = visible.filter((it) =>
-      taskVisibleInActiveProject(it, activeProject.id, ownerUserId),
+      taskVisibleInActiveProject(it, String(activeProject.id), ownerUserId),
     )
     const legacyNoProject = visible.filter((it) => it && !it.projectId)
     const merged = [...scoped]
     const seen = new Set(scoped.map((it) => it?.id).filter(Boolean))
     for (const it of legacyNoProject) {
       if (it?.id && !seen.has(it.id)) merged.push(it)
+    }
+    try {
+      console.log('[Backlog Render Debug] visible items', Array.isArray(merged) ? merged.length : 0)
+    } catch {
+      // ignore
     }
     return merged
   }, [items, visibilityOptions, activeProject, ownerUserId])
