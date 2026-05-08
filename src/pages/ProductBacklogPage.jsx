@@ -80,6 +80,8 @@ export function ProductBacklogPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [hasLoadedItems, setHasLoadedItems] = useState(false)
   const itemsRef = useRef(items)
+  const lastNonEmptyItemsRef = useRef([])
+  const lastHydratedAtRef = useRef(0)
 
   const [createType, setCreateType] = useState(null) // epic|feature|user_story|task
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -115,7 +117,55 @@ export function ProductBacklogPage() {
 
   useEffect(() => {
     itemsRef.current = items
+    if (Array.isArray(items) && items.length > 0) {
+      lastNonEmptyItemsRef.current = items
+    }
   }, [items])
+
+  const applyStateSnapshot = (sourceName, nextList) => {
+    const nextArr = Array.isArray(nextList) ? nextList : []
+    console.warn('[Backlog State Source]', sourceName, nextArr.length)
+    setItems((prev) => {
+      const prevArr = Array.isArray(prev) ? prev : []
+
+      if (nextArr.length === 0) {
+        const last = lastNonEmptyItemsRef.current
+        if (prevArr.length > 0) {
+          console.warn('[Backlog Navigation Guard] prevented empty navigation wipe')
+          return prevArr
+        }
+        if (Array.isArray(last) && last.length > 0) {
+          console.warn('[Backlog Navigation Guard] prevented empty navigation wipe')
+          return last
+        }
+      }
+
+      const msSinceHydrate = Date.now() - (lastHydratedAtRef.current || 0)
+      if (
+        msSinceHydrate >= 0 &&
+        msSinceHydrate < 3000 &&
+        nextArr.length > 0 &&
+        nextArr.length < prevArr.length
+      ) {
+        console.warn('[Backlog Merge Guard] ignored likely-stale snapshot', {
+          source: sourceName,
+          prev: prevArr.length,
+          next: nextArr.length,
+          msSinceHydrate,
+        })
+        return prevArr
+      }
+
+      const merged = dedupeAndNormalizePositions(mergeAgileWorkItems(prevArr, nextArr))
+      console.warn('[Backlog Merge Guard]', {
+        source: sourceName,
+        prev: prevArr.length,
+        next: nextArr.length,
+        merged: merged.length,
+      })
+      return areAgileItemsEqual(prevArr, merged) ? prevArr : merged
+    })
+  }
 
   useEffect(() => {
     if (!ownerUserId) {
@@ -133,7 +183,7 @@ export function ProductBacklogPage() {
       const normalized = list
         .map((it) => normalizeTaskForStorage(it, ownerUserId))
         .filter(Boolean)
-      setItems(dedupeAndNormalizePositions(normalized))
+      applyStateSnapshot('initial local load', dedupeAndNormalizePositions(normalized))
       setIsLoading(false)
       setHasLoadedItems(true)
     })()
@@ -145,6 +195,7 @@ export function ProductBacklogPage() {
   // When active project changes, reload safely without wiping current state while loading.
   useEffect(() => {
     if (!ownerUserId || !hasLoadedItems) return
+    if (!activeProject?.id) return
     let cancelled = false
     ;(async () => {
       setIsLoading(true)
@@ -153,7 +204,7 @@ export function ProductBacklogPage() {
       const list = Array.isArray(existing) ? existing : []
       const normalized = list.map((it) => normalizeTaskForStorage(it, ownerUserId)).filter(Boolean)
       const next = dedupeAndNormalizePositions(normalized)
-      setItems((prev) => (Array.isArray(prev) && prev.length > 0 ? prev : next))
+      applyStateSnapshot('project reload', next)
       setIsLoading(false)
     })()
     return () => {
@@ -181,7 +232,8 @@ export function ProductBacklogPage() {
         // Persist hydration result even if UI already matches (prevents "shows once then empty after refresh").
         await saveTasks(merged, ownerUserId, { reason: 'ProductBacklog hydration persist' })
         console.log('[Backlog Hydration Persist] saved to IndexedDB', merged.length)
-        if (!areAgileItemsEqual(localAll, merged)) setItems(merged)
+        lastHydratedAtRef.current = Date.now()
+        applyStateSnapshot('remote hydration', merged)
       }
 
       // Backfill: if local has shared project items missing in Supabase, upsert them.
@@ -231,7 +283,7 @@ export function ProductBacklogPage() {
             .map((it) => normalizeTaskForStorage(it, ownerUserId))
             .filter(Boolean)
           const next = dedupeAndNormalizePositions(normalized)
-          setItems((prev) => (areAgileItemsEqual(prev, next) ? prev : next))
+          applyStateSnapshot('storage event reload', next)
         })()
       }, 150)
     }
