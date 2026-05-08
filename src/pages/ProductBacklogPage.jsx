@@ -19,7 +19,11 @@ import {
 } from '../utils/taskP2PSync.js'
 import { broadcastTaskSync } from '../utils/hubManager.js'
 import { on, P2P_EVENTS, sendToAllPeers } from '../utils/p2pManager.js'
-import { upsertRemoteTasks } from '../utils/taskRemoteStorage.js'
+import {
+  fetchRemoteProjectTasks,
+  isSharedProjectTask,
+  upsertRemoteTasks,
+} from '../utils/taskRemoteStorage.js'
 import { getPeerId } from '../utils/p2pManager.js'
 import {
   normalizeAgileWorkItem,
@@ -67,6 +71,8 @@ export function ProductBacklogPage() {
 
   const [items, setItems] = useState([])
   const [isLoading, setIsLoading] = useState(true)
+  const [hasLoadedItems, setHasLoadedItems] = useState(false)
+  const itemsRef = useRef(items)
 
   const [createType, setCreateType] = useState(null) // epic|feature|user_story|task
   const [isCreateOpen, setIsCreateOpen] = useState(false)
@@ -97,8 +103,13 @@ export function ProductBacklogPage() {
   }, [ownerUserId])
 
   useEffect(() => {
+    itemsRef.current = items
+  }, [items])
+
+  useEffect(() => {
     if (!ownerUserId) {
       setItems([])
+      setHasLoadedItems(false)
       setIsLoading(false)
       return
     }
@@ -113,11 +124,68 @@ export function ProductBacklogPage() {
         .filter(Boolean)
       setItems(dedupeAndNormalizePositions(normalized))
       setIsLoading(false)
+      setHasLoadedItems(true)
     })()
     return () => {
       cancelled = true
     }
   }, [ownerUserId])
+
+  // When active project changes, reload safely without wiping current state while loading.
+  useEffect(() => {
+    if (!ownerUserId || !hasLoadedItems) return
+    let cancelled = false
+    ;(async () => {
+      setIsLoading(true)
+      const existing = await loadTasks(ownerUserId)
+      if (cancelled) return
+      const list = Array.isArray(existing) ? existing : []
+      const normalized = list.map((it) => normalizeTaskForStorage(it, ownerUserId)).filter(Boolean)
+      const next = dedupeAndNormalizePositions(normalized)
+      setItems((prev) => (Array.isArray(prev) && prev.length > 0 ? prev : next))
+      setIsLoading(false)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeProject?.id, ownerUserId, hasLoadedItems])
+
+  // Durable hydration: merge Supabase project work items into local cache (never wipes local).
+  useEffect(() => {
+    const projectId = activeProject?.id ?? null
+    if (!projectId || !ownerUserId || !hasLoadedItems) return
+    let cancelled = false
+    ;(async () => {
+      const remoteItems = await fetchRemoteProjectTasks(projectId)
+      if (cancelled) return
+      const localAll = Array.isArray(itemsRef.current) ? itemsRef.current : []
+      console.log('[Backlog Hydration] local', localAll.length)
+      console.log('[Backlog Hydration] remote', Array.isArray(remoteItems) ? remoteItems.length : 0)
+
+      const merged = dedupeAndNormalizePositions(mergeAgileWorkItems(localAll, remoteItems))
+      console.log('[Backlog Hydration] merged', merged.length)
+
+      // Never let empty remote wipe local. Only write if we actually have items.
+      if (merged.length > 0 && !areAgileItemsEqual(localAll, merged)) {
+        setItems(merged)
+        await saveTasks(merged, ownerUserId, { reason: 'ProductBacklog remote merge' })
+      }
+
+      // Backfill: if local has shared project items missing in Supabase, upsert them.
+      const remoteIds = new Set((Array.isArray(remoteItems) ? remoteItems : []).map((t) => t?.id).filter(Boolean))
+      const localSharedProject = localAll.filter(
+        (t) => isSharedProjectTask(t) && String(t.projectId ?? '') === String(projectId),
+      )
+      const toBackfill = localSharedProject.filter((t) => t?.id && !remoteIds.has(t.id))
+      if (toBackfill.length > 0) {
+        console.log('[WorkItem Remote Upsert] count', toBackfill.length)
+        await upsertRemoteTasks(toBackfill, ownerUserId)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeProject?.id, ownerUserId, hasLoadedItems])
 
   const visibilityOptions = useMemo(
     () => ({
@@ -185,7 +253,10 @@ export function ProductBacklogPage() {
 
         if (!areAgileItemsEqual(prev, next)) {
           if (uid) void saveTasks(next, uid, { reason: 'ProductBacklog inbound central sync' })
-          if (uid) void upsertRemoteTasks(incoming, uid)
+          if (uid) {
+            console.log('[WorkItem Remote Upsert] count', incoming.length)
+            void upsertRemoteTasks(incoming, uid)
+          }
           return next
         }
         return prev
