@@ -44,6 +44,29 @@ function createId() {
   return `task_${Date.now()}_${Math.random().toString(16).slice(2)}`
 }
 
+/**
+ * Calendar should only show real Tasks (linked or independent) plus Meetings.
+ * Epics, Features, and User Stories are hierarchy/backlog items and must NOT
+ * appear on the calendar even if they happen to share storage with tasks.
+ *
+ * Robust detection — case-insensitive, handles itemType and legacy `type`:
+ *   - "task" / "Task"
+ *   - falls back to other casings via .toLowerCase()
+ *   - any other type (epic / feature / user_story / user story / story / etc.)
+ *     is excluded.
+ */
+function isCalendarTask(item) {
+  if (!item) return false
+  const it = String(item.itemType ?? '').toLowerCase().trim()
+  if (it) return it === 'task'
+  const t = String(item.type ?? '').toLowerCase().trim()
+  if (t) return t === 'task'
+  // Legacy items without itemType/type were always treated as tasks in the
+  // existing storage; preserve that behavior so day-task counts don't regress
+  // for older records that pre-date the Agile hierarchy.
+  return true
+}
+
 const CALENDAR_COLORS = [
   'bg-violet-500',
   'bg-rose-500',
@@ -324,6 +347,11 @@ export function CalendarPage() {
         taskVisibleInActiveProject(task, activeProject.id, ownerUserId),
       )
     }
+
+    // Calendar shows ONLY Tasks + Meetings.
+    // Hierarchy items (Epic / Feature / User Story) live in Backlog/Roadmap
+    // and must be excluded here even if they share IndexedDB/Supabase storage.
+    list = list.filter(isCalendarTask)
 
     // Filter by calendar selection
     if (activeCalendar === 'general') {

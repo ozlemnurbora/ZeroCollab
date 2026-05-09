@@ -9,10 +9,68 @@ import {
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
 import { Button } from '../components/ui/Button.jsx'
+import { Modal } from '../components/ui/Modal.jsx'
 import { SprintCreationModal } from '../components/workspace/SprintCreationModal.jsx'
 import { getSprintRemainingDays } from '../utils/sprintDateUtils.js'
 import { fetchRemoteProjectTasks } from '../utils/taskRemoteStorage.js'
-import { calculateSprintProgress } from '../utils/sprint/sprintProgressUtils.js'
+import { calculateSprintProgress, getTasksForActiveSprint } from '../utils/sprint/sprintProgressUtils.js'
+
+function normalizeItemType(item) {
+  if (!item) return 'task'
+  const it = String(item.itemType ?? '').toLowerCase().trim()
+  if (it) return it
+  const t = String(item.type ?? '').trim()
+  if (t === 'Epic') return 'epic'
+  if (t === 'Feature') return 'feature'
+  if (t === 'User Story' || t === 'UserStory') return 'user_story'
+  if (t === 'Task') return 'task'
+  return 'task'
+}
+
+const DONE_VALUES = new Set(['done', 'complete', 'completed'])
+
+function pickStr(v) {
+  return String(v ?? '').toLowerCase().trim()
+}
+
+/** User Story completion (unchanged): backlogState OR status counts. */
+function isStoryDone(item) {
+  if (DONE_VALUES.has(pickStr(item?.backlogState))) return true
+  if (DONE_VALUES.has(pickStr(item?.status))) return true
+  return false
+}
+
+/**
+ * Strict Task completion that mirrors the Sprint Board workflow column.
+ * - Prefer task workflow `status` (todo / in_progress / in_review / done).
+ * - Then `state` (some legacy items use this).
+ * - Only fall back to `backlogState` when BOTH status and state are missing,
+ *   because `backlogState` can be stale for in-flight sprint tasks (e.g. an
+ *   item carried into the sprint with backlogState=done but moved to In Review).
+ */
+function isTaskDoneStrict(item) {
+  const status = pickStr(item?.status)
+  const state = pickStr(item?.state)
+  const backlogState = pickStr(item?.backlogState)
+
+  console.log(
+    '[Sprint Checklist] linked task',
+    item?.title,
+    item?.status,
+    item?.state,
+    item?.backlogState,
+  )
+
+  if (status) return DONE_VALUES.has(status)
+  if (state) return DONE_VALUES.has(state)
+  if (backlogState) return DONE_VALUES.has(backlogState)
+  return false
+}
+
+function isSprintWorkItemDone(item) {
+  if (normalizeItemType(item) === 'task') return isTaskDoneStrict(item)
+  return isStoryDone(item)
+}
 
 function fmtDate(value) {
   if (!value) return '—'
@@ -35,6 +93,8 @@ export function ProjectOverviewPage() {
   const [tasks, setTasks] = useState([])
   const [createSprintOpen, setCreateSprintOpen] = useState(false)
   const [sprintActionError, setSprintActionError] = useState('')
+  const [completeWarningOpen, setCompleteWarningOpen] = useState(false)
+  const [completingSprint, setCompletingSprint] = useState(false)
   const [isEditingOverview, setIsEditingOverview] = useState(false)
   const [overviewError, setOverviewError] = useState('')
   const [overviewSaving, setOverviewSaving] = useState(false)
@@ -113,6 +173,67 @@ export function ProjectOverviewPage() {
     }
   }, [projectTasks, activeSprint, activeProject?.id, tasks])
 
+  const sprintReadiness = useMemo(() => {
+    const projectId = activeProject?.id ?? null
+    if (!activeSprint || !projectId) return null
+
+    const sprintItems = getTasksForActiveSprint(
+      projectTasks,
+      activeSprint,
+      projectId,
+    )
+    const goalDefined = Boolean(
+      String(
+        activeSprint.sprint_goal ?? activeSprint.sprintGoal ?? '',
+      ).trim(),
+    )
+
+    const stories = sprintItems.filter(
+      (it) => normalizeItemType(it) === 'user_story',
+    )
+    const tasksOnly = sprintItems.filter(
+      (it) => normalizeItemType(it) === 'task',
+    )
+    const storyIds = new Set(stories.map((s) => s?.id).filter(Boolean))
+    const linkedTasks = tasksOnly.filter(
+      (t) => t?.parentStoryId && storyIds.has(t.parentStoryId),
+    )
+    const independentTasks = tasksOnly.filter((t) => !t?.parentStoryId)
+
+    const storiesDone = stories.filter(isSprintWorkItemDone).length
+    const linkedDone = linkedTasks.filter(isSprintWorkItemDone).length
+    const indepDone = independentTasks.filter(isSprintWorkItemDone).length
+
+    const allStoriesDone =
+      stories.length === 0 || storiesDone === stories.length
+    const allLinkedDone =
+      linkedTasks.length === 0 || linkedDone === linkedTasks.length
+    const allIndepDone =
+      independentTasks.length === 0 || indepDone === independentTasks.length
+
+    const workItems = sprintItems.filter((it) => {
+      const ty = normalizeItemType(it)
+      return ty === 'user_story' || ty === 'task'
+    })
+    const unfinished = workItems.filter((it) => !isSprintWorkItemDone(it))
+    const noUnfinishedWork = unfinished.length === 0
+
+    return {
+      goalDefined,
+      allStoriesDone,
+      allLinkedDone,
+      allIndepDone,
+      noUnfinishedWork,
+      storiesTotal: stories.length,
+      storiesDone,
+      linkedTotal: linkedTasks.length,
+      linkedDone,
+      indepTotal: independentTasks.length,
+      indepDone,
+      unfinishedCount: unfinished.length,
+    }
+  }, [projectTasks, activeSprint, activeProject?.id])
+
   const assignedTeams = useMemo(() => {
     if (!activeProject?.teamIds?.length) return []
     return (teams || []).filter((team) => activeProject.teamIds.includes(team.id))
@@ -154,6 +275,20 @@ export function ProjectOverviewPage() {
     setStartDraft(projectForOverview.startDate || projectForOverview.start_date || '')
     setTargetEndDraft(projectForOverview.targetEndDate || projectForOverview.target_end_date || '')
   }, [projectForOverview, isEditingOverview])
+
+  const runCompleteSprint = async () => {
+    if (!activeSprint?.id) return
+    setSprintActionError('')
+    setCompletingSprint(true)
+    try {
+      await completeProjectSprint(activeSprint.id)
+      setCompleteWarningOpen(false)
+    } catch (err) {
+      setSprintActionError(err?.message || 'Failed to complete sprint.')
+    } finally {
+      setCompletingSprint(false)
+    }
+  }
 
   if (!activeProject) {
     return (
@@ -388,22 +523,163 @@ export function ProjectOverviewPage() {
                   </p>
                 </div>
               </div>
+
+              {sprintReadiness ? (
+                <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.3)] p-4">
+                  <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">
+                    Sprint Readiness Checklist
+                  </h3>
+                  <p className="mt-1 text-[11px] text-[rgb(var(--zc-subtle))]">
+                    Read-only view of active sprint backlog completion. Does not
+                    block completing the sprint.
+                  </p>
+                  <ul className="mt-3 space-y-2 text-sm text-[rgb(var(--zc-muted))]">
+                    <li className="flex gap-2">
+                      <span
+                        className={
+                          sprintReadiness.goalDefined
+                            ? 'text-emerald-400'
+                            : 'text-rose-400'
+                        }
+                        aria-hidden
+                      >
+                        {sprintReadiness.goalDefined ? '✓' : '✗'}
+                      </span>
+                      <span>
+                        {sprintReadiness.goalDefined
+                          ? 'Sprint goal is defined'
+                          : 'Sprint goal is not defined yet'}
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span
+                        className={
+                          sprintReadiness.allStoriesDone
+                            ? 'text-emerald-400'
+                            : 'text-rose-400'
+                        }
+                        aria-hidden
+                      >
+                        {sprintReadiness.allStoriesDone ? '✓' : '✗'}
+                      </span>
+                      <span>
+                        {sprintReadiness.allStoriesDone
+                          ? 'All committed user stories completed'
+                          : 'Some committed user stories are not done'}
+                        <span className="ml-1 text-[11px] text-[rgb(var(--zc-subtle))]">
+                          ({sprintReadiness.storiesDone} /{' '}
+                          {sprintReadiness.storiesTotal})
+                        </span>
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span
+                        className={
+                          sprintReadiness.allLinkedDone
+                            ? 'text-emerald-400'
+                            : 'text-rose-400'
+                        }
+                        aria-hidden
+                      >
+                        {sprintReadiness.allLinkedDone ? '✓' : '✗'}
+                      </span>
+                      <span>
+                        {sprintReadiness.allLinkedDone
+                          ? 'Linked tasks completed'
+                          : 'Some linked tasks are not done'}
+                        <span className="ml-1 text-[11px] text-[rgb(var(--zc-subtle))]">
+                          ({sprintReadiness.linkedDone} /{' '}
+                          {sprintReadiness.linkedTotal})
+                        </span>
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span
+                        className={
+                          sprintReadiness.allIndepDone
+                            ? 'text-emerald-400'
+                            : 'text-rose-400'
+                        }
+                        aria-hidden
+                      >
+                        {sprintReadiness.allIndepDone ? '✓' : '✗'}
+                      </span>
+                      <span>
+                        {sprintReadiness.allIndepDone
+                          ? 'Independent sprint tasks completed'
+                          : 'Some independent sprint tasks are not done'}
+                        <span className="ml-1 text-[11px] text-[rgb(var(--zc-subtle))]">
+                          ({sprintReadiness.indepDone} /{' '}
+                          {sprintReadiness.indepTotal})
+                        </span>
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span
+                        className={
+                          sprintReadiness.noUnfinishedWork
+                            ? 'text-emerald-400'
+                            : 'text-rose-400'
+                        }
+                        aria-hidden
+                      >
+                        {sprintReadiness.noUnfinishedWork ? '✓' : '✗'}
+                      </span>
+                      <span>
+                        {sprintReadiness.noUnfinishedWork
+                          ? 'No unfinished sprint work remains'
+                          : 'Unfinished sprint work remains'}
+                        {sprintReadiness.unfinishedCount > 0 ? (
+                          <span className="ml-1 text-[11px] text-amber-300/90">
+                            ({sprintReadiness.unfinishedCount} item
+                            {sprintReadiness.unfinishedCount === 1 ? '' : 's'}{' '}
+                            not done)
+                          </span>
+                        ) : null}
+                      </span>
+                    </li>
+                  </ul>
+                  <div className="mt-3 space-y-1 border-t border-[rgb(var(--zc-border))] pt-3 text-[11px] text-[rgb(var(--zc-subtle))]">
+                    <p>
+                      Stories completed: {sprintReadiness.storiesDone} /{' '}
+                      {sprintReadiness.storiesTotal}
+                    </p>
+                    <p>
+                      Linked tasks completed: {sprintReadiness.linkedDone} /{' '}
+                      {sprintReadiness.linkedTotal}
+                    </p>
+                    <p>
+                      Independent tasks completed: {sprintReadiness.indepDone} /{' '}
+                      {sprintReadiness.indepTotal}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
+
               {sprintActionError ? (
                 <p className="text-xs text-rose-400">{sprintActionError}</p>
               ) : null}
               <div className="pt-1">
                 <Button
                   variant="secondary"
+                  disabled={completingSprint}
                   onClick={() => {
                     setSprintActionError('')
-                    void completeProjectSprint(activeSprint.id).catch((err) =>
-                      setSprintActionError(
-                        err?.message || 'Failed to complete sprint.',
-                      ),
-                    )
+                    const incomplete =
+                      !sprintReadiness ||
+                      !sprintReadiness.goalDefined ||
+                      !sprintReadiness.allStoriesDone ||
+                      !sprintReadiness.allLinkedDone ||
+                      !sprintReadiness.allIndepDone ||
+                      !sprintReadiness.noUnfinishedWork
+                    if (incomplete) {
+                      setCompleteWarningOpen(true)
+                      return
+                    }
+                    void runCompleteSprint()
                   }}
                 >
-                  Complete Sprint
+                  {completingSprint ? 'Completing…' : 'Complete Sprint'}
                 </Button>
               </div>
             </div>
@@ -477,6 +753,84 @@ export function ProjectOverviewPage() {
           }
         }}
       />
+
+      <Modal
+        open={completeWarningOpen}
+        onClose={() => {
+          if (completingSprint) return
+          setCompleteWarningOpen(false)
+        }}
+        title="Sprint still has unfinished work"
+        footer={
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="secondary"
+              disabled={completingSprint}
+              onClick={() => setCompleteWarningOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              disabled={completingSprint}
+              onClick={() => {
+                void runCompleteSprint()
+              }}
+            >
+              {completingSprint ? 'Completing…' : 'Complete Anyway'}
+            </Button>
+          </div>
+        }
+      >
+        <p className="text-sm text-[rgb(var(--zc-muted))]">
+          Some sprint goals or work items are not fully complete. Review the
+          remaining items before closing the sprint.
+        </p>
+        {sprintReadiness ? (
+          <ul className="mt-4 space-y-1.5 text-sm text-[rgb(var(--zc-text))]">
+            <li>
+              Incomplete user stories:{' '}
+              <span className="font-semibold tabular-nums">
+                {Math.max(
+                  0,
+                  sprintReadiness.storiesTotal - sprintReadiness.storiesDone,
+                )}
+              </span>
+            </li>
+            <li>
+              Incomplete linked tasks:{' '}
+              <span className="font-semibold tabular-nums">
+                {Math.max(
+                  0,
+                  sprintReadiness.linkedTotal - sprintReadiness.linkedDone,
+                )}
+              </span>
+            </li>
+            <li>
+              Incomplete independent tasks:{' '}
+              <span className="font-semibold tabular-nums">
+                {Math.max(
+                  0,
+                  sprintReadiness.indepTotal - sprintReadiness.indepDone,
+                )}
+              </span>
+            </li>
+            <li>
+              Sprint goal missing:{' '}
+              <span className="font-semibold">
+                {sprintReadiness.goalDefined ? 'No' : 'Yes'}
+              </span>
+            </li>
+          </ul>
+        ) : null}
+        {sprintActionError ? (
+          <p className="mt-3 text-xs text-rose-400">{sprintActionError}</p>
+        ) : null}
+        <p className="mt-4 text-[11px] text-[rgb(var(--zc-subtle))]">
+          Completing now will close the sprint without changing any task or
+          story statuses.
+        </p>
+      </Modal>
 
       <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5">
         <h2 className="text-lg font-semibold text-[rgb(var(--zc-text))]">Team Summary</h2>
