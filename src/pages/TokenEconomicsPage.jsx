@@ -5,13 +5,29 @@ import {
   getTokenProfile,
   saveTokenProfile,
 } from '../utils/tokenEconomics/tokenProfileStorage.js'
-import { getQuotaUsage, resetQuotaUsage } from '../utils/tokenEconomics/quotaUsageStorage.js'
+import { getQuotaUsage } from '../utils/tokenEconomics/quotaUsageStorage.js'
+import { syncProjectsQuotaFromWorkspaceCount } from '../utils/tokenEconomics/quotaGuardService.js'
+import { useWorkspace } from '../utils/WorkspaceContext.jsx'
+import { useAuth } from '../utils/AuthContext.jsx'
+import { isAdminRole } from '../utils/roleOntology.js'
 import { QUOTA_LABELS, QUOTA_KEYS } from '../utils/tokenEconomics/quotaRules.js'
 import { getQuotaMessage } from '../utils/tokenEconomics/quotaService.js'
 import {
   getAllComparisonRows,
   tierIncludesFeature,
 } from '../utils/tokenEconomics/premiumFeatures.js'
+import {
+  HEDERA_NETWORK,
+  HEDERA_OPERATOR_ID,
+  MIRROR_NODE_BASE_URL,
+  ZC_TOKEN_ID,
+  ZC_TOKEN_NETWORK,
+} from '../utils/tokenEconomics/tokenConfig.js'
+import {
+  MirrorNodeError,
+  fetchZcTokenBalance,
+  isValidHederaAccountId,
+} from '../utils/tokenEconomics/mirrorNodeService.js'
 
 function clampNumber(n) {
   const v = Number(n)
@@ -45,14 +61,38 @@ const TIER_UI = {
 
 const TIER_KEYS = ['FREE', 'PLUS', 'PREMIUM']
 
-const CAPABILITY_LABELS = [
-  { key: 'aiPriority', label: 'Priority AI queue' },
-  { key: 'premiumAnalytics', label: 'Premium analytics' },
-  { key: 'roadmapAccess', label: 'Roadmap management' },
-  { key: 'releaseManagementAccess', label: 'Release & delivery' },
-  { key: 'advancedSprintMetrics', label: 'Advanced sprint metrics' },
-  { key: 'exportReports', label: 'Export reports' },
-  { key: 'crossProjectAnalytics', label: 'Cross-project analytics' },
+/** Shipped capabilities only; `unlocked` reads live tier flags where relevant. */
+const CAPABILITY_ROWS = [
+  {
+    key: 'quota-projects',
+    label: 'Project quota (enforced on create)',
+    unlocked: () => true,
+  },
+  {
+    key: 'quota-evaluations',
+    label: 'AI evaluation quota',
+    unlocked: () => true,
+  },
+  {
+    key: 'quota-team',
+    label: 'Team member quota',
+    unlocked: () => true,
+  },
+  {
+    key: 'roadmap-view',
+    label: 'Product Roadmap (view)',
+    unlocked: () => true,
+  },
+  {
+    key: 'roadmapAccess',
+    label: 'Product Roadmap (edit & save)',
+    unlocked: (tier) => Boolean(tier?.roadmapAccess),
+  },
+  {
+    key: 'token-tier',
+    label: 'ZC balance drives plan tier',
+    unlocked: () => true,
+  },
 ]
 
 function FeatureBadge({ unlocked, label }) {
@@ -161,9 +201,26 @@ function QuotaBar({ used, limit, label }) {
 }
 
 export function TokenEconomicsPage() {
+  const { projects, activeProject } = useWorkspace()
+  const { user } = useAuth()
+  const activeProjectCount = Array.isArray(projects) ? projects.length : 0
   const [profile, setProfile] = useState(() => getTokenProfile())
   const [usage, setUsage] = useState(() => getQuotaUsage())
   const [status, setStatus] = useState(null)
+  const [isFetchingBalance, setIsFetchingBalance] = useState(false)
+  const [balanceFetchInfo, setBalanceFetchInfo] = useState(null)
+  const [adminTransferForm, setAdminTransferForm] = useState({
+    recipient: '',
+    amount: '',
+  })
+  const [adminTransferInfo, setAdminTransferInfo] = useState(null)
+
+  const isProjectAdmin = useMemo(() => {
+    if (!user?.id || !activeProject) return false
+    const ownerId = activeProject.owner_id ?? activeProject.ownerId ?? null
+    if (ownerId && ownerId === user.id) return true
+    return isAdminRole(activeProject.role)
+  }, [user?.id, activeProject])
 
   useEffect(() => {
     const refreshFromStorage = () => {
@@ -198,7 +255,7 @@ export function TokenEconomicsPage() {
       {
         key: QUOTA_KEYS.projects,
         limit: derived.tier.projectLimit,
-        used: clampNumber(usage.projects),
+        used: activeProjectCount,
       },
       {
         key: QUOTA_KEYS.evaluations,
@@ -211,19 +268,19 @@ export function TokenEconomicsPage() {
         used: clampNumber(usage.teamMembers),
       },
     ]
-  }, [derived.tier, usage])
+  }, [derived.tier, usage, activeProjectCount])
 
   const upgradeHints = useMemo(() => {
     const b = derived.tokenBalance
     const hints = []
     if (b < TOKEN_TIERS.PLUS.minBalance) {
       hints.push(
-        `Hold ${TOKEN_TIERS.PLUS.minBalance}+ ZC to unlock Plus features (advanced sprint metrics, exports, priority AI).`,
+        `Hold ${TOKEN_TIERS.PLUS.minBalance}+ ZC for Plus: higher project, evaluation, and team member quotas.`,
       )
     }
     if (b < TOKEN_TIERS.PREMIUM.minBalance) {
       hints.push(
-        `Hold ${TOKEN_TIERS.PREMIUM.minBalance}+ ZC to unlock Premium roadmap, release management, and cross-project analytics.`,
+        `Hold ${TOKEN_TIERS.PREMIUM.minBalance}+ ZC for Premium: highest quotas and full Product Roadmap editing.`,
       )
     }
     if (hints.length === 0) {
@@ -249,28 +306,118 @@ export function TokenEconomicsPage() {
 
   const clear = () => {
     clearTokenProfile()
+    syncProjectsQuotaFromWorkspaceCount(activeProjectCount)
     const next = getTokenProfile()
     setProfile(next)
+    setUsage(getQuotaUsage())
     setStatus({ type: 'info', message: 'Profile cleared.' })
     window.setTimeout(() => setStatus(null), 2500)
   }
 
-  const demoAdd10 = () => {
-    const nextBalance = clampNumber(profile.tokenBalance) + 10
-    const next = {
-      ...profile,
-      tokenBalance: nextBalance,
-    }
-    setProfile(next)
-    setStatus({ type: 'info', message: 'Added 10 ZC (demo).' })
-    window.setTimeout(() => setStatus(null), 2500)
+  const buildTransferCli = (recipient, amount) => {
+    const safeRecipient = String(recipient || '').trim() || '0.0.xxxxx'
+    const safeAmount = Number(amount) > 0 ? String(amount).trim() : '<amount>'
+    return `npm run hedera:transfer-token -- --to ${safeRecipient} --amount ${safeAmount}`
   }
 
-  const demoResetUsage = () => {
-    const next = resetQuotaUsage()
-    setUsage(next)
-    setStatus({ type: 'info', message: 'Quota usage reset (demo).' })
-    window.setTimeout(() => setStatus(null), 2500)
+  const handleAdminTransfer = () => {
+    if (!isProjectAdmin) return
+    const recipient = String(adminTransferForm.recipient || '').trim()
+    const amount = Number(adminTransferForm.amount)
+
+    if (!recipient || !isValidHederaAccountId(recipient)) {
+      setAdminTransferInfo({
+        type: 'error',
+        message:
+          'Invalid recipient Hedera account ID. Expected format like 0.0.12345.',
+      })
+      return
+    }
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setAdminTransferInfo({
+        type: 'error',
+        message: 'Amount must be a positive number of ZC tokens.',
+      })
+      return
+    }
+
+    const cli = buildTransferCli(recipient, amount)
+    console.log('[Admin Token Distribution] suggested CLI:', cli)
+    setAdminTransferInfo({
+      type: 'info',
+      message:
+        'Token transfer requires backend/operator signing. This prototype uses Hedera Testnet operator credentials outside the browser.',
+      cli,
+    })
+  }
+
+  const handleFetchBalance = async () => {
+    const acct = String(profile.hederaAccountId || '').trim()
+    if (!acct) {
+      setBalanceFetchInfo({
+        type: 'error',
+        message: 'Enter your Hedera Account ID first (e.g. 0.0.12345).',
+      })
+      return
+    }
+    if (!isValidHederaAccountId(acct)) {
+      setBalanceFetchInfo({
+        type: 'error',
+        message:
+          'Invalid Hedera account ID. Expected format like 0.0.12345.',
+      })
+      return
+    }
+
+    setIsFetchingBalance(true)
+    setBalanceFetchInfo({
+      type: 'info',
+      message: 'Fetching balance from Hedera Mirror Node…',
+    })
+    try {
+      const result = await fetchZcTokenBalance(acct)
+      const balance = clampNumber(result.balance)
+      const tierKey = getTierByBalance(balance)
+      const next = {
+        ...profile,
+        hederaAccountId: acct,
+        tokenBalance: balance,
+        tier: tierKey,
+        lastCheckedAt: Date.now(),
+      }
+      saveTokenProfile(next)
+      setProfile(next)
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('zc-quota-changed'))
+      }
+      if (!result.hasToken) {
+        setBalanceFetchInfo({
+          type: 'warn',
+          message: 'No ZC token balance found for this account.',
+        })
+      } else {
+        setBalanceFetchInfo({
+          type: 'success',
+          message: `Fetched ${balance} ZC from Mirror Node (${result.network}).`,
+        })
+      }
+    } catch (err) {
+      let msg = 'Failed to fetch balance from Mirror Node.'
+      if (err instanceof MirrorNodeError) {
+        if (err.code === 'invalid_account')
+          msg = 'Invalid Hedera account ID. Expected format like 0.0.12345.'
+        else if (err.code === 'not_found')
+          msg = 'Account not found on Hedera testnet.'
+        else if (err.code === 'network_error')
+          msg = 'Network error. Mirror Node is unreachable right now.'
+        else msg = err.message
+      } else if (err?.message) {
+        msg = `Mirror Node error: ${err.message}`
+      }
+      setBalanceFetchInfo({ type: 'error', message: msg })
+    } finally {
+      setIsFetchingBalance(false)
+    }
   }
 
   return (
@@ -314,6 +461,27 @@ export function TokenEconomicsPage() {
         </div>
       </div>
 
+      <div className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-4 py-3">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold uppercase tracking-wider text-[rgb(var(--zc-muted2))]">
+              Token ID
+            </span>
+            <code className="rounded bg-[rgb(var(--zc-bg)/0.6)] px-2 py-0.5 font-mono text-[rgb(var(--zc-text))] ring-1 ring-[rgb(var(--zc-border))]">
+              {ZC_TOKEN_ID || '—'}
+            </code>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold uppercase tracking-wider text-[rgb(var(--zc-muted2))]">
+              Network
+            </span>
+            <code className="rounded bg-[rgb(var(--zc-bg)/0.6)] px-2 py-0.5 font-mono text-[rgb(var(--zc-text))] ring-1 ring-[rgb(var(--zc-border))]">
+              {ZC_TOKEN_NETWORK || '—'}
+            </code>
+          </div>
+        </div>
+      </div>
+
       {status ? (
         <div
           className={[
@@ -330,9 +498,37 @@ export function TokenEconomicsPage() {
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <div className="space-y-6">
           <SectionCard
+            eyebrow="Getting started"
+            title="Connect Your Hedera Wallet"
+            subtitle="Use a Hedera Testnet wallet to fetch your real ZC token balance and unlock plan capabilities."
+          >
+            <ol className="list-decimal space-y-2 pl-5 text-sm text-[rgb(var(--zc-muted))]">
+              <li>Open HashPack Wallet</li>
+              <li>Create or switch to a Testnet account</li>
+              <li>Copy your Hedera Account ID</li>
+              <li>Paste it into the Hedera Account ID field below</li>
+              <li>Click Fetch Balance</li>
+            </ol>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <a
+                href="https://wallet.hashpack.app/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center justify-center rounded-md bg-indigo-500/20 px-4 py-2 text-sm font-medium text-indigo-300 ring-1 ring-indigo-500/30 transition hover:bg-indigo-500/30"
+              >
+                Open HashPack
+              </a>
+            </div>
+            <p className="mt-4 border-t border-[rgb(var(--zc-border))] pt-4 text-[11px] leading-relaxed text-[rgb(var(--zc-subtle))]">
+              ZeroCollab never stores your private key or seed phrase. Only your
+              Hedera Account ID is used to fetch balance from Mirror Node.
+            </p>
+          </SectionCard>
+
+          <SectionCard
             eyebrow="Account"
             title="Token profile"
-            subtitle="Local persistence only. Link Hedera account when ready; balance can be adjusted here until mirror sync."
+            subtitle="Fetch your ZC balance from Hedera Testnet via Mirror Node. Profile is persisted locally."
           >
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-1.5">
@@ -345,14 +541,23 @@ export function TokenEconomicsPage() {
                   onChange={(e) =>
                     setProfile((p) => ({ ...p, hederaAccountId: e.target.value }))
                   }
-                  placeholder="0.0.xxxxx"
+                  placeholder={HEDERA_OPERATOR_ID || '0.0.xxxxx'}
                   className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.5)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/45"
                 />
+                {HEDERA_OPERATOR_ID ? (
+                  <span className="block text-[11px] text-[rgb(var(--zc-subtle))]">
+                    Configured operator:{' '}
+                    <code className="rounded bg-[rgb(var(--zc-bg)/0.6)] px-1.5 py-0.5 font-mono text-[rgb(var(--zc-muted))] ring-1 ring-[rgb(var(--zc-border))]">
+                      {HEDERA_OPERATOR_ID}
+                    </code>{' '}
+                    ({HEDERA_NETWORK})
+                  </span>
+                ) : null}
               </label>
 
               <label className="space-y-1.5">
                 <span className="text-xs font-medium text-[rgb(var(--zc-muted2))]">
-                  Token ID
+                  User-linked Token Reference
                 </span>
                 <input
                   type="text"
@@ -360,47 +565,61 @@ export function TokenEconomicsPage() {
                   onChange={(e) =>
                     setProfile((p) => ({ ...p, tokenId: e.target.value }))
                   }
-                  placeholder="0.0.123456 (after issuance)"
+                  placeholder="Optional user token reference"
                   className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.5)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/45"
                 />
               </label>
 
               <label className="space-y-1.5 sm:col-span-2">
                 <span className="text-xs font-medium text-[rgb(var(--zc-muted2))]">
-                  ZC balance (manual until mirror node)
+                  ZC balance
                 </span>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                  <input
-                    inputMode="decimal"
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={String(profile.tokenBalance ?? 0)}
-                    onChange={(e) =>
-                      setProfile((p) => ({
-                        ...p,
-                        tokenBalance: e.target.value,
-                      }))
-                    }
-                    className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.5)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/45"
-                  />
+                  <div
+                    className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] px-3 py-2 text-sm tabular-nums text-[rgb(var(--zc-text))]"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {derived.tokenBalance} ZC
+                  </div>
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
-                      onClick={demoAdd10}
-                      className="rounded-md bg-[rgb(var(--zc-border)/0.55)] px-3 py-2 text-xs font-medium text-[rgb(var(--zc-text))] transition hover:bg-[rgb(var(--zc-border))]"
+                      onClick={handleFetchBalance}
+                      disabled={isFetchingBalance}
+                      className="rounded-md bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-300 ring-1 ring-emerald-500/30 transition hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                      title="Fetch ZC balance from Hedera Mirror Node"
                     >
-                      Demo: Add 10 ZC
-                    </button>
-                    <button
-                      type="button"
-                      onClick={demoResetUsage}
-                      className="rounded-md bg-[rgb(var(--zc-border)/0.35)] px-3 py-2 text-xs font-medium text-[rgb(var(--zc-muted))] transition hover:bg-[rgb(var(--zc-border)/0.55)] hover:text-[rgb(var(--zc-text))]"
-                    >
-                      Demo: Reset Usage
+                      {isFetchingBalance ? 'Fetching…' : 'Fetch Balance'}
                     </button>
                   </div>
                 </div>
+                <span className="block text-[11px] text-[rgb(var(--zc-subtle))]">
+                  Balance is fetched from Hedera Testnet via Mirror Node.
+                </span>
+                {balanceFetchInfo ? (
+                  <span
+                    className={[
+                      'block text-[11px]',
+                      balanceFetchInfo.type === 'success'
+                        ? 'text-emerald-300'
+                        : balanceFetchInfo.type === 'warn'
+                          ? 'text-amber-300'
+                          : balanceFetchInfo.type === 'error'
+                            ? 'text-rose-300'
+                            : 'text-[rgb(var(--zc-muted))]',
+                    ].join(' ')}
+                    role="status"
+                  >
+                    {balanceFetchInfo.message}
+                  </span>
+                ) : null}
+                <span className="block text-[11px] text-[rgb(var(--zc-subtle))]">
+                  Mirror Node:{' '}
+                  <code className="rounded bg-[rgb(var(--zc-bg)/0.6)] px-1.5 py-0.5 font-mono text-[rgb(var(--zc-muted))] ring-1 ring-[rgb(var(--zc-border))]">
+                    {MIRROR_NODE_BASE_URL}
+                  </code>
+                </span>
               </label>
             </div>
 
@@ -434,14 +653,14 @@ export function TokenEconomicsPage() {
           <SectionCard
             eyebrow="Capabilities"
             title="Plan capabilities"
-            subtitle="Gate flags from your tier. Locked rows indicate upgrade paths."
+            subtitle="What is live in ZeroCollab today. Roadmap editing follows your tier; quotas are summarized in Usage."
           >
             <div className="flex flex-wrap gap-2">
-              {CAPABILITY_LABELS.map(({ key, label }) => (
+              {CAPABILITY_ROWS.map(({ key, label, unlocked }) => (
                 <FeatureBadge
                   key={key}
                   label={label}
-                  unlocked={Boolean(derived.tier[key])}
+                  unlocked={unlocked(derived.tier)}
                 />
               ))}
             </div>
@@ -459,6 +678,100 @@ export function TokenEconomicsPage() {
               ))}
             </ul>
           </SectionCard>
+
+          {isProjectAdmin ? (
+            <SectionCard
+              eyebrow="Admin · Hedera Testnet"
+              title="Admin Token Distribution"
+              subtitle="Send ZC tokens from the project operator to a team member's Hedera account. Browser cannot sign — see safety note below."
+            >
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="space-y-1.5">
+                  <span className="text-xs font-medium text-[rgb(var(--zc-muted2))]">
+                    Recipient Hedera Account ID
+                  </span>
+                  <input
+                    type="text"
+                    value={adminTransferForm.recipient}
+                    onChange={(e) =>
+                      setAdminTransferForm((f) => ({
+                        ...f,
+                        recipient: e.target.value,
+                      }))
+                    }
+                    placeholder="0.0.12345"
+                    className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.5)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/45"
+                  />
+                </label>
+
+                <label className="space-y-1.5">
+                  <span className="text-xs font-medium text-[rgb(var(--zc-muted2))]">
+                    Amount ZC
+                  </span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="1"
+                    value={adminTransferForm.amount}
+                    onChange={(e) =>
+                      setAdminTransferForm((f) => ({
+                        ...f,
+                        amount: e.target.value,
+                      }))
+                    }
+                    placeholder="10"
+                    className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.5)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/45"
+                  />
+                </label>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleAdminTransfer}
+                  className="rounded-md bg-amber-500/15 px-3 py-2 text-xs font-medium text-amber-200 ring-1 ring-amber-500/30 transition hover:bg-amber-500/25"
+                  title="Validate inputs and reveal the operator-signed CLI command"
+                >
+                  Send ZC Token
+                </button>
+                <span className="text-[11px] text-[rgb(var(--zc-subtle))]">
+                  Token: {ZC_TOKEN_ID || '—'} · Network: {HEDERA_NETWORK}
+                </span>
+              </div>
+
+              {adminTransferInfo ? (
+                <div
+                  className={[
+                    'mt-3 rounded-md border px-3 py-2 text-[11px]',
+                    adminTransferInfo.type === 'error'
+                      ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+                      : 'border-amber-500/30 bg-amber-500/10 text-amber-200',
+                  ].join(' ')}
+                  role="status"
+                >
+                  <p>{adminTransferInfo.message}</p>
+                  {adminTransferInfo.cli ? (
+                    <p className="mt-2 break-all">
+                      Run on the operator machine:{' '}
+                      <code className="rounded bg-[rgb(var(--zc-bg)/0.6)] px-1.5 py-0.5 font-mono text-[rgb(var(--zc-text))] ring-1 ring-[rgb(var(--zc-border))]">
+                        {adminTransferInfo.cli}
+                      </code>
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <p className="mt-4 border-t border-[rgb(var(--zc-border))] pt-3 text-[11px] text-[rgb(var(--zc-subtle))]">
+                Why no in-browser signing? The Hedera operator private key must
+                never be shipped to the browser. Production should sign through
+                a wallet (HashPack / WalletConnect) or a trusted backend; this
+                prototype uses local <code className="font-mono">.env.local</code>{' '}
+                credentials with the{' '}
+                <code className="font-mono">hedera:transfer-token</code> script.
+              </p>
+            </SectionCard>
+          ) : null}
         </div>
 
         <div className="space-y-6">
@@ -494,7 +807,7 @@ export function TokenEconomicsPage() {
           <SectionCard
             eyebrow="Usage"
             title="Quota utilization"
-            subtitle="Progress reflects local counters vs tier limits. Warning near 80%; exceeded when over limit."
+            subtitle="Projects reflect your active workspace list (same as the sidebar). Other rows use local counters vs tier limits."
           >
             <div className="space-y-3">
               {quotaCards.map((q) => (
@@ -537,7 +850,7 @@ export function TokenEconomicsPage() {
       <SectionCard
         eyebrow="Compare"
         title="Tier Feature Comparison"
-        subtitle="Product capabilities by release tier. Your current tier highlights in the header."
+        subtitle="Shipped capabilities by tier. Your current tier highlights in the header."
       >
         <div className="overflow-x-auto rounded-lg border border-[rgb(var(--zc-border))]">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">

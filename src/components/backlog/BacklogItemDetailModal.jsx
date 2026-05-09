@@ -94,6 +94,8 @@ export function BacklogItemDetailModal({
   allItems = [],
   parentOptions = { epics: [], features: [], stories: [] },
   childWarningText = '',
+  readOnly = false,
+  readOnlyMessage = '',
 }) {
   // Backlog item detail modal supports Agile hierarchy editing across Epic, Feature, User Story, and Task.
   const [form, setForm] = useState(() => createInitialForm(item))
@@ -153,10 +155,12 @@ export function BacklogItemDetailModal({
               variant="danger"
               onClick={() => {
                 if (!item?.id) return
+                if (readOnly) return
                 // Keep deletion scoped to this item only (no cascade).
                 onDelete?.(item.id)
               }}
-              disabled={!item?.id}
+              disabled={!item?.id || readOnly}
+              title={readOnly ? readOnlyMessage : undefined}
             >
               Delete
             </Button>
@@ -166,12 +170,13 @@ export function BacklogItemDetailModal({
           </div>
           <div className="flex items-center justify-end gap-2">
             <Button variant="secondary" onClick={onClose}>
-              Cancel
+              {readOnly ? 'Close' : 'Cancel'}
             </Button>
             <Button
               onClick={() => {
                 setTouched(true)
                 if (!item?.id) return
+                if (readOnly) return
                 if (!canSave) return
                 const next = {
                   ...item,
@@ -192,7 +197,6 @@ export function BacklogItemDetailModal({
                   parentStoryId: cleanNullableId(form.parentStoryId),
                 }
 
-                // Keep hierarchy fields consistent when changing item type.
                 if (effectiveItemType !== 'feature') next.parentEpicId = null
                 if (effectiveItemType !== 'user_story') next.parentFeatureId = null
                 if (effectiveItemType !== 'task') next.parentStoryId = null
@@ -200,7 +204,8 @@ export function BacklogItemDetailModal({
                 onSave?.(next)
                 onClose?.()
               }}
-              disabled={!item?.id}
+              disabled={!item?.id || readOnly}
+              title={readOnly ? readOnlyMessage : undefined}
             >
               Save
             </Button>
@@ -212,6 +217,16 @@ export function BacklogItemDetailModal({
         <p className="text-sm text-[rgb(var(--zc-muted2))]">No item selected.</p>
       ) : (
         <div className="grid gap-4">
+          {readOnly ? (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+              <p className="font-semibold">Read-only</p>
+              <p className="mt-1">
+                {readOnlyMessage ||
+                  'Editing is locked on your current plan.'}
+              </p>
+            </div>
+          ) : null}
+
           <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] px-3 py-2 text-xs text-[rgb(var(--zc-subtle))]">
             <p className="text-[rgb(var(--zc-text))] font-medium">Hierarchy</p>
             <p className="mt-1">{hierarchyHelp}</p>

@@ -39,9 +39,37 @@ export function incrementQuotaUsage(key, amount = 1) {
   return next
 }
 
-export function resetQuotaUsage() {
-  saveQuotaUsage(DEFAULT_USAGE)
-  return { ...DEFAULT_USAGE }
+/**
+ * Set the Projects quota counter to the number of active workspace projects.
+ * Project usage is not incremented on create anymore — it mirrors the same
+ * list the sidebar uses (`WorkspaceContext.projects`).
+ */
+export function syncProjectsQuotaUsageToCount(activeCount) {
+  const usage = getQuotaUsage()
+  const n = Math.max(0, Number(activeCount) || 0)
+  const current = Number(usage.projects)
+  const safeCurrent = Number.isFinite(current) ? current : 0
+  if (safeCurrent === n) return usage
+  const next = { ...usage, projects: n }
+  saveQuotaUsage(next)
+  return next
+}
+
+/**
+ * Reset evaluation / team counters. Optionally set `projects` to the current
+ * active workspace count so the Projects row stays truthful after reset.
+ */
+export function resetQuotaUsage(options = {}) {
+  const activeProjectCount = options.activeProjectCount
+  const next = { ...DEFAULT_USAGE }
+  if (
+    typeof activeProjectCount === 'number' &&
+    Number.isFinite(activeProjectCount)
+  ) {
+    next.projects = Math.max(0, activeProjectCount)
+  }
+  saveQuotaUsage(next)
+  return getQuotaUsage()
 }
 
 export { DEFAULT_USAGE }

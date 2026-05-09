@@ -32,6 +32,9 @@ import {
   extractAgileItemsFromSyncMessage,
 } from '../features/agile/sync/agileSyncEngine.js'
 import { hasSeenSync, markSyncSeen } from '../features/agile/sync/syncDedupe.js'
+import { useTokenCapabilities } from '../utils/tokenEconomics/useTokenCapabilities.js'
+
+const ROADMAP_LOCK_MESSAGE = 'Upgrade your ZC plan to unlock roadmap management.'
 
 function normalizeItemType(item) {
   if (!item) return 'task'
@@ -84,6 +87,11 @@ export function ProductRoadmapPage() {
   const ownerUserId = user?.id ?? null
   const ownerUserIdRef = useRef(ownerUserId)
   const { activeProject, memberProjectIds = [] } = useWorkspace()
+  const { canManageRoadmap, tier } = useTokenCapabilities()
+  const roadmapLocked = !canManageRoadmap
+  const lockTooltipProps = roadmapLocked
+    ? { title: ROADMAP_LOCK_MESSAGE, 'aria-disabled': true }
+    : {}
 
   const [items, setItems] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -535,6 +543,11 @@ export function ProductRoadmapPage() {
   }, [roadmapPrimaryItems])
 
   const updateItem = (itemId, updates) => {
+    if (roadmapLocked) {
+      console.log('[Roadmap Gate] update blocked', { itemId, updates, tier })
+      if (typeof window !== 'undefined') window.alert(ROADMAP_LOCK_MESSAGE)
+      return
+    }
     setItems((prev) => {
       const uid = ownerUserIdRef.current
       if (!uid) return prev
@@ -561,6 +574,11 @@ export function ProductRoadmapPage() {
   }
 
   const deleteItem = (itemId) => {
+    if (roadmapLocked) {
+      console.log('[Roadmap Gate] delete blocked', { itemId, tier })
+      if (typeof window !== 'undefined') window.alert(ROADMAP_LOCK_MESSAGE)
+      return
+    }
     setItems((prev) => {
       const uid = ownerUserIdRef.current
       if (!uid) return prev
@@ -646,15 +664,22 @@ export function ProductRoadmapPage() {
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
+                    <div
+                      className={[
+                        'flex flex-wrap items-center gap-2',
+                        roadmapLocked ? 'opacity-60' : '',
+                      ].join(' ')}
+                    >
                       <select
-                        className="h-8 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))]"
+                        className="h-8 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))] disabled:cursor-not-allowed"
                         value={bucketKey}
                         onChange={(e) =>
                           updateItem(it.id, { roadmapBucket: e.target.value })
                         }
                         onClick={(e) => e.stopPropagation()}
                         aria-label="Roadmap bucket"
+                        disabled={roadmapLocked}
+                        {...lockTooltipProps}
                       >
                         <option value="now">Now</option>
                         <option value="next">Next</option>
@@ -662,7 +687,7 @@ export function ProductRoadmapPage() {
                       </select>
 
                       <input
-                        className="h-8 w-[120px] rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))]"
+                        className="h-8 w-[120px] rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] disabled:cursor-not-allowed"
                         value={String(sprint)}
                         placeholder="Planned sprint"
                         onChange={(e) =>
@@ -670,17 +695,21 @@ export function ProductRoadmapPage() {
                         }
                         onClick={(e) => e.stopPropagation()}
                         aria-label="Planned sprint"
+                        disabled={roadmapLocked}
+                        {...lockTooltipProps}
                       />
 
                       <input
                         type="number"
-                        className="h-8 w-[90px] rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))]"
+                        className="h-8 w-[90px] rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))] disabled:cursor-not-allowed"
                         value={String(it.__order)}
                         onChange={(e) =>
                           updateItem(it.id, { roadmapOrder: e.target.value })
                         }
                         onClick={(e) => e.stopPropagation()}
                         aria-label="Roadmap order"
+                        disabled={roadmapLocked}
+                        {...lockTooltipProps}
                       />
                     </div>
                   </div>
@@ -711,6 +740,25 @@ export function ProductRoadmapPage() {
             <span className={`h-2 w-2 rounded-full ${activeProject.color}`} />
             <span className="text-xs font-medium text-indigo-300">
               {activeProject.name}
+            </span>
+          </div>
+        ) : null}
+
+        {roadmapLocked ? (
+          <div
+            className="mt-3 flex flex-col gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between"
+            role="status"
+          >
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center rounded-md bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200 ring-1 ring-amber-500/30">
+                Locked
+              </span>
+              <span className="font-medium">
+                Roadmap editing is locked on your current plan.
+              </span>
+            </div>
+            <span className="text-[11px] text-amber-200/85">
+              {ROADMAP_LOCK_MESSAGE}
             </span>
           </div>
         ) : null}
@@ -746,6 +794,8 @@ export function ProductRoadmapPage() {
         allItems={items}
         parentOptions={parentOptions}
         childWarningText={selectedItemChildWarning}
+        readOnly={roadmapLocked}
+        readOnlyMessage={ROADMAP_LOCK_MESSAGE}
       />
     </section>
   )

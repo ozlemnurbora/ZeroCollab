@@ -11,7 +11,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "hedera:create-token": "node scripts/createZcToken.js"
+    "hedera:create-token": "node scripts/createZcToken.js",
+    "hedera:transfer-token": "node scripts/transferZcToken.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.103.0",

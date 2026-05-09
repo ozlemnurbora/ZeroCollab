@@ -1,41 +1,31 @@
 /**
- * SaaS-style professional feature lists per release tier.
- * Lower tiers inherit toward higher tiers: Premium ⊃ Plus ⊃ Free.
+ * Tier comparison rows for Token Economics UI.
+ * Each row's `introTier` is the first tier that includes that capability; higher
+ * tiers inherit (see tierIncludesFeature). Content matches behavior shipped in
+ * ZeroCollab today — not future roadmap marketing.
  */
 export const PROFESSIONAL_FEATURES = {
   FREE: [
-    'Basic Kanban board',
-    'Basic calendar',
-    'Team chat',
-    '1-1 calls',
-    'Offline-first support',
-    'Basic sprint planning',
-    'P2P file transfer',
+    'Starter project quota (enforced when creating projects)',
+    'Starter AI evaluation quota',
+    'Starter team member quota',
+    'Token balance → plan tier (local profile)',
+    'Product Roadmap (view items & details)',
+    'Core workspace (backlog, Kanban, sprints, chat, calendar)',
+    'Offline-first cache & P2P sync for shared work',
   ],
   PLUS: [
-    'Advanced sprint metrics',
-    'Burndown analytics',
-    'Multi-team projects',
-    'Priority AI evaluation queue',
-    'Enhanced file transfer limits',
-    'Premium analytics dashboard',
-    'Export reports',
+    'Higher project, evaluation, and team quotas',
   ],
   PREMIUM: [
-    'Unlimited AI evaluations',
-    'Product roadmap management',
-    'Release & delivery management',
-    'Cross-project analytics',
-    'Velocity tracking',
-    'Retrospective workflows',
-    'Enterprise-level quota limits',
-    'Advanced collaboration insights',
+    'Premium (highest) project, evaluation, and team quotas',
+    'Product Roadmap full editing (save, reorder, inline changes)',
   ],
 }
 
 const TIER_ORDER = { FREE: 0, PLUS: 1, PREMIUM: 2 }
 
-/** Features introduced at each tier (not cumulative). */
+/** Features introduced at each tier (not cumulative in this list — inheritance is applied in the UI). */
 export const FEATURE_INTRO_TIER = [
   ...PROFESSIONAL_FEATURES.FREE.map((label) => ({
     label,

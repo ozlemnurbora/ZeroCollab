@@ -13,7 +13,8 @@ import { pruneMeetingsByProjectIds } from './meetingStorage.js'
 import { isAdminRole, normalizeProjectRole } from './roleOntology.js'
 import {
   canCreateProject,
-  recordProjectCreated,
+  getProjectLimit,
+  syncProjectsQuotaFromWorkspaceCount,
 } from './tokenEconomics/quotaGuardService.js'
 import {
   fetchMyProjects,
@@ -302,6 +303,15 @@ export function WorkspaceProvider({ children }) {
   }, [user])
 
   useEffect(() => {
+    if (!user) {
+      syncProjectsQuotaFromWorkspaceCount(0)
+      return
+    }
+    const n = Array.isArray(projects) ? projects.length : 0
+    syncProjectsQuotaFromWorkspaceCount(n)
+  }, [projects, user])
+
+  useEffect(() => {
     if (!activeProject || !user) {
       void disconnectFromProjectHub()
       return
@@ -342,10 +352,22 @@ export function WorkspaceProvider({ children }) {
 
   const addProject = async (name, color) => {
     if (!user) return null
-    if (!canCreateProject()) {
+    // Use the live count of currently active/visible projects so deleting a
+    // project actually frees a slot. There is no archived/deleted flag on
+    // projects in this codebase — `removeProject` removes them from `projects`
+    // outright — so `projects.length` is the active count.
+    const activeProjectCount = Array.isArray(projects) ? projects.length : 0
+    const projectLimit = getProjectLimit()
+    console.log(
+      '[Quota Enforcement] projects',
+      activeProjectCount,
+      'limit',
+      projectLimit,
+    )
+    if (!canCreateProject(activeProjectCount)) {
       if (typeof window !== 'undefined') {
         window.alert(
-          'Your current tier has reached the project limit. Hold more ZC tokens to unlock more active projects.',
+          'Project quota reached for your current plan. Hold more ZC tokens to unlock a higher project limit.',
         )
       }
       return null
@@ -362,7 +384,6 @@ export function WorkspaceProvider({ children }) {
     }
     await createProject(newProject, user.id, user.email)
     await loadProjects()
-    recordProjectCreated()
     return newProject
   }
 

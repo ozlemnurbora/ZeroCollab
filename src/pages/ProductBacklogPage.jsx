@@ -538,6 +538,92 @@ export function ProductBacklogPage() {
     setItems((prev) => {
       const uid = ownerUserIdRef.current
       const now = Date.now()
+
+      // User Story → Task Done validation (inline backlog dropdown path).
+      // Block the change BEFORE any state mutation, saveTasks, or
+      // syncAgileItems so storage / P2P / Supabase stay untouched on failure.
+      console.log('[US Validation] updateItem', itemId, updates)
+      const targetItem =
+        (Array.isArray(prev) ? prev : []).find((it) => it?.id === itemId) ?? null
+      if (
+        targetItem &&
+        normalizeItemType(targetItem) === 'user_story' &&
+        String(updates?.backlogState || '').toLowerCase() === 'done'
+      ) {
+        const linkedTasks = (Array.isArray(prev) ? prev : []).filter(
+          (t) =>
+            normalizeItemType(t) === 'task' && t?.parentStoryId === targetItem.id,
+        )
+        const incompleteTasks = linkedTasks.filter(
+          (t) => String(t?.backlogState || t?.status || '').toLowerCase() !== 'done',
+        )
+        console.log('[US Validation] linkedTasks', linkedTasks)
+        console.log('[US Validation] incomplete', incompleteTasks.length)
+        if (linkedTasks.length > 0 && incompleteTasks.length > 0) {
+          if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+            window.alert(
+              `This User Story cannot be marked as Done. ${incompleteTasks.length} linked task(s) are still incomplete.`,
+            )
+          }
+          return prev
+        }
+      }
+
+      // Epic → Feature Done validation (inline backlog dropdown path).
+      // Sibling rule to the User Story validation above; same bail-out
+      // semantics so storage / P2P / Supabase stay untouched on failure.
+      if (
+        targetItem &&
+        normalizeItemType(targetItem) === 'epic' &&
+        String(updates?.backlogState || '').toLowerCase() === 'done'
+      ) {
+        const linkedFeatures = (Array.isArray(prev) ? prev : []).filter(
+          (f) =>
+            normalizeItemType(f) === 'feature' && f?.parentEpicId === targetItem.id,
+        )
+        const incompleteFeatures = linkedFeatures.filter(
+          (f) => String(f?.backlogState || f?.status || '').toLowerCase() !== 'done',
+        )
+        console.log('[Epic Validation] linkedFeatures', linkedFeatures)
+        console.log('[Epic Validation] incomplete', incompleteFeatures.length)
+        if (linkedFeatures.length > 0 && incompleteFeatures.length > 0) {
+          if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+            window.alert(
+              `This Epic cannot be marked as Done. ${incompleteFeatures.length} linked feature(s) are still incomplete.`,
+            )
+          }
+          return prev
+        }
+      }
+
+      // Feature → User Story Done validation (inline backlog dropdown path).
+      // Sibling rule to the Epic / User Story validations above; same
+      // bail-out semantics so storage / P2P / Supabase stay untouched.
+      if (
+        targetItem &&
+        normalizeItemType(targetItem) === 'feature' &&
+        String(updates?.backlogState || '').toLowerCase() === 'done'
+      ) {
+        const linkedStories = (Array.isArray(prev) ? prev : []).filter(
+          (s) =>
+            normalizeItemType(s) === 'user_story' &&
+            s?.parentFeatureId === targetItem.id,
+        )
+        const incompleteStories = linkedStories.filter(
+          (s) => String(s?.backlogState || s?.status || '').toLowerCase() !== 'done',
+        )
+        console.log('[Feature Validation] linkedStories', linkedStories)
+        console.log('[Feature Validation] incomplete', incompleteStories.length)
+        if (linkedStories.length > 0 && incompleteStories.length > 0) {
+          if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+            window.alert(
+              `This Feature cannot be marked as Done. ${incompleteStories.length} linked user storie(s) are still incomplete.`,
+            )
+          }
+          return prev
+        }
+      }
+
       const next = prev.map((it) => {
         if (it?.id !== itemId) return it
         const merged = { ...updates }
@@ -562,6 +648,91 @@ export function ProductBacklogPage() {
     setItems((prev) => {
       const uid = ownerUserIdRef.current
       const now = Date.now()
+
+      // User Story → Task Done validation (modal Save path: onSave → upsertItem).
+      // Block the change BEFORE any state mutation, saveTasks, or
+      // syncAgileItems so storage / P2P / Supabase stay untouched on failure.
+      console.log('[US Validation] upsertItem', updatedItem)
+      if (
+        updatedItem &&
+        normalizeItemType(updatedItem) === 'user_story' &&
+        String(updatedItem?.backlogState || '').toLowerCase() === 'done'
+      ) {
+        const storyId = updatedItem.id
+        const linkedTasks = (Array.isArray(prev) ? prev : []).filter(
+          (t) => normalizeItemType(t) === 'task' && t?.parentStoryId === storyId,
+        )
+        const incompleteTasks = linkedTasks.filter(
+          (t) => String(t?.backlogState || t?.status || '').toLowerCase() !== 'done',
+        )
+        console.log('[US Validation] linkedTasks', linkedTasks)
+        console.log('[US Validation] incomplete', incompleteTasks.length)
+        if (linkedTasks.length > 0 && incompleteTasks.length > 0) {
+          if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+            window.alert(
+              `This User Story cannot be marked as Done. ${incompleteTasks.length} linked task(s) are still incomplete.`,
+            )
+          }
+          return prev
+        }
+      }
+
+      // Epic → Feature Done validation (modal Save path: onSave → upsertItem).
+      // Sibling rule to the User Story validation above; same bail-out
+      // semantics so storage / P2P / Supabase stay untouched on failure.
+      if (
+        updatedItem &&
+        normalizeItemType(updatedItem) === 'epic' &&
+        String(updatedItem?.backlogState || '').toLowerCase() === 'done'
+      ) {
+        const epicId = updatedItem.id
+        const linkedFeatures = (Array.isArray(prev) ? prev : []).filter(
+          (f) => normalizeItemType(f) === 'feature' && f?.parentEpicId === epicId,
+        )
+        const incompleteFeatures = linkedFeatures.filter(
+          (f) => String(f?.backlogState || f?.status || '').toLowerCase() !== 'done',
+        )
+        console.log('[Epic Validation] linkedFeatures', linkedFeatures)
+        console.log('[Epic Validation] incomplete', incompleteFeatures.length)
+        if (linkedFeatures.length > 0 && incompleteFeatures.length > 0) {
+          if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+            window.alert(
+              `This Epic cannot be marked as Done. ${incompleteFeatures.length} linked feature(s) are still incomplete.`,
+            )
+          }
+          return prev
+        }
+      }
+
+      // Feature → User Story Done validation (modal Save path: onSave → upsertItem).
+      // Sibling rule to the Epic / User Story validations above; same
+      // bail-out semantics so storage / P2P / Supabase stay untouched.
+      if (
+        updatedItem &&
+        normalizeItemType(updatedItem) === 'feature' &&
+        String(updatedItem?.backlogState || '').toLowerCase() === 'done'
+      ) {
+        const featureId = updatedItem.id
+        const linkedStories = (Array.isArray(prev) ? prev : []).filter(
+          (s) =>
+            normalizeItemType(s) === 'user_story' &&
+            s?.parentFeatureId === featureId,
+        )
+        const incompleteStories = linkedStories.filter(
+          (s) => String(s?.backlogState || s?.status || '').toLowerCase() !== 'done',
+        )
+        console.log('[Feature Validation] linkedStories', linkedStories)
+        console.log('[Feature Validation] incomplete', incompleteStories.length)
+        if (linkedStories.length > 0 && incompleteStories.length > 0) {
+          if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+            window.alert(
+              `This Feature cannot be marked as Done. ${incompleteStories.length} linked user storie(s) are still incomplete.`,
+            )
+          }
+          return prev
+        }
+      }
+
       const merged = {
         ...updatedItem,
         // Ensure project-scoped backlog items are shared/general for sync.
