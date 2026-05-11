@@ -220,6 +220,7 @@ export function TasksPage() {
       <AddMeetingModal
         open={isAddMeetingOpen}
         onClose={() => setIsAddMeetingOpen(false)}
+        existingMeetings={meetings}
         onCreate={async (meeting) => {
           console.log('[Meeting] creating meeting:', meeting)
           const newMeeting = {
