@@ -1,0 +1,30 @@
+@prefix zck: <http://zerocollab.2025.2/kanban#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://zerocollab.2025.2/kanban> a owl:Ontology ;
+    rdfs:label "ZeroCollab Kanban Schema Ontology" ;
+    rdfs:comment "Defines Kanban board column structure. Governed by ZTAD methodology — adding or modifying columns here changes the board layout without code modification." .
+
+## ── Column Definitions ──
+
+zck:TodoColumn a zck:KanbanColumn ;
+    zck:columnId "todo" ;
+    zck:columnTitle "To Do" ;
+    zck:columnOrder "1" .
+
+zck:InProgressColumn a zck:KanbanColumn ;
+    zck:columnId "in_progress" ;
+    zck:columnTitle "In Progress" ;
+    zck:columnOrder "2" .
+
+zck:InReviewColumn a zck:KanbanColumn ;
+    zck:columnId "in_review" ;
+    zck:columnTitle "In Review" ;
+    zck:columnOrder "3" .
+
+zck:DoneColumn a zck:KanbanColumn ;
+    zck:columnId "done" ;
+    zck:columnTitle "Done" ;
+    zck:columnOrder "4" .

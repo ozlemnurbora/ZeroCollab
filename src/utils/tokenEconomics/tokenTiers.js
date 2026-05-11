@@ -1,4 +1,7 @@
-export const TOKEN_TIERS = {
+import { loadTokenTiersFromOntology } from './tokenTierLoader.js'
+
+// ── Hardcoded fallback (used if ontology loading fails) ──
+const FALLBACK_TIERS = {
   FREE: {
     minBalance: 0,
     projectLimit: 2,
@@ -43,6 +46,27 @@ export const TOKEN_TIERS = {
   },
 }
 
+// ── Live tier data (starts as fallback, replaced when ontology loads) ──
+export const TOKEN_TIERS = { ...FALLBACK_TIERS }
+
+/**
+ * Initialize tiers from ontology. Call once at app startup.
+ * If ontology loading fails, TOKEN_TIERS keeps the hardcoded fallback values.
+ */
+export async function initTokenTiersFromOntology() {
+  try {
+    const loaded = await loadTokenTiersFromOntology()
+    if (loaded) {
+      for (const key of Object.keys(loaded)) {
+        TOKEN_TIERS[key] = loaded[key]
+      }
+      console.log('[ZTAD] TOKEN_TIERS updated from ontology')
+    }
+  } catch (err) {
+    console.warn('[ZTAD] Ontology init failed, using fallback tiers:', err)
+  }
+}
+
 export function getTierByBalance(balance) {
   const numeric = Number(balance)
   const safe = Number.isFinite(numeric) ? numeric : 0
@@ -55,3 +79,6 @@ export function getTierByBalance(balance) {
 export function getTierLimits(tierKey) {
   return TOKEN_TIERS[tierKey] || TOKEN_TIERS.FREE
 }
+
+// Auto-initialize when module loads (non-blocking)
+initTokenTiersFromOntology()

@@ -1,0 +1,55 @@
+@prefix zct: <http://zerocollab.2025.2/token#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://zerocollab.2025.2/token> a owl:Ontology ;
+    rdfs:label "ZeroCollab Token Tier Ontology" ;
+    rdfs:comment "Defines token-based tier system with quota limits and feature access. Governed by ZTAD methodology — changing values here changes application behaviour without code modification." .
+
+## ── Tier Definitions ──
+
+zct:FreeTier a zct:TokenTier ;
+    zct:tierKey "FREE" ;
+    zct:tierLabel "Free" ;
+    zct:minBalance "0" ;
+    zct:projectLimit "2" ;
+    zct:evaluationLimit "3" ;
+    zct:teamMemberLimit "5" ;
+    zct:aiPriority "false" ;
+    zct:premiumAnalytics "false" ;
+    zct:roadmapAccess "false" ;
+    zct:releaseManagementAccess "false" ;
+    zct:advancedSprintMetrics "false" ;
+    zct:exportReports "false" ;
+    zct:crossProjectAnalytics "false" .
+
+zct:PlusTier a zct:TokenTier ;
+    zct:tierKey "PLUS" ;
+    zct:tierLabel "Plus" ;
+    zct:minBalance "10" ;
+    zct:projectLimit "5" ;
+    zct:evaluationLimit "15" ;
+    zct:teamMemberLimit "15" ;
+    zct:aiPriority "true" ;
+    zct:premiumAnalytics "true" ;
+    zct:roadmapAccess "false" ;
+    zct:releaseManagementAccess "false" ;
+    zct:advancedSprintMetrics "true" ;
+    zct:exportReports "true" ;
+    zct:crossProjectAnalytics "false" .
+
+zct:PremiumTier a zct:TokenTier ;
+    zct:tierKey "PREMIUM" ;
+    zct:tierLabel "Premium" ;
+    zct:minBalance "50" ;
+    zct:projectLimit "20" ;
+    zct:evaluationLimit "100" ;
+    zct:teamMemberLimit "50" ;
+    zct:aiPriority "true" ;
+    zct:premiumAnalytics "true" ;
+    zct:roadmapAccess "true" ;
+    zct:releaseManagementAccess "true" ;
+    zct:advancedSprintMetrics "true" ;
+    zct:exportReports "true" ;
+    zct:crossProjectAnalytics "true" .
