@@ -265,6 +265,58 @@ export function SprintPlanningPage() {
     return getReadySprintCandidates(projectTasks)
   }, [projectTasks])
 
+  // Linked Tasks that are themselves Ready and not yet in a sprint.
+  // Rules:
+  //   - normalizeItemType === 'task'
+  //   - backlogState === 'ready' (case-insensitive)
+  //   - has a parentStoryId
+  //   - not already in a sprint
+  // Epics/Features are inherently excluded (filtered by item type).
+  const readyLinkedTasks = useMemo(() => {
+    return (Array.isArray(projectTasks) ? projectTasks : []).filter((t) => {
+      if (!t) return false
+      if (t.sprintId || t.inSprint === true) return false
+      if (normalizeItemType(t) !== 'task') return false
+      const bs = String(t.backlogState ?? '').toLowerCase().trim()
+      if (bs !== 'ready') return false
+      return !!t.parentStoryId
+    })
+  }, [projectTasks])
+
+  const readyStoryIdSet = useMemo(
+    () => new Set(readyStories.map((s) => s.id)),
+    [readyStories],
+  )
+
+  // Map<storyId, Task[]> — used to nest linked ready Tasks under their parent
+  // User Story in the Ready Backlog rendering.
+  const readyLinkedTasksByStory = useMemo(() => {
+    const map = new Map()
+    for (const t of readyLinkedTasks) {
+      const list = map.get(t.parentStoryId) ?? []
+      list.push(t)
+      map.set(t.parentStoryId, list)
+    }
+    return map
+  }, [readyLinkedTasks])
+
+  // Linked ready Tasks whose parent User Story is NOT itself in the Ready
+  // Backlog (e.g. parent is still Refined, or parent is already in sprint).
+  // They are required to appear, so we render them in a dedicated subsection.
+  // Rule 7: deduplicated — they are NOT shown under a story group above.
+  const readyLinkedTasksOrphan = useMemo(
+    () => readyLinkedTasks.filter((t) => !readyStoryIdSet.has(t.parentStoryId)),
+    [readyLinkedTasks, readyStoryIdSet],
+  )
+
+  const projectItemsById = useMemo(() => {
+    const map = new Map()
+    for (const it of projectTasks) {
+      if (it?.id) map.set(it.id, it)
+    }
+    return map
+  }, [projectTasks])
+
   const hasReadyNonSprintItems = useMemo(
     () =>
       projectTasks.some(
@@ -793,7 +845,9 @@ export function SprintPlanningPage() {
             <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
               Loading tasks…
             </div>
-          ) : readyStories.length === 0 && readyIndependentTasks.length === 0 ? (
+          ) : readyStories.length === 0 &&
+            readyIndependentTasks.length === 0 &&
+            readyLinkedTasksOrphan.length === 0 ? (
             <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
               No ready backlog items. Mark items as Ready from task details.
             </div>
@@ -807,53 +861,146 @@ export function SprintPlanningPage() {
                   <ul className="mt-2 space-y-2 text-sm">
                     {readyStories.map((story) => {
                       const linked = getLinkedTasksForStory(story.id, projectTasks)
+                      const linkedReady = readyLinkedTasksByStory.get(story.id) ?? []
                       const featureTitle = story.parentFeatureId
                         ? featureById.get(story.parentFeatureId)?.title || null
                         : null
                       return (
                         <li
                           key={story.id}
+                          className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-2"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate font-medium text-[rgb(var(--zc-text))]">
+                                {story.title || story.name || 'Untitled'}
+                              </p>
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
+                                  User Story
+                                </span>
+                                <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
+                                  {PRIORITY_LABELS[story.priority] || 'Must'}
+                                </span>
+                                {Number(story.storyPoints || story.story_points || 0) > 0 ? (
+                                  <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
+                                    SP: {getStoryPoints(story)}
+                                  </span>
+                                ) : null}
+                                <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">
+                                  Tasks: {linked.length}
+                                </span>
+                                {linkedReady.length > 0 ? (
+                                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
+                                    Ready Tasks: {linkedReady.length}
+                                  </span>
+                                ) : null}
+                              </div>
+                              {featureTitle ? (
+                                <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                                  Feature: {featureTitle}
+                                </p>
+                              ) : null}
+                              <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                                State: ready
+                              </p>
+                            </div>
+                            {canMutateSprintPlanning ? (
+                              <button
+                                type="button"
+                                disabled={!canPlan}
+                                onClick={() => updateSprintCommitment(story.id, true)}
+                                className="shrink-0 rounded-md bg-emerald-500/20 px-2 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
+                              >
+                                Add to Sprint
+                              </button>
+                            ) : null}
+                          </div>
+                          {linkedReady.length > 0 ? (
+                            <ul className="mt-2 space-y-1">
+                              {linkedReady.map((task) => (
+                                <li
+                                  key={task.id}
+                                  className="flex items-start justify-between gap-2 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.25)] px-2 py-2"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <p className="truncate text-xs font-medium text-[rgb(var(--zc-text))]">
+                                      {task.title || task.name || 'Untitled'}
+                                    </p>
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                      <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
+                                        Task
+                                      </span>
+                                      <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
+                                        State: ready
+                                      </span>
+                                      {Number(task.storyPoints || task.story_points || 0) > 0 ? (
+                                        <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
+                                          SP: {getStoryPoints(task)}
+                                        </span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </li>
+                      )
+                    })}
+                  </ul>
+                </div>
+              ) : null}
+
+              {readyLinkedTasksOrphan.length > 0 ? (
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+                    Ready Linked Tasks
+                  </p>
+                  <p className="mt-1 text-[11px] text-[rgb(var(--zc-subtle))]">
+                    Linked Tasks that are Ready, but their parent User Story is not in this Ready Backlog. They will be committed when their parent Story is added to the sprint.
+                  </p>
+                  <ul className="mt-2 space-y-2 text-sm">
+                    {readyLinkedTasksOrphan.map((task) => {
+                      const parent = projectItemsById.get(task.parentStoryId) ?? null
+                      const parentLabel =
+                        parent?.title || parent?.name || task.parentStoryId
+                      const parentState = parent
+                        ? String(parent.backlogState ?? '').toLowerCase() ||
+                          'unknown'
+                        : 'missing'
+                      return (
+                        <li
+                          key={task.id}
                           className="flex items-start justify-between gap-2 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-2"
                         >
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-medium text-[rgb(var(--zc-text))]">
-                              {story.title || story.name || 'Untitled'}
+                              {task.title || task.name || 'Untitled'}
                             </p>
                             <div className="mt-1 flex flex-wrap gap-1">
                               <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
-                                User Story
+                                Task
+                              </span>
+                              <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">
+                                Linked Task
                               </span>
                               <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
-                                {PRIORITY_LABELS[story.priority] || 'Must'}
+                                {PRIORITY_LABELS[task.priority] || 'Must'}
                               </span>
-                              {Number(story.storyPoints || story.story_points || 0) > 0 ? (
+                              {Number(task.storyPoints || task.story_points || 0) > 0 ? (
                                 <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
-                                  SP: {getStoryPoints(story)}
+                                  SP: {getStoryPoints(task)}
                                 </span>
                               ) : null}
-                              <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">
-                                Tasks: {linked.length}
-                              </span>
                             </div>
-                            {featureTitle ? (
-                              <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                                Feature: {featureTitle}
-                              </p>
-                            ) : null}
+                            <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                              Parent Story: {parentLabel} (state: {parentState})
+                            </p>
                             <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
                               State: ready
                             </p>
                           </div>
-                          {canMutateSprintPlanning ? (
-                            <button
-                              type="button"
-                              disabled={!canPlan}
-                              onClick={() => updateSprintCommitment(story.id, true)}
-                              className="shrink-0 rounded-md bg-emerald-500/20 px-2 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
-                            >
-                              Add to Sprint
-                            </button>
-                          ) : null}
                         </li>
                       )
                     })}
