@@ -380,6 +380,14 @@ export function SprintPlanningPage() {
     return (projects || []).find((p) => p.id === activeProject.id) || activeProject
   }, [projects, activeProject])
 
+  const teamMembers = useMemo(() => {
+    const members = projectForMembers?.projectMembers || []
+    return members.map((m) => ({
+      userId: m.userId || m.user_id,
+      name: m.displayName || m.display_name || m.email || m.userId || 'Unknown',
+    }))
+  }, [projectForMembers?.projectMembers])
+
   const currentMember = useMemo(() => {
     const members = projectForMembers?.projectMembers || []
     return user?.id ? members.find((m) => m?.userId === user.id) || null : null
@@ -579,6 +587,29 @@ export function SprintPlanningPage() {
     if (remoteChanged.length > 0) {
       await upsertRemoteTasks(remoteChanged, user.id)
       console.log('[SprintPlanning] remote upsert done', remoteChanged.length)
+    }
+  }
+
+  const updateTaskField = async (taskId, fieldUpdates) => {
+    if (!user?.id) return
+    const now = Date.now()
+    const nextTasks = tasks.map((t) => {
+      if (t?.id !== taskId) return t
+      const updated = { ...t, ...fieldUpdates, updatedAt: now }
+      if (updated.projectId) {
+        updated.calendarType = 'general'
+        updated.calendarId = 'general'
+      }
+      return updated
+    })
+    setTasks(nextTasks)
+    await saveTasks(nextTasks, user.id, { reason: 'SprintPlanning task field update' })
+    const changed = nextTasks.find((t) => t?.id === taskId)
+    if (changed) {
+      await broadcastUpdatedTasks(nextTasks)
+      if (isSharedProjectTask(changed)) {
+        await upsertRemoteTasks([changed], user.id)
+      }
     }
   }
 
@@ -1149,6 +1180,54 @@ export function SprintPlanningPage() {
                                         </span>
                                       ) : null}
                                     </div>
+                                    {canMutateSprintPlanning && (
+                                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                                        <select
+                                          className="h-6 rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-[10px] text-[rgb(var(--zc-text))]"
+                                          value={task.assignee || ''}
+                                          onChange={(e) => {
+                                            e.stopPropagation()
+                                            updateTaskField(task.id, { assignee: e.target.value })
+                                          }}
+                                          onClick={(e) => e.stopPropagation()}
+                                        >
+                                          <option value="">Unassigned</option>
+                                          {teamMembers.map((m) => (
+                                            <option key={m.userId} value={m.name}>{m.name}</option>
+                                          ))}
+                                        </select>
+                                        <input
+                                          type="date"
+                                          className="h-6 rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-[10px] text-[rgb(var(--zc-text))]"
+                                          value={task.startDate || ''}
+                                          onChange={(e) => {
+                                            e.stopPropagation()
+                                            updateTaskField(task.id, { startDate: e.target.value })
+                                          }}
+                                          onClick={(e) => e.stopPropagation()}
+                                          title="Start date"
+                                        />
+                                        <span className="text-[10px] text-[rgb(var(--zc-subtle))]">→</span>
+                                        <input
+                                          type="date"
+                                          className="h-6 rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-[10px] text-[rgb(var(--zc-text))]"
+                                          value={task.dueDate || task.endDate || ''}
+                                          onChange={(e) => {
+                                            e.stopPropagation()
+                                            updateTaskField(task.id, { dueDate: e.target.value, endDate: e.target.value })
+                                          }}
+                                          onClick={(e) => e.stopPropagation()}
+                                          title="End date"
+                                        />
+                                      </div>
+                                    )}
+                                    {!canMutateSprintPlanning && (task.assignee || task.startDate || task.dueDate) && (
+                                      <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-[rgb(var(--zc-subtle))]">
+                                        {task.assignee && <span>👤 {task.assignee}</span>}
+                                        {task.startDate && <span>Start: {task.startDate}</span>}
+                                        {(task.dueDate || task.endDate) && <span>Due: {task.dueDate || task.endDate}</span>}
+                                      </div>
+                                    )}
                                   </div>
                                 </li>
                               ))}
@@ -1195,6 +1274,54 @@ export function SprintPlanningPage() {
                               </span>
                             ) : null}
                           </div>
+                          {canMutateSprintPlanning && (
+                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                              <select
+                                className="h-6 rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-[10px] text-[rgb(var(--zc-text))]"
+                                value={task.assignee || ''}
+                                onChange={(e) => {
+                                  e.stopPropagation()
+                                  updateTaskField(task.id, { assignee: e.target.value })
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <option value="">Unassigned</option>
+                                {teamMembers.map((m) => (
+                                  <option key={m.userId} value={m.name}>{m.name}</option>
+                                ))}
+                              </select>
+                              <input
+                                type="date"
+                                className="h-6 rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-[10px] text-[rgb(var(--zc-text))]"
+                                value={task.startDate || ''}
+                                onChange={(e) => {
+                                  e.stopPropagation()
+                                  updateTaskField(task.id, { startDate: e.target.value })
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                title="Start date"
+                              />
+                              <span className="text-[10px] text-[rgb(var(--zc-subtle))]">→</span>
+                              <input
+                                type="date"
+                                className="h-6 rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-[10px] text-[rgb(var(--zc-text))]"
+                                value={task.dueDate || task.endDate || ''}
+                                onChange={(e) => {
+                                  e.stopPropagation()
+                                  updateTaskField(task.id, { dueDate: e.target.value, endDate: e.target.value })
+                                }}
+                                onClick={(e) => e.stopPropagation()}
+                                title="End date"
+                              />
+                            </div>
+                          )}
+                          {!canMutateSprintPlanning && (task.assignee || task.startDate || task.dueDate) && (
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-[rgb(var(--zc-subtle))]">
+                              {task.assignee && <span>👤 {task.assignee}</span>}
+                              {task.startDate && <span>Start: {task.startDate}</span>}
+                              {(task.dueDate || task.endDate) && <span>Due: {task.dueDate || task.endDate}</span>}
+                            </div>
+                          )}
                         </div>
                         {canMutateSprintPlanning ? (
                           <button

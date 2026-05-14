@@ -659,6 +659,12 @@ export function ProductRoadmapPage() {
                         </span>
                         <span>Priority: {it.priority || 'must'}</span>
                         <span>State: {it.__state}</span>
+                        {it.targetDate && (
+                          <span className={`font-medium ${new Date(it.targetDate) < new Date() && it.__state !== 'done' ? 'text-rose-400' : 'text-emerald-300'}`}>
+                            Due: {it.targetDate}
+                            {new Date(it.targetDate) < new Date() && it.__state !== 'done' ? ' (overdue)' : ''}
+                          </span>
+                        )}
                         {parentText ? <span>{parentText}</span> : null}
                         {childText ? <span>{childText}</span> : null}
                       </div>
@@ -700,6 +706,19 @@ export function ProductRoadmapPage() {
                       />
 
                       <input
+                        type="date"
+                        className="h-8 w-[140px] rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))] disabled:cursor-not-allowed"
+                        value={it.targetDate || ''}
+                        onChange={(e) =>
+                          updateItem(it.id, { targetDate: e.target.value })
+                        }
+                        onClick={(e) => e.stopPropagation()}
+                        aria-label="Target date"
+                        disabled={roadmapLocked}
+                        {...lockTooltipProps}
+                      />
+
+                      <input
                         type="number"
                         className="h-8 w-[90px] rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))] disabled:cursor-not-allowed"
                         value={String(it.__order)}
@@ -730,7 +749,7 @@ export function ProductRoadmapPage() {
           Product Roadmap
         </h1>
         <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
-          Product Roadmap prioritizes backlog items and shows which features will be developed first across future sprints.
+          Product Roadmap prioritizes backlog items, shows which features will be developed first, and tracks delivery timelines across future sprints.
         </p>
         <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
           New roadmap items default to Later until prioritized.
@@ -778,8 +797,22 @@ export function ProductRoadmapPage() {
         )}
       </div>
 
-      <div className="mt-6 rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.25)] px-4 py-3 text-xs text-[rgb(var(--zc-subtle))]">
-        Roadmap shows Epics/Features/User Stories as primary items. Tasks appear only as linked child work counts.
+      <div className="mt-6 rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.25)] px-4 py-3">
+        <div className="flex flex-wrap items-center gap-6 text-xs text-[rgb(var(--zc-subtle))]">
+          <span>Total items: {roadmapPrimaryItems.length}</span>
+          <span>Now: {byBucket.now.length}</span>
+          <span>Next: {byBucket.next.length}</span>
+          <span>Later: {byBucket.later.length}</span>
+          <span>
+            With deadlines: {roadmapPrimaryItems.filter((it) => it.targetDate).length}
+          </span>
+          <span className="text-rose-400">
+            Overdue: {roadmapPrimaryItems.filter((it) => it.targetDate && new Date(it.targetDate) < new Date() && it.__state !== 'done').length}
+          </span>
+        </div>
+        <p className="mt-1.5 text-[11px] text-[rgb(var(--zc-subtle))]">
+          Roadmap shows Epics, Features, and User Stories. Tasks appear as linked child counts. Set target dates to track delivery timelines.
+        </p>
       </div>
 
       <BacklogItemDetailModal
