@@ -559,7 +559,11 @@ export function ProductBacklogPage() {
 
     // Sort: by backlog state priority (new first, then refined, ready, done), then by updatedAt desc
     const stateOrder = { new: 0, refined: 1, ready: 2, done: 3 }
+    const priorityOrder = { must: 0, should: 1, could: 2, wont: 3 }
     list.sort((a, b) => {
+      const pa = priorityOrder[String(a.priority ?? 'must').toLowerCase()] ?? 0
+      const pb = priorityOrder[String(b.priority ?? 'must').toLowerCase()] ?? 0
+      if (pa !== pb) return pa - pb
       const sa = stateOrder[normalizeBacklogState(a.backlogState)] ?? 0
       const sb = stateOrder[normalizeBacklogState(b.backlogState)] ?? 0
       if (sa !== sb) return sa - sb
@@ -1026,6 +1030,24 @@ export function ProductBacklogPage() {
         : 0
       const indentPx = viewMode === 'hierarchy' ? depth * 34 : 0
       const priorityLabel = it.priority === 'must' ? 'Must' : it.priority === 'should' ? 'Should' : it.priority === 'could' ? 'Could' : it.priority === 'wont' ? "Won't" : it.priority || '—'
+      const priorityIcon = it.priority === 'must' ? '🔴' : it.priority === 'should' ? '🟠' : it.priority === 'could' ? '🔵' : it.priority === 'wont' ? '⚪' : '⚪'
+      const assigneeName = it.assignee || ''
+      const assigneeInitial = assigneeName ? assigneeName.charAt(0).toUpperCase() : ''
+      const getRelativeTime = (timestamp) => {
+        if (!timestamp) return '—'
+        const now = Date.now()
+        const diff = now - timestamp
+        const minutes = Math.floor(diff / 60000)
+        if (minutes < 1) return 'just now'
+        if (minutes < 60) return `${minutes}m ago`
+        const hours = Math.floor(minutes / 60)
+        if (hours < 24) return `${hours}h ago`
+        const days = Math.floor(hours / 24)
+        if (days < 30) return `${days}d ago`
+        const months = Math.floor(days / 30)
+        return `${months}mo ago`
+      }
+      const lastUpdate = getRelativeTime(it.updatedAt || it.createdAt)
       const sp = it.storyPoints || it.story_points || 0
       const taskCount = itType === 'user_story' ? (hierarchyMaps.tasksByStory.get(it.id) ?? []).length : null
       const childCount = itType === 'epic' ? (hierarchyMaps.featuresByEpic.get(it.id) ?? []).length : itType === 'feature' ? (hierarchyMaps.storiesByFeature.get(it.id) ?? []).length : null
@@ -1072,8 +1094,17 @@ export function ProductBacklogPage() {
                     </span>
                   ) : null}
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stateBadge(state)}`}>{state}</span>
-                  <span className="text-[10px] text-[rgb(var(--zc-subtle))]">{priorityLabel}</span>
+                  <span className="text-[10px] text-[rgb(var(--zc-subtle))]">{priorityIcon} {priorityLabel}</span>
                   {sp > 0 && <span className="text-[10px] text-[rgb(var(--zc-subtle))]">SP: {sp}</span>}
+                  {assigneeName ? (
+                    <span className="flex items-center gap-1 text-[10px] text-[rgb(var(--zc-subtle))]">
+                      <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-indigo-500/25 text-[8px] font-bold text-indigo-300">{assigneeInitial}</span>
+                      {assigneeName}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-[rgb(var(--zc-subtle))]">Unassigned</span>
+                  )}
+                  <span className="text-[10px] text-[rgb(var(--zc-subtle))]">{lastUpdate}</span>
                   {taskCount !== null && <span className="text-[10px] text-[rgb(var(--zc-subtle))]">Tasks: {taskCount}</span>}
                   {childCount !== null && childCount > 0 && <span className="text-[10px] text-[rgb(var(--zc-subtle))]">Children: {childCount}</span>}
                   {progressPercent !== null && (
@@ -1103,7 +1134,7 @@ export function ProductBacklogPage() {
             </div>
           </div>
 
-          <div className="hidden sm:grid sm:grid-cols-[1fr_100px_90px_90px_80px] gap-2 items-center">
+          <div className="hidden sm:grid sm:grid-cols-[1fr_90px_80px_80px_50px_36px_70px] gap-2 items-center">
             <div className="min-w-0 flex items-center" style={{ paddingLeft: `${indentPx}px` }}>
               {viewMode === 'hierarchy' && depth > 0 && (
                 <span className="text-[rgb(var(--zc-subtle))] text-xs select-none shrink-0 mr-1.5">└</span>
@@ -1149,8 +1180,23 @@ export function ProductBacklogPage() {
               <option value="ready">Ready</option>
               <option value="done">Done</option>
             </select>
-            <span className="text-xs text-[rgb(var(--zc-muted))]">{priorityLabel}</span>
+            <span className="flex items-center gap-1 text-xs text-[rgb(var(--zc-muted))]">
+              <span className="text-sm">{priorityIcon}</span>
+              {priorityLabel}
+            </span>
             <span className="text-xs text-[rgb(var(--zc-muted))] text-right">{sp > 0 ? sp : '—'}</span>
+            <div className="flex justify-center">
+              {assigneeName ? (
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-indigo-500/25 text-[10px] font-bold text-indigo-300" title={assigneeName}>
+                  {assigneeInitial}
+                </span>
+              ) : (
+                <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[rgb(var(--zc-border))] text-[10px] text-[rgb(var(--zc-subtle))]" title="Unassigned">
+                  —
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] text-[rgb(var(--zc-subtle))] text-right truncate" title={it.updatedAt ? new Date(it.updatedAt).toLocaleString() : ''}>{lastUpdate}</span>
           </div>
         </button>
       )

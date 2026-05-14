@@ -52,11 +52,15 @@ function mergeDefaults(saved) {
 }
 
 function applyTheme(theme) {
+  const resolved = theme === 'light' ? 'light' : 'dark'
+  document.body.dataset.theme = resolved
   try {
-    document.body.dataset.theme = theme === 'light' ? 'light' : 'dark'
-  } catch {
-    // ignore
-  }
+    const raw = localStorage.getItem('zerocollab.settings.v1')
+    const parsed = raw ? JSON.parse(raw) : {}
+    if (!parsed.app) parsed.app = {}
+    parsed.app.theme = resolved
+    localStorage.setItem('zerocollab.settings.v1', JSON.stringify(parsed))
+  } catch { /* ignore */ }
 }
 
 export function SettingsShell() {

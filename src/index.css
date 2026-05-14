@@ -5,7 +5,7 @@
     /* Theme tokens stored as RGB triplets: "r g b" */
     --zc-bg: 2 6 23; /* slate-950 */
     --zc-panel: 15 23 42; /* slate-900 */
-    --zc-border: 30 41 59; /* slate-800 */
+    --zc-border: 100 116 139; /* slate-500 - clearly visible borders on dark bg */
     --zc-text: 241 245 249; /* slate-100 */
     --zc-muted: 203 213 225; /* slate-300 */
     --zc-muted2: 148 163 184; /* slate-400 */
@@ -27,10 +27,66 @@
   body[data-theme='light'] {
     --zc-bg: 248 250 252; /* slate-50 */
     --zc-panel: 255 255 255; /* white */
-    --zc-border: 226 232 240; /* slate-200 */
+    --zc-border: 71 85 105; /* slate-600 - clearly visible borders on light bg */
     --zc-text: 15 23 42; /* slate-900 */
     --zc-muted: 51 65 85; /* slate-700 */
     --zc-muted2: 71 85 105; /* slate-600 */
     --zc-subtle: 100 116 139; /* slate-500 */
+  }
+
+  /* ── Light mode badge visibility fixes ── */
+  [data-theme='light'] {
+    /* Purple badges (Epic) */
+    & [class*="bg-purple-500"] { background-color: rgba(147, 51, 234, 0.15) !important; }
+    & [class*="text-purple-3"] { color: #3b0764 !important; }
+    & [class*="ring-purple"] { --tw-ring-color: rgba(147, 51, 234, 0.4) !important; }
+
+    /* Blue badges (Feature) */
+    & [class*="bg-blue-500"] { background-color: rgba(59, 130, 246, 0.15) !important; }
+    & [class*="text-blue-3"] { color: #1e3a5f !important; }
+    & [class*="ring-blue"] { --tw-ring-color: rgba(59, 130, 246, 0.4) !important; }
+
+    /* Emerald/Green badges (User Story, Done) */
+    & [class*="bg-emerald-500"] { background-color: rgba(16, 185, 129, 0.15) !important; }
+    & [class*="bg-emerald-400"] { background-color: rgba(52, 211, 153, 0.85) !important; }
+    & [class*="text-emerald-3"], & [class*="text-emerald-4"] { color: #059669 !important; }
+    & [class*="ring-emerald"] { --tw-ring-color: rgba(16, 185, 129, 0.4) !important; }
+    & [class*="bg-green-500"] { background-color: rgba(34, 197, 94, 0.15) !important; }
+    & [class*="text-green-3"] { color: #16a34a !important; }
+
+    /* Amber/Yellow badges (Task, Priority) */
+    & [class*="bg-amber-500"] { background-color: rgba(245, 158, 11, 0.15) !important; }
+    & [class*="text-amber-3"], & [class*="text-amber-4"] { color: #d97706 !important; }
+    & [class*="ring-amber"] { --tw-ring-color: rgba(245, 158, 11, 0.4) !important; }
+
+    /* Indigo badges (Sprint header, links) */
+    & [class*="bg-indigo-500"] { background-color: rgba(99, 102, 241, 0.15) !important; }
+    & [class*="bg-indigo-600"] { background-color: rgba(79, 70, 229, 0.85) !important; color: white !important; }
+    & [class*="text-indigo-3"] { color: #4f46e5 !important; }
+
+    /* Cyan badges (Refined state) */
+    & [class*="bg-cyan-500"] { background-color: rgba(6, 182, 212, 0.15) !important; }
+    & [class*="text-cyan-3"] { color: #0891b2 !important; }
+
+    /* Gray badges (New state) */
+    & [class*="bg-gray-500"] { background-color: rgba(107, 114, 128, 0.15) !important; }
+    & [class*="text-gray-3"] { color: #4b5563 !important; }
+
+    /* Rose/Red (Overdue, Danger) */
+    & [class*="text-rose-4"] { color: #e11d48 !important; }
+    & [class*="bg-rose-500"] { background-color: rgba(244, 63, 94, 0.8) !important; }
+    & [class*="bg-rose-400"] { background-color: rgba(244, 63, 94, 0.6) !important; }
+    & [class*="bg-rose-600"] { background-color: rgba(225, 29, 72, 0.85) !important; color: white !important; }
+
+    /* Violet (Roadmap timeline bars) */
+    & [class*="bg-violet-500"] { background-color: rgba(139, 92, 246, 0.7) !important; }
+    & [class*="text-violet-3"] { color: #7c3aed !important; }
+
+    /* Slate (Timeline bars) */
+    & [class*="bg-slate-500"] { background-color: rgba(100, 116, 139, 0.5) !important; }
+
+    /* Amber warning banners */
+    & [class*="bg-amber-500/10"] { background-color: rgba(245, 158, 11, 0.1) !important; }
+    & [class*="text-amber-2"] { color: #92400e !important; }
   }
 }
