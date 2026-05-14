@@ -74,7 +74,7 @@ export function ProductBacklogPage() {
   const { user } = useAuth()
   const ownerUserId = user?.id ?? null
   const ownerUserIdRef = useRef(ownerUserId)
-  const { activeProject, memberProjectIds = [] } = useWorkspace()
+  const { activeProject, activeSprint, memberProjectIds = [] } = useWorkspace()
 
   const [items, setItems] = useState([])
   const [isLoading, setIsLoading] = useState(true)
@@ -992,6 +992,22 @@ export function ProductBacklogPage() {
 
   const displayItems = viewMode === 'hierarchy' ? hierarchyItems : filteredItems
 
+  const sprintGroupedItems = useMemo(() => {
+    if (!activeSprint?.id) return { sprintItems: [], backlogItems: displayItems, sprintLabel: null }
+    const sprintItems = displayItems.filter(
+      (it) => it.sprintId === activeSprint.id || it.inSprint === true,
+    )
+    const backlogItems = displayItems.filter(
+      (it) => it.sprintId !== activeSprint.id && it.inSprint !== true,
+    )
+    const sprintNumber = activeSprint.sprint_number || activeSprint.sprintNumber || '?'
+    return {
+      sprintItems,
+      backlogItems,
+      sprintLabel: `Sprint #${sprintNumber}`,
+    }
+  }, [displayItems, activeSprint?.id, activeSprint?.sprint_number, activeSprint?.sprintNumber])
+
   const createInitialValues = useMemo(() => {
     const typeKey = createType || 'task'
     return {
@@ -999,6 +1015,147 @@ export function ProductBacklogPage() {
       backlogState: 'new',
     }
   }, [createType])
+
+  const renderItemRows = (itemList) => {
+    return itemList.map((it) => {
+      const itType = normalizeItemType(it)
+      const state = normalizeBacklogState(it.backlogState)
+      const typeDepthFallback = { epic: 0, feature: 1, user_story: 2, task: 3 }
+      const depth = viewMode === 'hierarchy'
+        ? (Number.isFinite(Number(it._depth)) ? Number(it._depth) : (typeDepthFallback[itType] ?? 0))
+        : 0
+      const indentPx = viewMode === 'hierarchy' ? depth * 34 : 0
+      const priorityLabel = it.priority === 'must' ? 'Must' : it.priority === 'should' ? 'Should' : it.priority === 'could' ? 'Could' : it.priority === 'wont' ? "Won't" : it.priority || '—'
+      const sp = it.storyPoints || it.story_points || 0
+      const taskCount = itType === 'user_story' ? (hierarchyMaps.tasksByStory.get(it.id) ?? []).length : null
+      const childCount = itType === 'epic' ? (hierarchyMaps.featuresByEpic.get(it.id) ?? []).length : itType === 'feature' ? (hierarchyMaps.storiesByFeature.get(it.id) ?? []).length : null
+
+      let progressPercent = null
+      let progressDone = 0
+      let progressTotal = 0
+      if (itType === 'user_story') {
+        const linkedTasks = hierarchyMaps.tasksByStory.get(it.id) ?? []
+        progressTotal = linkedTasks.length
+        progressDone = linkedTasks.filter((t) => String(t.status ?? '').toLowerCase() === 'done').length
+        progressPercent = progressTotal > 0 ? Math.round((progressDone / progressTotal) * 100) : null
+      } else if (itType === 'feature') {
+        const linkedStories = hierarchyMaps.storiesByFeature.get(it.id) ?? []
+        progressTotal = linkedStories.length
+        progressDone = linkedStories.filter((s) => String(s.backlogState ?? '').toLowerCase() === 'done').length
+        progressPercent = progressTotal > 0 ? Math.round((progressDone / progressTotal) * 100) : null
+      } else if (itType === 'epic') {
+        const linkedFeatures = hierarchyMaps.featuresByEpic.get(it.id) ?? []
+        progressTotal = linkedFeatures.length
+        progressDone = linkedFeatures.filter((f) => String(f.backlogState ?? '').toLowerCase() === 'done').length
+        progressPercent = progressTotal > 0 ? Math.round((progressDone / progressTotal) * 100) : null
+      }
+
+      return (
+        <button
+          key={it.id}
+          type="button"
+          className="w-full py-3 text-left hover:bg-[rgb(var(--zc-border)/0.15)] transition group"
+          style={{ paddingLeft: '16px', paddingRight: '16px' }}
+          onClick={() => setSelectedItemId(it.id)}
+        >
+          <div className="sm:hidden">
+            <div className="flex items-start gap-2">
+              <span className={`mt-0.5 inline-flex shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${typeBadge(itType)}`}>
+                {itemTypeLabel(itType)}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium text-[rgb(var(--zc-text))]">{it.title || '(untitled)'}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  {itType === 'task' && it.parentStoryId ? (
+                    <span className="text-[10px] text-[rgb(var(--zc-subtle))]">
+                      Story: {storyById.get(it.parentStoryId)?.title || it.parentStoryId}
+                    </span>
+                  ) : null}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stateBadge(state)}`}>{state}</span>
+                  <span className="text-[10px] text-[rgb(var(--zc-subtle))]">{priorityLabel}</span>
+                  {sp > 0 && <span className="text-[10px] text-[rgb(var(--zc-subtle))]">SP: {sp}</span>}
+                  {taskCount !== null && <span className="text-[10px] text-[rgb(var(--zc-subtle))]">Tasks: {taskCount}</span>}
+                  {childCount !== null && childCount > 0 && <span className="text-[10px] text-[rgb(var(--zc-subtle))]">Children: {childCount}</span>}
+                  {progressPercent !== null && (
+                    <div className="flex items-center gap-2 mt-1">
+                      <div className="h-1.5 w-20 rounded-full bg-[rgb(var(--zc-border))]">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${progressPercent === 100 ? 'bg-emerald-400' : progressPercent >= 50 ? 'bg-indigo-400' : 'bg-amber-400'}`}
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                      <span className={`text-[10px] font-medium ${progressPercent === 100 ? 'text-emerald-400' : 'text-[rgb(var(--zc-subtle))]'}`}>{progressPercent}%</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <select
+                className="h-7 shrink-0 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-[10px] text-[rgb(var(--zc-text))]"
+                value={state}
+                onChange={(e) => { e.stopPropagation(); updateItem(it.id, { backlogState: e.target.value }) }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <option value="new">New</option>
+                <option value="refined">Refined</option>
+                <option value="ready">Ready</option>
+                <option value="done">Done</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="hidden sm:grid sm:grid-cols-[1fr_100px_90px_90px_80px] gap-2 items-center">
+            <div className="min-w-0 flex items-center" style={{ paddingLeft: `${indentPx}px` }}>
+              {viewMode === 'hierarchy' && depth > 0 && (
+                <span className="text-[rgb(var(--zc-subtle))] text-xs select-none shrink-0 mr-1.5">└</span>
+              )}
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-[rgb(var(--zc-text))] group-hover:text-indigo-300 transition">{it.title || '(untitled)'}</p>
+                {it.description && <p className="mt-0.5 truncate text-xs text-[rgb(var(--zc-muted2))]">{it.description}</p>}
+                {itType === 'task' && it.parentStoryId ? (
+                  <p className="mt-0.5 truncate text-[10px] text-[rgb(var(--zc-subtle))]">
+                    Story: {storyById.get(it.parentStoryId)?.title || it.parentStoryId}
+                  </p>
+                ) : null}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {taskCount !== null && (
+                    <span className="text-[10px] text-[rgb(var(--zc-subtle))]">{taskCount} task{taskCount !== 1 ? 's' : ''}</span>
+                  )}
+                  {childCount !== null && childCount > 0 && (
+                    <span className="text-[10px] text-[rgb(var(--zc-subtle))]">{childCount} child{childCount !== 1 ? 'ren' : ''}</span>
+                  )}
+                  {progressPercent !== null && (
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <div className="h-1.5 w-24 rounded-full bg-[rgb(var(--zc-border))]">
+                        <div
+                          className={`h-1.5 rounded-full transition-all ${progressPercent === 100 ? 'bg-emerald-400' : progressPercent >= 50 ? 'bg-indigo-400' : 'bg-amber-400'}`}
+                          style={{ width: `${progressPercent}%` }}
+                        />
+                      </div>
+                      <span className={`text-[10px] font-medium ${progressPercent === 100 ? 'text-emerald-400' : 'text-[rgb(var(--zc-subtle))]'}`}>{progressPercent}% ({progressDone}/{progressTotal})</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <span className={`inline-flex w-fit rounded-md px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${typeBadge(itType)}`}>{itemTypeLabel(itType)}</span>
+            <select
+              className="h-7 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-[10px] text-[rgb(var(--zc-text))] focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+              value={state}
+              onChange={(e) => { e.stopPropagation(); updateItem(it.id, { backlogState: e.target.value }) }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <option value="new">New</option>
+              <option value="refined">Refined</option>
+              <option value="ready">Ready</option>
+              <option value="done">Done</option>
+            </select>
+            <span className="text-xs text-[rgb(var(--zc-muted))]">{priorityLabel}</span>
+            <span className="text-xs text-[rgb(var(--zc-muted))] text-right">{sp > 0 ? sp : '—'}</span>
+          </div>
+        </button>
+      )
+    })
+  }
 
   return (
     <section>
@@ -1087,169 +1244,57 @@ export function ProductBacklogPage() {
         </div>
       </div>
 
-      {/* ── Table Header ── */}
-      <div className="mt-4 hidden sm:grid sm:grid-cols-[1fr_100px_90px_90px_80px] gap-2 rounded-t-lg border border-b-0 border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-4 py-2">
-        <span className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--zc-muted))]">Item</span>
-        <span className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--zc-muted))]">Type</span>
-        <span className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--zc-muted))]">State</span>
-        <span className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--zc-muted))]">Priority</span>
-        <span className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--zc-muted))] text-right">SP</span>
-      </div>
-
       {/* ── Item List ── */}
-      <div className="rounded-b-lg border border-[rgb(var(--zc-border))] sm:rounded-t-none rounded-t-lg sm:border-t-0 divide-y divide-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)]">
-        {isLoading ? (
-          <div className="px-4 py-8 text-center text-sm text-[rgb(var(--zc-muted2))]">
-            {t('loading_tasks')}
-          </div>
-        ) : displayItems.length === 0 ? (
-          <div className="px-4 py-8 text-center text-sm text-[rgb(var(--zc-muted2))]">
-            {searchQuery || filterType !== 'all' || filterState !== 'all'
-              ? 'No items match your filters.'
-              : 'No backlog items yet. Click "+ New Backlog Item" to create one.'}
-          </div>
-        ) : (
-          displayItems.map((it) => {
-            const itType = normalizeItemType(it)
-            const state = normalizeBacklogState(it.backlogState)
-            const typeDepthFallback = {
-              epic: 0,
-              feature: 1,
-              user_story: 2,
-              task: 3,
-            }
-
-            const depth =
-              viewMode === 'hierarchy'
-                ? (Number.isFinite(Number(it._depth)) ? Number(it._depth) : (typeDepthFallback[itType] ?? 0))
-                : 0
-
-            const indentPx = viewMode === 'hierarchy' ? depth * 34 : 0
-            if (viewMode === 'hierarchy') console.log('[Hierarchy Debug]', it.title, 'depth:', depth, '_depth:', it._depth, 'type:', itType)
-            const priorityLabel = it.priority === 'must' ? 'Must' : it.priority === 'should' ? 'Should' : it.priority === 'could' ? 'Could' : it.priority === 'wont' ? "Won't" : it.priority || '—'
-            const sp = it.storyPoints || it.story_points || 0
-            const taskCount = itType === 'user_story' ? (hierarchyMaps.tasksByStory.get(it.id) ?? []).length : null
-            const childCount = itType === 'epic' ? (hierarchyMaps.featuresByEpic.get(it.id) ?? []).length : itType === 'feature' ? (hierarchyMaps.storiesByFeature.get(it.id) ?? []).length : null
-
-            return (
-              <button
-                key={it.id}
-                type="button"
-                className="w-full py-3 text-left hover:bg-[rgb(var(--zc-border)/0.15)] transition group"
-                style={{ paddingLeft: '16px', paddingRight: '16px' }}
-                onClick={() => setSelectedItemId(it.id)}
-              >
-                {/* Mobile layout */}
-                <div className="sm:hidden">
-                  <div className="flex items-start gap-2">
-                    <span className={`mt-0.5 inline-flex shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${typeBadge(itType)}`}>
-                      {itemTypeLabel(itType)}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div
-                        className="flex min-w-0 items-start gap-2"
-                        style={{ marginLeft: `${indentPx}px` }}
-                      >
-                        {viewMode === 'hierarchy' && depth > 0 ? (
-                          <span className="mt-0.5 shrink-0 text-xs text-[rgb(var(--zc-subtle))]">└</span>
-                        ) : null}
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-medium text-[rgb(var(--zc-text))]">{it.title || '(untitled)'}</p>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            {itType === 'task' && it.parentStoryId ? (
-                              <span className="text-[10px] text-[rgb(var(--zc-subtle))]">
-                                Story: {storyById.get(it.parentStoryId)?.title || it.parentStoryId}
-                              </span>
-                            ) : null}
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stateBadge(state)}`}>{state}</span>
-                            <span className="text-[10px] text-[rgb(var(--zc-subtle))]">{priorityLabel}</span>
-                            {sp > 0 && <span className="text-[10px] text-[rgb(var(--zc-subtle))]">SP: {sp}</span>}
-                            {taskCount !== null && <span className="text-[10px] text-[rgb(var(--zc-subtle))]">Tasks: {taskCount}</span>}
-                            {childCount !== null && childCount > 0 && <span className="text-[10px] text-[rgb(var(--zc-subtle))]">Children: {childCount}</span>}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <select
-                      className="h-7 shrink-0 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-[10px] text-[rgb(var(--zc-text))]"
-                      value={state}
-                      onChange={(e) => { e.stopPropagation(); updateItem(it.id, { backlogState: e.target.value }) }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <option value="new">New</option>
-                      <option value="refined">Refined</option>
-                      <option value="ready">Ready</option>
-                      <option value="done">Done</option>
-                    </select>
-                  </div>
+      {isLoading ? (
+        <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] px-4 py-8 text-center text-sm text-[rgb(var(--zc-muted2))]">
+          {t('loading_tasks')}
+        </div>
+      ) : displayItems.length === 0 ? (
+        <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] px-4 py-8 text-center text-sm text-[rgb(var(--zc-muted2))]">
+          {searchQuery || filterType !== 'all' || filterState !== 'all'
+            ? 'No items match your filters.'
+            : 'No backlog items yet. Click "+ New Backlog Item" to create one.'}
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Sprint Group */}
+          {sprintGroupedItems.sprintLabel && sprintGroupedItems.sprintItems.length > 0 && (
+            <div>
+              <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-[rgb(var(--zc-border))] bg-indigo-500/10 px-4 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-indigo-300">{sprintGroupedItems.sprintLabel}</span>
+                  <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-medium text-indigo-300">{sprintGroupedItems.sprintItems.length} items</span>
                 </div>
+                {activeSprint?.start_date && activeSprint?.end_date && (
+                  <span className="text-[11px] text-[rgb(var(--zc-subtle))]">{activeSprint.start_date} → {activeSprint.end_date}</span>
+                )}
+              </div>
+              <div className="rounded-b-lg border border-[rgb(var(--zc-border))] divide-y divide-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)]">
+                {renderItemRows(sprintGroupedItems.sprintItems)}
+              </div>
+            </div>
+          )}
 
-                {/* Desktop layout — table row */}
-                <div className="hidden sm:grid sm:grid-cols-[1fr_100px_90px_90px_80px] gap-2 items-center">
-                  <div className="min-w-0">
-                    <div
-                      className="flex min-w-0 items-start gap-2"
-                      style={{ marginLeft: `${indentPx}px` }}
-                    >
-                      {viewMode === 'hierarchy' && depth > 0 ? (
-                        <span className="mt-0.5 shrink-0 text-xs text-[rgb(var(--zc-subtle))]">
-                          └
-                        </span>
-                      ) : null}
-
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-[rgb(var(--zc-text))] group-hover:text-indigo-300 transition">
-                          {it.title || '(untitled)'}
-                        </p>
-
-                        {it.description && (
-                          <p className="mt-0.5 truncate text-xs text-[rgb(var(--zc-muted2))]">
-                            {it.description}
-                          </p>
-                        )}
-
-                        {itType === 'task' && it.parentStoryId ? (
-                          <p className="mt-0.5 truncate text-[10px] text-[rgb(var(--zc-subtle))]">
-                            Story: {storyById.get(it.parentStoryId)?.title || it.parentStoryId}
-                          </p>
-                        ) : null}
-
-                        {taskCount !== null && (
-                          <span className="text-[10px] text-[rgb(var(--zc-subtle))]">
-                            {taskCount} task{taskCount !== 1 ? 's' : ''}
-                          </span>
-                        )}
-
-                        {childCount !== null && childCount > 0 && (
-                          <span className="ml-2 text-[10px] text-[rgb(var(--zc-subtle))]">
-                            {childCount} child{childCount !== 1 ? 'ren' : ''}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <span className={`inline-flex w-fit rounded-md px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${typeBadge(itType)}`}>
-                    {itemTypeLabel(itType)}
-                  </span>
-                  <select
-                    className="h-7 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-[10px] text-[rgb(var(--zc-text))] focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
-                    value={state}
-                    onChange={(e) => { e.stopPropagation(); updateItem(it.id, { backlogState: e.target.value }) }}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <option value="new">New</option>
-                    <option value="refined">Refined</option>
-                    <option value="ready">Ready</option>
-                    <option value="done">Done</option>
-                  </select>
-                  <span className="text-xs text-[rgb(var(--zc-muted))]">{priorityLabel}</span>
-                  <span className="text-xs text-[rgb(var(--zc-muted))] text-right">{sp > 0 ? sp : '—'}</span>
+          {/* Backlog Group */}
+          <div>
+            <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-4 py-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold text-[rgb(var(--zc-text))]">Backlog</span>
+                <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] font-medium text-[rgb(var(--zc-muted))]">{sprintGroupedItems.backlogItems.length} items</span>
+              </div>
+            </div>
+            <div className="rounded-b-lg border border-[rgb(var(--zc-border))] divide-y divide-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)]">
+              {sprintGroupedItems.backlogItems.length === 0 ? (
+                <div className="px-4 py-6 text-center text-sm text-[rgb(var(--zc-muted2))]">
+                  All items are assigned to {sprintGroupedItems.sprintLabel || 'a sprint'}.
                 </div>
-              </button>
-            )
-          })
-        )}
-      </div>
+              ) : (
+                renderItemRows(sprintGroupedItems.backlogItems)
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Summary bar ── */}
       {!isLoading && displayItems.length > 0 && (

@@ -542,6 +542,48 @@ export function ProductRoadmapPage() {
     return out
   }, [roadmapPrimaryItems])
 
+  const timelineData = useMemo(() => {
+    const withDates = roadmapPrimaryItems.filter((it) => it.targetDate)
+    if (withDates.length === 0) return null
+
+    const now = new Date()
+    const startDates = withDates.map((it) => {
+      const start = it.startDate ? new Date(it.startDate) : new Date(now.getFullYear(), now.getMonth(), 1)
+      return start
+    })
+    const endDates = withDates.map((it) => new Date(it.targetDate))
+
+    const minDate = new Date(Math.min(...startDates.map((d) => d.getTime()), now.getTime()))
+    const maxDate = new Date(Math.max(...endDates.map((d) => d.getTime()), now.getTime()))
+
+    // Generate months array from minDate to maxDate + 1 month
+    const months = []
+    const cursor = new Date(minDate.getFullYear(), minDate.getMonth(), 1)
+    const end = new Date(maxDate.getFullYear(), maxDate.getMonth() + 2, 1)
+    while (cursor < end) {
+      months.push({ year: cursor.getFullYear(), month: cursor.getMonth(), label: cursor.toLocaleString('en', { month: 'short', year: 'numeric' }) })
+      cursor.setMonth(cursor.getMonth() + 1)
+    }
+
+    const totalDays = Math.max(1, (end.getTime() - new Date(months[0].year, months[0].month, 1).getTime()) / (1000 * 60 * 60 * 24))
+    const timelineStart = new Date(months[0].year, months[0].month, 1).getTime()
+
+    const items = withDates.map((it) => {
+      const itemStart = it.startDate ? new Date(it.startDate) : new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const itemEnd = new Date(it.targetDate)
+      const leftPercent = Math.max(0, ((itemStart.getTime() - timelineStart) / (totalDays * 24 * 60 * 60 * 1000)) * 100)
+      const widthPercent = Math.max(2, ((itemEnd.getTime() - itemStart.getTime()) / (totalDays * 24 * 60 * 60 * 1000)) * 100)
+      const isOverdue = itemEnd < now && it.__state !== 'done'
+      const isDone = it.__state === 'done'
+      return { ...it, leftPercent, widthPercent, isOverdue, isDone, itemStart, itemEnd }
+    })
+
+    // Today marker position
+    const todayPercent = ((now.getTime() - timelineStart) / (totalDays * 24 * 60 * 60 * 1000)) * 100
+
+    return { months, items, todayPercent, totalDays }
+  }, [roadmapPrimaryItems])
+
   const updateItem = (itemId, updates) => {
     if (roadmapLocked) {
       console.log('[Roadmap Gate] update blocked', { itemId, updates, tier })
@@ -641,6 +683,27 @@ export function ProductRoadmapPage() {
                 childText = childCount ? `${childCount} linked tasks` : ''
               }
 
+              // Progress calculation
+              let progressPercent = null
+              let progressDone = 0
+              let progressTotal = 0
+              if (itType === 'user_story') {
+                const linkedTasks = typed.tasksByStory.get(it.id) ?? []
+                progressTotal = linkedTasks.length
+                progressDone = linkedTasks.filter((t) => String(t.status ?? '').toLowerCase() === 'done').length
+                progressPercent = progressTotal > 0 ? Math.round((progressDone / progressTotal) * 100) : null
+              } else if (itType === 'feature') {
+                const linkedStories = typed.storiesByFeature.get(it.id) ?? []
+                progressTotal = linkedStories.length
+                progressDone = linkedStories.filter((s) => String(s.backlogState ?? '').toLowerCase() === 'done').length
+                progressPercent = progressTotal > 0 ? Math.round((progressDone / progressTotal) * 100) : null
+              } else if (itType === 'epic') {
+                const linkedFeatures = typed.featuresByEpic.get(it.id) ?? []
+                progressTotal = linkedFeatures.length
+                progressDone = linkedFeatures.filter((f) => String(f.backlogState ?? '').toLowerCase() === 'done').length
+                progressPercent = progressTotal > 0 ? Math.round((progressDone / progressTotal) * 100) : null
+              }
+
               return (
                 <button
                   key={it.id}
@@ -667,6 +730,27 @@ export function ProductRoadmapPage() {
                         )}
                         {parentText ? <span>{parentText}</span> : null}
                         {childText ? <span>{childText}</span> : null}
+                        {progressPercent !== null && (
+                          <div className="flex items-center gap-1.5">
+                            <div className="h-1.5 w-16 rounded-full bg-[rgb(var(--zc-border))]">
+                              <div
+                                className={`h-1.5 rounded-full transition-all ${progressPercent === 100 ? 'bg-emerald-400' : progressPercent >= 50 ? 'bg-indigo-400' : 'bg-amber-400'}`}
+                                style={{ width: `${progressPercent}%` }}
+                              />
+                            </div>
+                            <span className={`text-[10px] font-medium ${progressPercent === 100 ? 'text-emerald-400' : 'text-[rgb(var(--zc-subtle))]'}`}>
+                              {progressPercent}% ({progressDone}/{progressTotal})
+                            </span>
+                          </div>
+                        )}
+                        {it.assignee && (
+                          <span className="flex items-center gap-1 text-[10px] text-[rgb(var(--zc-subtle))]">
+                            <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-indigo-500/25 text-[8px] font-bold text-indigo-300">
+                              {String(it.assignee).charAt(0).toUpperCase()}
+                            </span>
+                            {it.assignee}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -797,6 +881,83 @@ export function ProductRoadmapPage() {
         )}
       </div>
 
+      {/* ── Timeline View ── */}
+      {timelineData && timelineData.items.length > 0 && (
+        <div className="mt-6 rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] overflow-hidden">
+          <div className="border-b border-[rgb(var(--zc-border))] px-4 py-3">
+            <h2 className="text-sm font-semibold text-[rgb(var(--zc-text))]">Timeline</h2>
+            <p className="text-[11px] text-[rgb(var(--zc-subtle))]">Items with target dates shown on a timeline. Set target dates above to see items here.</p>
+          </div>
+
+          {/* Month headers */}
+          <div className="relative border-b border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.3)]">
+            <div className="flex">
+              {timelineData.months.map((m, i) => (
+                <div key={i} className="flex-1 border-r border-[rgb(var(--zc-border))] px-2 py-1.5 text-center text-[10px] font-medium text-[rgb(var(--zc-muted))]" style={{ minWidth: '80px' }}>
+                  {m.label}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Timeline rows */}
+          <div className="relative">
+            {/* Today marker */}
+            {timelineData.todayPercent > 0 && timelineData.todayPercent < 100 && (
+              <div className="absolute top-0 bottom-0 z-10 w-0.5 bg-rose-400/60" style={{ left: `${timelineData.todayPercent}%` }}>
+                <div className="absolute -top-0 -left-2.5 rounded bg-rose-400 px-1 py-0 text-[8px] font-bold text-white">TODAY</div>
+              </div>
+            )}
+
+            {timelineData.items.map((it) => {
+              const barColor = it.isDone
+                ? 'bg-emerald-500/70'
+                : it.isOverdue
+                  ? 'bg-rose-500/70'
+                  : it.__bucket === 'now'
+                    ? 'bg-indigo-500/70'
+                    : it.__bucket === 'next'
+                      ? 'bg-violet-500/60'
+                      : 'bg-slate-500/50'
+
+              return (
+                <button
+                  key={it.id}
+                  type="button"
+                  className="relative flex w-full items-center border-b border-[rgb(var(--zc-border))] hover:bg-[rgb(var(--zc-border)/0.1)] transition"
+                  onClick={() => setSelectedItemId(it.id)}
+                >
+                  {/* Item label (left side) */}
+                  <div className="w-[200px] shrink-0 border-r border-[rgb(var(--zc-border))] px-3 py-2">
+                    <p className="truncate text-xs font-medium text-[rgb(var(--zc-text))]">{it.title || '(untitled)'}</p>
+                    <div className="mt-0.5 flex items-center gap-1">
+                      <span className={`rounded px-1 py-0 text-[8px] font-semibold ${it.__itemType === 'epic' ? 'bg-purple-500/20 text-purple-300' : it.__itemType === 'feature' ? 'bg-blue-500/20 text-blue-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
+                        {itemTypeLabel(it.__itemType)}
+                      </span>
+                      <span className={`text-[8px] font-medium ${it.isDone ? 'text-emerald-400' : it.isOverdue ? 'text-rose-400' : 'text-[rgb(var(--zc-subtle))]'}`}>
+                        {it.isDone ? 'Done' : it.isOverdue ? 'Overdue' : it.__state}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Bar area */}
+                  <div className="relative flex-1 h-10">
+                    <div
+                      className={`absolute top-2 h-6 rounded-md ${barColor} flex items-center px-1.5 min-w-[20px]`}
+                      style={{ left: `${it.leftPercent}%`, width: `${Math.min(it.widthPercent, 100 - it.leftPercent)}%` }}
+                    >
+                      <span className="truncate text-[9px] font-medium text-white/90">
+                        {it.targetDate}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="mt-6 rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.25)] px-4 py-3">
         <div className="flex flex-wrap items-center gap-6 text-xs text-[rgb(var(--zc-subtle))]">
           <span>Total items: {roadmapPrimaryItems.length}</span>
@@ -808,6 +969,12 @@ export function ProductRoadmapPage() {
           </span>
           <span className="text-rose-400">
             Overdue: {roadmapPrimaryItems.filter((it) => it.targetDate && new Date(it.targetDate) < new Date() && it.__state !== 'done').length}
+          </span>
+          <span className="text-emerald-400">
+            Done: {roadmapPrimaryItems.filter((it) => it.__state === 'done').length}
+          </span>
+          <span>
+            Assigned: {roadmapPrimaryItems.filter((it) => it.assignee).length}
           </span>
         </div>
         <p className="mt-1.5 text-[11px] text-[rgb(var(--zc-subtle))]">
