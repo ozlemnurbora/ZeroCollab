@@ -86,6 +86,10 @@ export function ProductBacklogPage() {
   const [createType, setCreateType] = useState(null) // epic|feature|user_story|task
   const [isCreateOpen, setIsCreateOpen] = useState(false)
   const [selectedItemId, setSelectedItemId] = useState(null)
+  const [filterType, setFilterType] = useState('all') // 'all' | 'epic' | 'feature' | 'user_story' | 'task'
+  const [filterState, setFilterState] = useState('all') // 'all' | 'new' | 'refined' | 'ready' | 'done'
+  const [searchQuery, setSearchQuery] = useState('')
+  const [viewMode, setViewMode] = useState('flat') // 'flat' | 'hierarchy'
 
   const activeProjectId = activeProject?.id ?? null
 
@@ -529,6 +533,153 @@ export function ProductBacklogPage() {
     return { epics, features, stories }
   }, [byType])
 
+  const filteredItems = useMemo(() => {
+    let list = Array.isArray(visibleItems) ? [...visibleItems] : []
+
+    // Filter by type
+    if (filterType !== 'all') {
+      list = list.filter((it) => normalizeItemType(it) === filterType)
+    }
+
+    // Filter by backlog state
+    if (filterState !== 'all') {
+      list = list.filter((it) => normalizeBacklogState(it.backlogState) === filterState)
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      list = list.filter(
+        (it) =>
+          (it.title || '').toLowerCase().includes(q) ||
+          (it.description || '').toLowerCase().includes(q) ||
+          (it.id || '').toLowerCase().includes(q),
+      )
+    }
+
+    // Sort: by backlog state priority (new first, then refined, ready, done), then by updatedAt desc
+    const stateOrder = { new: 0, refined: 1, ready: 2, done: 3 }
+    list.sort((a, b) => {
+      const sa = stateOrder[normalizeBacklogState(a.backlogState)] ?? 0
+      const sb = stateOrder[normalizeBacklogState(b.backlogState)] ?? 0
+      if (sa !== sb) return sa - sb
+      return (b.updatedAt || 0) - (a.updatedAt || 0)
+    })
+
+    return list
+  }, [visibleItems, filterType, filterState, searchQuery])
+
+  // For hierarchy view: group items under their parents
+  const hierarchyItems = useMemo(() => {
+    if (viewMode !== 'hierarchy') return []
+
+    const getEpicParentId = (item) =>
+      item?.parentEpicId ||
+      item?.epicId ||
+      item?.linkedEpicId ||
+      item?.parentId ||
+      null
+
+    const getFeatureParentId = (item) =>
+      item?.parentFeatureId ||
+      item?.featureId ||
+      item?.linkedFeatureId ||
+      item?.parentId ||
+      null
+
+    const getStoryParentId = (item) =>
+      item?.parentStoryId ||
+      item?.storyId ||
+      item?.linkedStoryId ||
+      item?.parentId ||
+      null
+
+    // Use ALL visible items for hierarchy, then apply text/state filters after building tree
+    let baseItems = Array.isArray(visibleItems) ? [...visibleItems] : []
+
+    // Apply filters on the base items
+    if (filterType !== 'all') {
+      // In hierarchy mode with type filter, show the selected type AND all their ancestors
+      const typeFiltered = baseItems.filter((it) => normalizeItemType(it) === filterType)
+      const ancestorIds = new Set()
+      for (const it of typeFiltered) {
+        const storyP = getStoryParentId(it)
+        const featureP = getFeatureParentId(it)
+        const epicP = getEpicParentId(it)
+        if (storyP) ancestorIds.add(storyP)
+        if (featureP) ancestorIds.add(featureP)
+        if (epicP) ancestorIds.add(epicP)
+      }
+      // Also find ancestors of ancestors
+      for (const it of baseItems) {
+        if (ancestorIds.has(it.id)) {
+          const storyP = getStoryParentId(it)
+          const featureP = getFeatureParentId(it)
+          const epicP = getEpicParentId(it)
+          if (storyP) ancestorIds.add(storyP)
+          if (featureP) ancestorIds.add(featureP)
+          if (epicP) ancestorIds.add(epicP)
+        }
+      }
+      baseItems = baseItems.filter(
+        (it) => normalizeItemType(it) === filterType || ancestorIds.has(it.id),
+      )
+    }
+    if (filterState !== 'all') {
+      baseItems = baseItems.filter((it) => normalizeBacklogState(it.backlogState) === filterState)
+    }
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim()
+      baseItems = baseItems.filter(
+        (it) =>
+          (it.title || '').toLowerCase().includes(q) ||
+          (it.description || '').toLowerCase().includes(q) ||
+          (it.id || '').toLowerCase().includes(q),
+      )
+    }
+
+    const epics = baseItems.filter((it) => normalizeItemType(it) === 'epic')
+    const features = baseItems.filter((it) => normalizeItemType(it) === 'feature')
+    const stories = baseItems.filter((it) => normalizeItemType(it) === 'user_story')
+    const tasks = baseItems.filter((it) => normalizeItemType(it) === 'task')
+
+    const usedFeatureIds = new Set()
+    const usedStoryIds = new Set()
+    const usedTaskIds = new Set()
+
+    const result = []
+    for (const epic of epics) {
+      result.push({ ...epic, _depth: 0 })
+      const epicFeatures = features.filter((f) => getEpicParentId(f) === epic.id)
+      for (const feature of epicFeatures) {
+        usedFeatureIds.add(feature.id)
+        result.push({ ...feature, _depth: 1 })
+        const featureStories = stories.filter((s) => getFeatureParentId(s) === feature.id)
+        for (const story of featureStories) {
+          usedStoryIds.add(story.id)
+          result.push({ ...story, _depth: 2 })
+          const storyTasks = tasks.filter((t) => getStoryParentId(t) === story.id)
+          for (const task of storyTasks) {
+            usedTaskIds.add(task.id)
+            result.push({ ...task, _depth: 3 })
+          }
+        }
+      }
+    }
+    // Add orphans with type-based depth fallback
+    for (const f of features) {
+      if (!usedFeatureIds.has(f.id)) result.push({ ...f, _depth: 1 })
+    }
+    for (const s of stories) {
+      if (!usedStoryIds.has(s.id)) result.push({ ...s, _depth: 2 })
+    }
+    for (const t of tasks) {
+      if (!usedTaskIds.has(t.id)) result.push({ ...t, _depth: 3 })
+    }
+
+    return result
+  }, [visibleItems, viewMode, filterType, filterState, searchQuery])
+
   const openCreate = (type) => {
     setCreateType(type)
     setIsCreateOpen(true)
@@ -818,157 +969,28 @@ export function ProductBacklogPage() {
     return ''
   }, [hierarchyMaps, selectedItem])
 
-  const BacklogSection = ({ typeKey, items: list }) => {
-    return (
-      <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)]">
-        <div className="flex items-center justify-between gap-2 border-b border-[rgb(var(--zc-border))] px-4 py-3">
-          <div className="min-w-0">
-            <h2 className="truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
-              {itemTypeLabel(typeKey)}
-            </h2>
-            <p className="text-xs text-[rgb(var(--zc-subtle))]">{list.length} items</p>
-          </div>
-          <Button variant="secondary" onClick={() => openCreate(typeKey)}>
-            + Add
-          </Button>
-        </div>
-        <div className="divide-y divide-[rgb(var(--zc-border))]">
-          {list.length === 0 ? (
-            <div className="px-4 py-4 text-sm text-[rgb(var(--zc-muted2))]">
-              No {itemTypeLabel(typeKey).toLowerCase()} items yet.
-            </div>
-          ) : (
-            list.map((it) => {
-              const itType = normalizeItemType(it)
-              const state = normalizeBacklogState(it.backlogState)
-              const taskCount =
-                itType === 'user_story'
-                  ? (hierarchyMaps.tasksByStory.get(it.id) ?? []).length
-                  : 0
-              const linkedStoryTitle =
-                itType === 'task' && it.parentStoryId
-                  ? storyById.get(it.parentStoryId)?.title || it.parentStoryId
-                  : ''
-              return (
-                <button
-                  key={it.id}
-                  type="button"
-                  className="w-full px-4 py-3 text-left hover:bg-[rgb(var(--zc-border)/0.2)] transition"
-                  onClick={() => setSelectedItemId(it.id)}
-                >
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium text-[rgb(var(--zc-text))]">
-                        {it.title || '(untitled)'}
-                      </p>
-                      {it.description ? (
-                        <p className="mt-1 line-clamp-2 text-xs text-[rgb(var(--zc-muted2))]">
-                          {it.description}
-                        </p>
-                      ) : null}
-                      {itType === 'user_story' ? (
-                        <p className="mt-1 text-[11px] text-[rgb(var(--zc-subtle))]">
-                          Tasks: {taskCount}
-                        </p>
-                      ) : null}
-                      {itType === 'task' && linkedStoryTitle ? (
-                        <p className="mt-1 text-[11px] text-[rgb(var(--zc-subtle))]">
-                          Linked Story: {linkedStoryTitle}
-                        </p>
-                      ) : null}
-                      <p className="mt-1 text-[11px] text-[rgb(var(--zc-subtle))]">
-                        ID: {it.id}
-                      </p>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <select
-                        className="h-8 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))]"
-                        value={state}
-                        onChange={(e) =>
-                          updateItem(it.id, { backlogState: e.target.value })
-                        }
-                        onClick={(e) => e.stopPropagation()}
-                        aria-label="Backlog state"
-                      >
-                        <option value="new">New</option>
-                        <option value="refined">Refined</option>
-                        <option value="ready">Ready</option>
-                        <option value="done">Done</option>
-                      </select>
-
-                      {itType === 'feature' ? (
-                        <select
-                          className="h-8 min-w-[160px] rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))]"
-                          value={it.parentEpicId ?? ''}
-                          onChange={(e) =>
-                            updateItem(it.id, {
-                              parentEpicId: e.target.value || null,
-                            })
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label="Parent epic"
-                        >
-                          <option value="">Parent epic: none</option>
-                          {parentOptions.epics.map((e) => (
-                            <option key={e.id} value={e.id}>
-                              {e.title}
-                            </option>
-                          ))}
-                        </select>
-                      ) : null}
-
-                      {itType === 'user_story' ? (
-                        <select
-                          className="h-8 min-w-[160px] rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))]"
-                          value={it.parentFeatureId ?? ''}
-                          onChange={(e) =>
-                            updateItem(it.id, {
-                              parentFeatureId: e.target.value || null,
-                            })
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label="Parent feature"
-                        >
-                          <option value="">Parent feature: none</option>
-                          {parentOptions.features.map((f) => (
-                            <option key={f.id} value={f.id}>
-                              {f.title}
-                            </option>
-                          ))}
-                        </select>
-                      ) : null}
-
-                      {itType === 'task' ? (
-                        <select
-                          className="h-8 min-w-[160px] rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))]"
-                          value={it.parentStoryId ?? ''}
-                          onChange={(e) =>
-                            updateItem(it.id, {
-                              parentStoryId: e.target.value || null,
-                            })
-                          }
-                          onClick={(e) => e.stopPropagation()}
-                          aria-label="Parent story"
-                        >
-                          <option value="">Parent story: none</option>
-                          {parentOptions.stories.map((s) => (
-                            <option key={s.id} value={s.id}>
-                              {s.title}
-                            </option>
-                          ))}
-                        </select>
-                      ) : null}
-                    </div>
-                  </div>
-                </button>
-              )
-            })
-          )}
-        </div>
-      </section>
-    )
+  // ── Type badge colors ──
+  const typeBadge = (itemType) => {
+    const colors = {
+      epic: 'bg-purple-500/20 text-purple-300 ring-purple-500/30',
+      feature: 'bg-blue-500/20 text-blue-300 ring-blue-500/30',
+      user_story: 'bg-emerald-500/20 text-emerald-300 ring-emerald-500/30',
+      task: 'bg-amber-500/20 text-amber-300 ring-amber-500/30',
+    }
+    return colors[itemType] || colors.task
   }
+
+  const stateBadge = (state) => {
+    const colors = {
+      new: 'bg-gray-500/20 text-gray-300',
+      refined: 'bg-cyan-500/20 text-cyan-300',
+      ready: 'bg-green-500/20 text-green-300',
+      done: 'bg-indigo-500/20 text-indigo-300',
+    }
+    return colors[state] || colors.new
+  }
+
+  const displayItems = viewMode === 'hierarchy' ? hierarchyItems : filteredItems
 
   const createInitialValues = useMemo(() => {
     const typeKey = createType || 'task'
@@ -980,14 +1002,14 @@ export function ProductBacklogPage() {
 
   return (
     <section>
-      {/* Product Backlog contains the full product work scope including Epics, Features, User Stories, and Tasks. */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      {/* ── Header ── */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
             Product Backlog
           </h1>
-          <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
-            Plan and refine work across the full hierarchy. This is not a kanban execution board.
+          <p className="mt-1 text-sm text-[rgb(var(--zc-muted))]">
+            A prioritized list of all work items. Refine items here, then commit to sprints.
           </p>
           {activeProject ? (
             <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
@@ -998,34 +1020,247 @@ export function ProductBacklogPage() {
             </div>
           ) : null}
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="secondary" onClick={() => openCreate('epic')}>
-            + Epic
-          </Button>
-          <Button variant="secondary" onClick={() => openCreate('feature')}>
-            + Feature
-          </Button>
-          <Button variant="secondary" onClick={() => openCreate('user_story')}>
-            + User Story
-          </Button>
-          <Button onClick={() => openCreate('task')}>+ Task</Button>
+        <Button onClick={() => openCreate('task')}>+ New Backlog Item</Button>
+      </div>
+
+      {/* ── Toolbar: Search + Filters + View Toggle ── */}
+      <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-1 items-center gap-2">
+          {/* Search */}
+          <div className="relative flex-1 max-w-sm">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--zc-subtle))]">🔍</span>
+            <input
+              type="text"
+              placeholder="Search backlog items..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] py-2 pl-9 pr-3 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            />
+          </div>
+
+          {/* Type filter */}
+          <select
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            className="h-9 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))] focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+          >
+            <option value="all">All Types</option>
+            <option value="epic">Epic</option>
+            <option value="feature">Feature</option>
+            <option value="user_story">User Story</option>
+            <option value="task">Task</option>
+          </select>
+
+          {/* State filter */}
+          <select
+            value={filterState}
+            onChange={(e) => setFilterState(e.target.value)}
+            className="h-9 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))] focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+          >
+            <option value="all">All States</option>
+            <option value="new">New</option>
+            <option value="refined">Refined</option>
+            <option value="ready">Ready</option>
+            <option value="done">Done</option>
+          </select>
+        </div>
+
+        {/* View toggle + item count */}
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-[rgb(var(--zc-subtle))]">{displayItems.length} items</span>
+          <div className="flex rounded-md border border-[rgb(var(--zc-border))]">
+            <button
+              type="button"
+              onClick={() => setViewMode('flat')}
+              className={`px-3 py-1.5 text-xs font-medium transition ${viewMode === 'flat' ? 'bg-indigo-500 text-white' : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.4)]'}`}
+            >
+              List
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('hierarchy')}
+              className={`px-3 py-1.5 text-xs font-medium transition ${viewMode === 'hierarchy' ? 'bg-indigo-500 text-white' : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.4)]'}`}
+            >
+              Hierarchy
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      {/* ── Table Header ── */}
+      <div className="mt-4 hidden sm:grid sm:grid-cols-[1fr_100px_90px_90px_80px] gap-2 rounded-t-lg border border-b-0 border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-4 py-2">
+        <span className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--zc-muted))]">Item</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--zc-muted))]">Type</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--zc-muted))]">State</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--zc-muted))]">Priority</span>
+        <span className="text-xs font-semibold uppercase tracking-wider text-[rgb(var(--zc-muted))] text-right">SP</span>
+      </div>
+
+      {/* ── Item List ── */}
+      <div className="rounded-b-lg border border-[rgb(var(--zc-border))] sm:rounded-t-none rounded-t-lg sm:border-t-0 divide-y divide-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)]">
         {isLoading ? (
-          <div className="lg:col-span-2 rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
+          <div className="px-4 py-8 text-center text-sm text-[rgb(var(--zc-muted2))]">
             {t('loading_tasks')}
           </div>
+        ) : displayItems.length === 0 ? (
+          <div className="px-4 py-8 text-center text-sm text-[rgb(var(--zc-muted2))]">
+            {searchQuery || filterType !== 'all' || filterState !== 'all'
+              ? 'No items match your filters.'
+              : 'No backlog items yet. Click "+ New Backlog Item" to create one.'}
+          </div>
         ) : (
-          <>
-            <BacklogSection typeKey="epic" items={byType.epic} />
-            <BacklogSection typeKey="feature" items={byType.feature} />
-            <BacklogSection typeKey="user_story" items={byType.user_story} />
-            <BacklogSection typeKey="task" items={byType.task} />
-          </>
+          displayItems.map((it) => {
+            const itType = normalizeItemType(it)
+            const state = normalizeBacklogState(it.backlogState)
+            const typeDepthFallback = {
+              epic: 0,
+              feature: 1,
+              user_story: 2,
+              task: 3,
+            }
+
+            const depth =
+              viewMode === 'hierarchy'
+                ? (Number.isFinite(Number(it._depth)) ? Number(it._depth) : (typeDepthFallback[itType] ?? 0))
+                : 0
+
+            const indentPx = viewMode === 'hierarchy' ? depth * 34 : 0
+            if (viewMode === 'hierarchy') console.log('[Hierarchy Debug]', it.title, 'depth:', depth, '_depth:', it._depth, 'type:', itType)
+            const priorityLabel = it.priority === 'must' ? 'Must' : it.priority === 'should' ? 'Should' : it.priority === 'could' ? 'Could' : it.priority === 'wont' ? "Won't" : it.priority || '—'
+            const sp = it.storyPoints || it.story_points || 0
+            const taskCount = itType === 'user_story' ? (hierarchyMaps.tasksByStory.get(it.id) ?? []).length : null
+            const childCount = itType === 'epic' ? (hierarchyMaps.featuresByEpic.get(it.id) ?? []).length : itType === 'feature' ? (hierarchyMaps.storiesByFeature.get(it.id) ?? []).length : null
+
+            return (
+              <button
+                key={it.id}
+                type="button"
+                className="w-full py-3 text-left hover:bg-[rgb(var(--zc-border)/0.15)] transition group"
+                style={{ paddingLeft: '16px', paddingRight: '16px' }}
+                onClick={() => setSelectedItemId(it.id)}
+              >
+                {/* Mobile layout */}
+                <div className="sm:hidden">
+                  <div className="flex items-start gap-2">
+                    <span className={`mt-0.5 inline-flex shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${typeBadge(itType)}`}>
+                      {itemTypeLabel(itType)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div
+                        className="flex min-w-0 items-start gap-2"
+                        style={{ marginLeft: `${indentPx}px` }}
+                      >
+                        {viewMode === 'hierarchy' && depth > 0 ? (
+                          <span className="mt-0.5 shrink-0 text-xs text-[rgb(var(--zc-subtle))]">└</span>
+                        ) : null}
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-[rgb(var(--zc-text))]">{it.title || '(untitled)'}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {itType === 'task' && it.parentStoryId ? (
+                              <span className="text-[10px] text-[rgb(var(--zc-subtle))]">
+                                Story: {storyById.get(it.parentStoryId)?.title || it.parentStoryId}
+                              </span>
+                            ) : null}
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${stateBadge(state)}`}>{state}</span>
+                            <span className="text-[10px] text-[rgb(var(--zc-subtle))]">{priorityLabel}</span>
+                            {sp > 0 && <span className="text-[10px] text-[rgb(var(--zc-subtle))]">SP: {sp}</span>}
+                            {taskCount !== null && <span className="text-[10px] text-[rgb(var(--zc-subtle))]">Tasks: {taskCount}</span>}
+                            {childCount !== null && childCount > 0 && <span className="text-[10px] text-[rgb(var(--zc-subtle))]">Children: {childCount}</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    <select
+                      className="h-7 shrink-0 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-[10px] text-[rgb(var(--zc-text))]"
+                      value={state}
+                      onChange={(e) => { e.stopPropagation(); updateItem(it.id, { backlogState: e.target.value }) }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <option value="new">New</option>
+                      <option value="refined">Refined</option>
+                      <option value="ready">Ready</option>
+                      <option value="done">Done</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Desktop layout — table row */}
+                <div className="hidden sm:grid sm:grid-cols-[1fr_100px_90px_90px_80px] gap-2 items-center">
+                  <div className="min-w-0">
+                    <div
+                      className="flex min-w-0 items-start gap-2"
+                      style={{ marginLeft: `${indentPx}px` }}
+                    >
+                      {viewMode === 'hierarchy' && depth > 0 ? (
+                        <span className="mt-0.5 shrink-0 text-xs text-[rgb(var(--zc-subtle))]">
+                          └
+                        </span>
+                      ) : null}
+
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium text-[rgb(var(--zc-text))] group-hover:text-indigo-300 transition">
+                          {it.title || '(untitled)'}
+                        </p>
+
+                        {it.description && (
+                          <p className="mt-0.5 truncate text-xs text-[rgb(var(--zc-muted2))]">
+                            {it.description}
+                          </p>
+                        )}
+
+                        {itType === 'task' && it.parentStoryId ? (
+                          <p className="mt-0.5 truncate text-[10px] text-[rgb(var(--zc-subtle))]">
+                            Story: {storyById.get(it.parentStoryId)?.title || it.parentStoryId}
+                          </p>
+                        ) : null}
+
+                        {taskCount !== null && (
+                          <span className="text-[10px] text-[rgb(var(--zc-subtle))]">
+                            {taskCount} task{taskCount !== 1 ? 's' : ''}
+                          </span>
+                        )}
+
+                        {childCount !== null && childCount > 0 && (
+                          <span className="ml-2 text-[10px] text-[rgb(var(--zc-subtle))]">
+                            {childCount} child{childCount !== 1 ? 'ren' : ''}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <span className={`inline-flex w-fit rounded-md px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${typeBadge(itType)}`}>
+                    {itemTypeLabel(itType)}
+                  </span>
+                  <select
+                    className="h-7 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-[10px] text-[rgb(var(--zc-text))] focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+                    value={state}
+                    onChange={(e) => { e.stopPropagation(); updateItem(it.id, { backlogState: e.target.value }) }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <option value="new">New</option>
+                    <option value="refined">Refined</option>
+                    <option value="ready">Ready</option>
+                    <option value="done">Done</option>
+                  </select>
+                  <span className="text-xs text-[rgb(var(--zc-muted))]">{priorityLabel}</span>
+                  <span className="text-xs text-[rgb(var(--zc-muted))] text-right">{sp > 0 ? sp : '—'}</span>
+                </div>
+              </button>
+            )
+          })
         )}
       </div>
+
+      {/* ── Summary bar ── */}
+      {!isLoading && displayItems.length > 0 && (
+        <div className="mt-2 flex flex-wrap items-center gap-4 px-1 text-[11px] text-[rgb(var(--zc-subtle))]">
+          <span>Total: {displayItems.length}</span>
+          <span>New: {displayItems.filter((it) => normalizeBacklogState(it.backlogState) === 'new').length}</span>
+          <span>Refined: {displayItems.filter((it) => normalizeBacklogState(it.backlogState) === 'refined').length}</span>
+          <span>Ready: {displayItems.filter((it) => normalizeBacklogState(it.backlogState) === 'ready').length}</span>
+          <span>Done: {displayItems.filter((it) => normalizeBacklogState(it.backlogState) === 'done').length}</span>
+        </div>
+      )}
 
       <AddTaskModal
         key={`product-backlog-create-${isCreateOpen ? 'open' : 'closed'}-${createType ?? 'none'}-${activeProject?.id ?? 'none'}`}
@@ -1070,4 +1305,5 @@ export function ProductBacklogPage() {
     </section>
   )
 }
+
 
