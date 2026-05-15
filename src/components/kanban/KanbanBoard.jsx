@@ -62,6 +62,7 @@ import { normalizeCapacityPoints } from '../../utils/workspaceDB.js'
 import { resolveDoneAtForStatusChange } from '../../utils/taskDoneAt.js'
 import { Link } from 'react-router-dom'
 import { BurndownChart } from '../sprint/BurndownChart.jsx'
+import { addNotification } from '../../utils/notificationService.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -697,6 +698,29 @@ export function KanbanBoard({
       if (uid) {
         const shared = changedTasks.filter((t) => isSharedProjectTask(t))
         if (shared.length) void upsertRemoteTasks(shared, uid)
+      }
+
+      // Trigger notification for cross-column moves (with dedup guard)
+      if (crossColumn && !window.__zcLastNotifTaskId || window.__zcLastNotifTaskId !== taskId + columnId) {
+        window.__zcLastNotifTaskId = taskId + columnId
+        setTimeout(() => { window.__zcLastNotifTaskId = null }, 1000)
+        const movedTask = working.find((t) => t.id === taskId)
+        if (movedTask) {
+          const userEmail = user?.email || ''
+          const userName = user?.user_metadata?.display_name || user?.user_metadata?.name || (userEmail.includes('@') ? userEmail.split('@')[0] : '') || 'Someone'
+          const assignee = movedTask.assignee || 'Unassigned'
+          const movedBy = userName
+          addNotification({
+            type: 'task_moved',
+            title: 'Task Moved',
+            message: `${movedBy} moved "${movedTask.title || 'Untitled'}" (assigned to ${assignee}) from ${srcStatus} → ${columnId}`,
+            taskId: movedTask.id,
+            taskTitle: movedTask.title || '',
+            fromUser: movedBy,
+            fromStatus: srcStatus,
+            toStatus: columnId,
+          })
+        }
       }
 
       return working

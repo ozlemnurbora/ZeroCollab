@@ -9,6 +9,7 @@ import { TeamDetailModal } from '../components/workspace/TeamDetailModal.jsx'
 import { InvitationsPanel } from '../components/workspace/InvitationsPanel.jsx'
 import { MiniMeetingDock } from '../components/meetings/MiniMeetingDock.jsx'
 import { TaskChatInboundSync } from '../components/chat/TaskChatInboundSync.jsx'
+import { NotificationBell } from '../components/notifications/NotificationBell.jsx'
 
 export function SidebarLayout() {
   const { t } = useLanguage()
@@ -157,6 +158,7 @@ export function SidebarLayout() {
               ZeroCollab
             </span>
           </div>
+          <NotificationBell />
           <button
             type="button"
             className="md:hidden rounded-md p-1 text-[rgb(var(--zc-muted2))] hover:bg-[rgb(var(--zc-border))]"
@@ -509,6 +511,7 @@ export function SidebarLayout() {
               ZeroCollab
             </span>
           </div>
+          <NotificationBell />
           <button
             type="button"
             className="rounded-md p-1.5 text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border))] hover:text-[rgb(var(--zc-text))]"
