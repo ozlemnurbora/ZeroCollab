@@ -258,6 +258,10 @@ export function KanbanBoard({
     let hideTimer
     let peerBroadcastTimer
     const unsubMsg = on(P2P_EVENTS.MESSAGE, ({ data }) => {
+      if (data?.type === 'NOTIFICATION' && data.notification) {
+        addNotification(data.notification)
+        return
+      }
       if (data?.type === 'TASK_DELETE') {
         const { taskId, projectId } = data
         setTasks((prev) => {
@@ -719,6 +723,20 @@ export function KanbanBoard({
             fromUser: movedBy,
             fromStatus: srcStatus,
             toStatus: columnId,
+          })
+          // Broadcast notification to all peers via P2P
+          sendToAllPeers({
+            type: 'NOTIFICATION',
+            notification: {
+              type: 'task_moved',
+              title: 'Task Moved',
+              message: `${movedBy} moved "${movedTask.title || 'Untitled'}" (assigned to ${assignee}) from ${srcStatus} → ${columnId}`,
+              taskId: movedTask.id,
+              taskTitle: movedTask.title || '',
+              fromUser: movedBy,
+              fromStatus: srcStatus,
+              toStatus: columnId,
+            },
           })
         }
       }
