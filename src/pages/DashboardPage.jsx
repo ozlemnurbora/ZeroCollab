@@ -179,7 +179,7 @@ export function DashboardPage() {
 
   return (
     <section>
-      <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
+      <h1 className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 sm:text-3xl">
         {t('page_dashboard_title')}
       </h1>
 
@@ -212,6 +212,7 @@ export function DashboardPage() {
           color="text-indigo-400"
           barColor="bg-indigo-500"
           barWidth={stats.total > 0 ? 100 : 0}
+          borderAccent="border-l-4 border-l-indigo-500"
         />
         <SummaryCard
           title={t('dash_in_progress')}
@@ -224,6 +225,7 @@ export function DashboardPage() {
               ? Math.round((stats.inProgress / stats.total) * 100)
               : 0
           }
+          borderAccent="border-l-4 border-l-amber-500"
         />
         <SummaryCard
           title={t('dash_completed')}
@@ -232,19 +234,25 @@ export function DashboardPage() {
           color="text-emerald-400"
           barColor="bg-emerald-500"
           barWidth={stats.total > 0 ? Math.round((stats.done / stats.total) * 100) : 0}
+          borderAccent="border-l-4 border-l-emerald-500"
         />
         <SummaryCard
           title={t('dash_team_members')}
           value={members.length}
           helper={members.map((m) => m.display).join(', ') || t('dash_no_members')}
           color="text-violet-400"
+          borderAccent="border-l-4 border-l-violet-500"
         />
       </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
         <Panel title={t('dash_recent_tasks')} subtitle={t('dash_recent_tasks_sub')}>
           {stats.recent.length === 0 ? (
-            <EmptyState>{showStrictEmpty ? 'No visible tasks yet.' : t('dash_empty_recent')}</EmptyState>
+            <EmptyState>
+              {showStrictEmpty
+                ? '📊 No tasks yet — create your first task to see analytics here.'
+                : t('dash_empty_recent')}
+            </EmptyState>
           ) : (
             <ul className="divide-y divide-[rgb(var(--zc-border))]">
               {stats.recent.map((task) => (
@@ -305,9 +313,13 @@ export function DashboardPage() {
       </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <Panel title={t('dash_task_status')} subtitle={t('dash_task_status_sub')}>
+        <Panel
+          title={t('dash_task_status')}
+          subtitle={t('dash_task_status_sub')}
+          titleClassName="text-indigo-300"
+        >
           {stats.total === 0 ? (
-            <EmptyState>{t('dash_empty_viz')}</EmptyState>
+            <EmptyState>📊 No tasks yet — create your first task to see analytics here.</EmptyState>
           ) : (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -342,9 +354,10 @@ export function DashboardPage() {
         <Panel
           title={t('dash_team_workload_chart')}
           subtitle={t('dash_team_workload_chart_sub')}
+          titleClassName="text-emerald-300"
         >
           {stats.total === 0 ? (
-            <EmptyState>{t('dash_empty_viz')}</EmptyState>
+            <EmptyState>📊 No tasks yet — create your first task to see analytics here.</EmptyState>
           ) : (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -372,9 +385,17 @@ export function DashboardPage() {
       </div>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
-        <Panel title={t('dash_weekly_activity')} subtitle={t('dash_weekly_activity_sub')}>
+        <Panel
+          title={t('dash_weekly_activity')}
+          subtitle={t('dash_weekly_activity_sub')}
+          titleClassName="text-violet-300"
+        >
           {stats.weeklyActivity.length === 0 ? (
-            <EmptyState>{t('dash_empty_activity')}</EmptyState>
+            <EmptyState>
+              {stats.total === 0
+                ? '📊 No tasks yet — create your first task to see analytics here.'
+                : t('dash_empty_activity')}
+            </EmptyState>
           ) : (
             <div className="h-72">
               <ResponsiveContainer width="100%" height="100%">
@@ -419,7 +440,7 @@ export function DashboardPage() {
 
         <Panel title={t('dash_project_progress')} subtitle={t('dash_project_progress_sub')}>
           {stats.total === 0 ? (
-            <EmptyState>{t('dash_empty_viz')}</EmptyState>
+            <EmptyState>📊 No tasks yet — create your first task to see analytics here.</EmptyState>
           ) : (
             <div className="flex h-72 items-center justify-center">
               <div className="relative h-40 w-40">
@@ -471,9 +492,12 @@ function SummaryCard({
   color = 'text-[rgb(var(--zc-text))]',
   barColor = '',
   barWidth = 0,
+  borderAccent = '',
 }) {
   return (
-    <div className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-4">
+    <div
+      className={`rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-4 ${borderAccent}`}
+    >
       <p className="text-sm font-medium text-[rgb(var(--zc-muted))]">{title}</p>
       <p className={`mt-2 text-3xl font-semibold tracking-tight ${color}`}>{value}</p>
       <p className="mt-2 text-xs text-[rgb(var(--zc-subtle))]">{helper}</p>
@@ -489,11 +513,11 @@ function SummaryCard({
   )
 }
 
-function Panel({ title, subtitle, children }) {
+function Panel({ title, subtitle, children, titleClassName = 'text-[rgb(var(--zc-text))]' }) {
   return (
     <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
       <header className="border-b border-[rgb(var(--zc-border))] px-4 py-3">
-        <h2 className="text-sm font-semibold text-[rgb(var(--zc-text))]">{title}</h2>
+        <h2 className={`text-sm font-semibold ${titleClassName}`}>{title}</h2>
         <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">{subtitle}</p>
       </header>
       <div className="px-4 py-3">{children}</div>

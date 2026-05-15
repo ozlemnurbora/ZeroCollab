@@ -616,8 +616,10 @@ export function SprintPlanningPage() {
   if (!activeProject) {
     return (
       <section>
-        <h2 className="text-2xl font-semibold text-[rgb(var(--zc-text))]">
-          Sprint Planning
+        <h2 className="text-2xl font-bold">
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
+            Sprint Planning
+          </span>
         </h2>
         <p className="mt-3 text-sm text-[rgb(var(--zc-muted2))]">
           Select an active project to plan a sprint.
@@ -629,8 +631,10 @@ export function SprintPlanningPage() {
   if (!activeSprint) {
     return (
       <section>
-        <h2 className="text-2xl font-semibold text-[rgb(var(--zc-text))]">
-          Sprint Planning
+        <h2 className="text-2xl font-bold">
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
+            Sprint Planning
+          </span>
         </h2>
         <p className="mt-3 text-sm text-[rgb(var(--zc-muted2))]">
           No active sprint. Create one from Project Overview before planning.
@@ -641,8 +645,10 @@ export function SprintPlanningPage() {
 
   return (
     <section className="space-y-6">
-      <h2 className="text-2xl font-semibold text-[rgb(var(--zc-text))]">
-        Sprint Planning
+      <h2 className="text-2xl font-bold">
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
+          Sprint Planning
+        </span>
       </h2>
       <p className="text-sm text-[rgb(var(--zc-muted2))]">
         Sprint Planning commits User Stories and their linked Tasks, while Epics and Features remain in Product Backlog/Roadmap.
@@ -659,9 +665,9 @@ export function SprintPlanningPage() {
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
-          <h3 className="text-lg font-semibold text-[rgb(var(--zc-text))]">
-            Active Sprint
+        <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-indigo-500 bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
+          <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">
+            🏃 Active Sprint
           </h3>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
             Commit ready backlog items into this sprint.
@@ -838,12 +844,12 @@ export function SprintPlanningPage() {
                     <p className="text-[rgb(var(--zc-muted2))]">Capacity not set</p>
                   ) : (
                     <p>
-                      <span className="text-[rgb(var(--zc-muted))]">Team Capacity:</span>{' '}
+                      <span className="text-indigo-300">Team Capacity:</span>{' '}
                       {capacityPointsInt} SP
                     </p>
                   )}
                   <p>
-                    <span className="text-[rgb(var(--zc-muted))]">Selected:</span>{' '}
+                    <span className="text-amber-300">Selected:</span>{' '}
                     {selectedStoryPoints} SP
                   </p>
                   {isOverCapacity ? (
@@ -853,7 +859,7 @@ export function SprintPlanningPage() {
                     </p>
                   ) : capacityPointsInt > 0 && remainingPoints >= 0 ? (
                     <p className="text-[rgb(var(--zc-muted2))]">
-                      Remaining: {remainingPoints} SP
+                      <span className="text-emerald-300">Remaining:</span> {remainingPoints} SP
                     </p>
                   ) : null}
                   {capacitySaveOk ? (
@@ -865,9 +871,9 @@ export function SprintPlanningPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
-          <h3 className="text-lg font-semibold text-[rgb(var(--zc-text))]">
-            Ready Backlog
+        <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-emerald-500 bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
+          <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-green-400">
+            📦 Ready Backlog
           </h3>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
             Backlog items that are ready and not yet assigned to a sprint.
@@ -1093,9 +1099,9 @@ export function SprintPlanningPage() {
           )}
         </section>
 
-        <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
-          <h3 className="text-lg font-semibold text-[rgb(var(--zc-text))]">
-            Sprint Backlog
+        <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-amber-500 bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
+          <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">
+            📌 Sprint Backlog
           </h3>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
             Items already committed to this sprint.
@@ -1113,7 +1119,7 @@ export function SprintPlanningPage() {
               {sprintStories.length > 0 ? (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    Committed User Stories
+                    📋 COMMITTED USER STORIES
                   </p>
                   <ul className="mt-2 space-y-2">
                     {sprintStories.map((story) => {
@@ -1243,7 +1249,7 @@ export function SprintPlanningPage() {
               {sprintIndependentTasks.length > 0 ? (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    Committed Independent Tasks
+                    📎 COMMITTED INDEPENDENT TASKS
                   </p>
                   <ul className="mt-2 space-y-2">
                     {sprintIndependentTasks.map((task) => (

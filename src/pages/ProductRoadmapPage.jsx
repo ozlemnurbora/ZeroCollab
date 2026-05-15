@@ -644,10 +644,10 @@ export function ProductRoadmapPage() {
 
   const RoadmapBucket = ({ title, bucketKey, items: list }) => {
     return (
-      <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)]">
+      <section className={`rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] ${bucketKey === 'now' ? 'border-t-2 border-t-emerald-500' : bucketKey === 'next' ? 'border-t-2 border-t-blue-500' : 'border-t-2 border-t-violet-500'}`}>
         <div className="border-b border-[rgb(var(--zc-border))] px-4 py-3">
-          <h2 className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-            {title}
+          <h2 className={`text-sm font-semibold ${bucketKey === 'now' ? 'text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-green-400' : bucketKey === 'next' ? 'text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400' : 'text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-purple-400'}`}>
+            {bucketKey === 'now' ? '🟢' : bucketKey === 'next' ? '🔵' : '🟣'} {title}
           </h2>
           <p className="text-xs text-[rgb(var(--zc-subtle))]">{list.length} items</p>
         </div>
@@ -844,14 +844,14 @@ export function ProductRoadmapPage() {
     <section>
       {/* Product Roadmap is derived from prioritized Product Backlog items and is used to plan future sprint goals. */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
-          Product Roadmap
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400">🗺️ Product Roadmap</span>
         </h1>
         <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
-          Product Roadmap prioritizes backlog items, shows which features will be developed first, and tracks delivery timelines across future sprints.
+          Prioritize backlog items, track delivery timelines, and visualize which features ship first across sprints.
         </p>
         <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-          New roadmap items default to Later until prioritized.
+          📌 New items default to Later. Drag to Now or Next to prioritize.
         </p>
         {activeProject ? (
           <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
@@ -898,9 +898,9 @@ export function ProductRoadmapPage() {
 
       {/* ── Timeline View ── */}
       {timelineData && timelineData.items.length > 0 && (
-        <div className="mt-6 rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] overflow-hidden">
+        <div className="mt-6 rounded-xl border border-t-2 border-[rgb(var(--zc-border))] border-t-amber-500 bg-[rgb(var(--zc-bg)/0.35)] overflow-hidden">
           <div className="border-b border-[rgb(var(--zc-border))] px-4 py-3">
-            <h2 className="text-sm font-semibold text-[rgb(var(--zc-text))]">Timeline</h2>
+            <h2 className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">📅 Timeline</h2>
             <p className="text-[11px] text-[rgb(var(--zc-subtle))]">Items with target dates shown on a timeline. Set target dates above to see items here.</p>
           </div>
 
@@ -976,9 +976,9 @@ export function ProductRoadmapPage() {
       <div className="mt-6 rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.25)] px-4 py-3">
         <div className="flex flex-wrap items-center gap-6 text-xs text-[rgb(var(--zc-subtle))]">
           <span>Total items: {roadmapPrimaryItems.length}</span>
-          <span>Now: {byBucket.now.length}</span>
-          <span>Next: {byBucket.next.length}</span>
-          <span>Later: {byBucket.later.length}</span>
+          <span><span className="inline-block h-2 w-2 rounded-full bg-emerald-400 mr-1"></span>Now: {byBucket.now.length}</span>
+          <span><span className="inline-block h-2 w-2 rounded-full bg-blue-400 mr-1"></span>Next: {byBucket.next.length}</span>
+          <span><span className="inline-block h-2 w-2 rounded-full bg-violet-400 mr-1"></span>Later: {byBucket.later.length}</span>
           <span>
             With deadlines: {roadmapPrimaryItems.filter((it) => it.targetDate).length}
           </span>

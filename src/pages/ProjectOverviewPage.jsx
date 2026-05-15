@@ -293,7 +293,9 @@ export function ProjectOverviewPage() {
   if (!activeProject) {
     return (
       <section>
-        <h1 className="text-2xl font-semibold text-[rgb(var(--zc-text))]">Project Overview</h1>
+        <h1 className="text-2xl font-bold">
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-400 via-pink-400 to-violet-400">🎯 Project Overview</span>
+        </h1>
         <p className="mt-3 text-sm text-[rgb(var(--zc-muted2))]">
           Select an active project to view overview.
         </p>
@@ -303,13 +305,15 @@ export function ProjectOverviewPage() {
 
   return (
     <section className="space-y-6">
-      <h1 className="text-2xl font-semibold text-[rgb(var(--zc-text))]">Project Overview</h1>
+      <h1 className="text-2xl font-bold">
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-400 via-pink-400 to-violet-400">🎯 Project Overview</span>
+      </h1>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-2">
+        <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-indigo-500 bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-2">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-[rgb(var(--zc-text))]">Project Identity</h2>
+              <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-blue-400">📁 Project Identity</h2>
               <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">High-level project context</p>
             </div>
             {canEditProjectOverview ? (
@@ -415,8 +419,8 @@ export function ProjectOverviewPage() {
           </div>
         </section>
 
-        <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5">
-          <h2 className="text-lg font-semibold text-[rgb(var(--zc-text))]">Project Status</h2>
+        <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-emerald-500 bg-[rgb(var(--zc-bg)/0.3)] p-5">
+          <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">📊 Project Status</h2>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">Lifecycle and schedule</p>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -467,8 +471,8 @@ export function ProjectOverviewPage() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5">
-          <h2 className="text-lg font-semibold text-[rgb(var(--zc-text))]">Sprint Summary</h2>
+        <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-cyan-500 bg-[rgb(var(--zc-bg)/0.3)] p-5">
+          <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">🏃 Sprint Summary</h2>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">Current delivery cycle</p>
           {activeSprint ? (
             <div className="mt-4 space-y-3">
@@ -526,8 +530,8 @@ export function ProjectOverviewPage() {
 
               {sprintReadiness ? (
                 <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.3)] p-4">
-                  <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-                    Sprint Readiness Checklist
+                  <h3 className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-cyan-400">
+                    ✅ Sprint Readiness Checklist
                   </h3>
                   <p className="mt-1 text-[11px] text-[rgb(var(--zc-subtle))]">
                     Read-only view of active sprint backlog completion. Does not
@@ -702,13 +706,13 @@ export function ProjectOverviewPage() {
           )}
         </section>
 
-        <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5">
-          <h2 className="text-lg font-semibold text-[rgb(var(--zc-text))]">Project Progress</h2>
+        <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-violet-500 bg-[rgb(var(--zc-bg)/0.3)] p-5">
+          <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-purple-400">📈 Project Progress</h2>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">Execution metrics</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
               <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Total Tasks</p>
-              <p className="mt-1 text-lg font-semibold text-[rgb(var(--zc-text))]">{progress.total}</p>
+              <p className="mt-1 text-lg font-bold text-blue-300">{progress.total}</p>
             </div>
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
               <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Completed</p>
@@ -720,7 +724,7 @@ export function ProjectOverviewPage() {
             </div>
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
               <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Completion</p>
-              <p className="mt-1 text-lg font-semibold text-indigo-300">{progress.completionPct}%</p>
+              <p className="mt-1 text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-400">{progress.completionPct}%</p>
             </div>
           </div>
           <div className="mt-4">
@@ -730,7 +734,7 @@ export function ProjectOverviewPage() {
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-[rgb(var(--zc-border))]">
               <div
-                className="h-full rounded-full bg-indigo-500/80 transition-all"
+                className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-all"
                 style={{ width: `${Math.max(0, Math.min(100, progress.completionPct))}%` }}
               />
             </div>
@@ -832,8 +836,8 @@ export function ProjectOverviewPage() {
         </p>
       </Modal>
 
-      <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5">
-        <h2 className="text-lg font-semibold text-[rgb(var(--zc-text))]">Team Summary</h2>
+      <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-amber-500 bg-[rgb(var(--zc-bg)/0.3)] p-5">
+        <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">👥 Team Summary</h2>
         <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">Assigned teams and leadership</p>
         {assignedTeams.length === 0 ? (
           <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">

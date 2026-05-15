@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
-import { Button } from '../components/ui/Button.jsx'
 import { AddTaskModal } from '../components/kanban/AddTaskModal.jsx'
 import { BacklogItemDetailModal } from '../components/backlog/BacklogItemDetailModal.jsx'
 import {
@@ -1208,8 +1207,8 @@ export function ProductBacklogPage() {
       {/* ── Header ── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
-            Product Backlog
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400">Product Backlog</span>
           </h1>
           <p className="mt-1 text-sm text-[rgb(var(--zc-muted))]">
             A prioritized list of all work items. Refine items here, then commit to sprints.
@@ -1223,7 +1222,7 @@ export function ProductBacklogPage() {
             </div>
           ) : null}
         </div>
-        <Button onClick={() => openCreate('task')}>+ New Backlog Item</Button>
+        <button onClick={() => openCreate('task')} className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-600 hover:to-purple-700 transition">+ New Backlog Item</button>
       </div>
 
       {/* ── Toolbar: Search + Filters + View Toggle ── */}
@@ -1306,7 +1305,7 @@ export function ProductBacklogPage() {
           {/* Sprint Group */}
           {sprintGroupedItems.sprintLabel && sprintGroupedItems.sprintItems.length > 0 && (
             <div>
-              <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-[rgb(var(--zc-border))] bg-indigo-500/10 px-4 py-2">
+              <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-[rgb(var(--zc-border))] bg-gradient-to-r from-indigo-500/15 via-purple-500/10 to-indigo-500/5 px-4 py-2">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-indigo-300">{sprintGroupedItems.sprintLabel}</span>
                   <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-[10px] font-medium text-indigo-300">{sprintGroupedItems.sprintItems.length} items</span>
@@ -1323,7 +1322,7 @@ export function ProductBacklogPage() {
 
           {/* Backlog Group */}
           <div>
-            <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-4 py-2">
+            <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-[rgb(var(--zc-border))] bg-gradient-to-r from-slate-500/10 via-gray-500/5 to-transparent px-4 py-2">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-[rgb(var(--zc-text))]">Backlog</span>
                 <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] font-medium text-[rgb(var(--zc-muted))]">{sprintGroupedItems.backlogItems.length} items</span>
@@ -1345,11 +1344,11 @@ export function ProductBacklogPage() {
       {/* ── Summary bar ── */}
       {!isLoading && displayItems.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-4 px-1 text-[11px] text-[rgb(var(--zc-subtle))]">
-          <span>Total: {displayItems.length}</span>
-          <span>New: {displayItems.filter((it) => normalizeBacklogState(it.backlogState) === 'new').length}</span>
-          <span>Refined: {displayItems.filter((it) => normalizeBacklogState(it.backlogState) === 'refined').length}</span>
-          <span>Ready: {displayItems.filter((it) => normalizeBacklogState(it.backlogState) === 'ready').length}</span>
-          <span>Done: {displayItems.filter((it) => normalizeBacklogState(it.backlogState) === 'done').length}</span>
+          <span>📋 Total: {displayItems.length}</span>
+          <span><span className="inline-block h-2 w-2 rounded-full bg-gray-400 mr-1"></span>New: {displayItems.filter((it) => normalizeBacklogState(it.backlogState) === 'new').length}</span>
+          <span><span className="inline-block h-2 w-2 rounded-full bg-cyan-400 mr-1"></span>Refined: {displayItems.filter((it) => normalizeBacklogState(it.backlogState) === 'refined').length}</span>
+          <span><span className="inline-block h-2 w-2 rounded-full bg-green-400 mr-1"></span>Ready: {displayItems.filter((it) => normalizeBacklogState(it.backlogState) === 'ready').length}</span>
+          <span><span className="inline-block h-2 w-2 rounded-full bg-indigo-400 mr-1"></span>Done: {displayItems.filter((it) => normalizeBacklogState(it.backlogState) === 'done').length}</span>
         </div>
       )}
 

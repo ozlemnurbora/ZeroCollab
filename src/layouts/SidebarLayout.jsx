@@ -99,18 +99,18 @@ export function SidebarLayout() {
 
   const navItems = useMemo(
     () => [
-      { to: '/', label: t('nav_dashboard'), end: true },
-      { to: '/product-backlog', label: 'Product Backlog' },
-      { to: '/product-roadmap', label: 'Product Roadmap' },
-      { to: '/project-overview', label: 'Project Overview' },
-      { to: '/sprint-planning', label: 'Sprint Planning' },
-      { to: '/sprint-board', label: 'Sprint Board' },
-      { to: '/tasks', label: t('nav_tasks') },
-      { to: '/calendar', label: t('nav_calendar') },
-      { to: '/chat', label: t('nav_chat') },
-      { to: '/evaluation', label: t('nav_evaluation') },
-      { to: '/token-economics', label: 'Token Economics' },
-      { to: '/settings', label: t('nav_settings') },
+      { to: '/', label: t('nav_dashboard'), end: true, icon: '📊', color: 'text-blue-400' },
+      { to: '/product-backlog', label: 'Product Backlog', icon: '📋', color: 'text-violet-400' },
+      { to: '/product-roadmap', label: 'Product Roadmap', icon: '🗺️', color: 'text-emerald-400' },
+      { to: '/project-overview', label: 'Project Overview', icon: '🎯', color: 'text-rose-400' },
+      { to: '/sprint-planning', label: 'Sprint Planning', icon: '📐', color: 'text-cyan-400' },
+      { to: '/sprint-board', label: 'Sprint Board', icon: '📌', color: 'text-amber-400' },
+      { to: '/tasks', label: t('nav_tasks'), icon: '✅', color: 'text-green-400' },
+      { to: '/calendar', label: t('nav_calendar'), icon: '📅', color: 'text-orange-400' },
+      { to: '/chat', label: t('nav_chat'), icon: '💬', color: 'text-sky-400' },
+      { to: '/evaluation', label: t('nav_evaluation'), icon: '🤖', color: 'text-purple-400' },
+      { to: '/token-economics', label: 'Token Economics', icon: '🪙', color: 'text-yellow-400' },
+      { to: '/settings', label: t('nav_settings'), icon: '⚙️', color: 'text-slate-400' },
     ],
     [t],
   )
@@ -134,7 +134,7 @@ export function SidebarLayout() {
 
   const getLinkClasses = ({ isActive }) => {
     const activeClasses =
-      'bg-[rgb(var(--zc-border))] text-[rgb(var(--zc-text))]'
+      'bg-indigo-500/15 text-indigo-300 border-l-2 border-indigo-400'
     const inactiveClasses =
       'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.7)] hover:text-[rgb(var(--zc-text))]'
     return `${linkBaseClasses} ${isActive ? activeClasses : inactiveClasses}`
@@ -150,7 +150,7 @@ export function SidebarLayout() {
         {/* Logo */}
         <div className="flex items-center justify-between px-4 py-4 border-b border-[rgb(var(--zc-border))]">
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded-lg bg-indigo-500 flex items-center justify-center text-xs font-bold text-white">
+            <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shadow-lg shadow-indigo-500/25">
               ZC
             </div>
             <span className="text-base font-semibold tracking-tight">
@@ -187,7 +187,8 @@ export function SidebarLayout() {
                 className={getLinkClasses}
                 onClick={() => setIsSidebarOpen(false)}
               >
-                <span>{item.label}</span>
+                <span className="text-base">{item.icon}</span>
+                {item.label}
               </NavLink>
             ))}
           </nav>
