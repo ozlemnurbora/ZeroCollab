@@ -71,6 +71,8 @@ export function AddTaskModal({
   )
   const [touched, setTouched] = useState(false)
   const [teamScopeError, setTeamScopeError] = useState('')
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiError, setAiError] = useState('')
   const draftIdRef = useRef(createTaskId())
 
   useEffect(() => {
@@ -113,6 +115,73 @@ export function AddTaskModal({
       : []
     return [...base, ...customs]
   }, [customCalendars, t])
+
+  const handleAiFill = async () => {
+    const title = form.title?.trim()
+    if (!title) {
+      setAiError('Please enter a title first.')
+      return
+    }
+    setAiLoading(true)
+    setAiError('')
+    try {
+      const itemType = forceItemType || form.itemType || 'task'
+      const prompt = itemType === 'epic'
+        ? `You are a senior product manager. Given this Epic title: "${title}", generate a JSON response with: {"description": "2-3 sentence description of this epic", "acceptanceCriteria": "3-4 high-level acceptance criteria as a numbered list", "storyPoints": suggested story points (number between 8-21), "priority": "must" or "should"}`
+        : itemType === 'feature'
+        ? `You are a senior product manager. Given this Feature title: "${title}", generate a JSON response with: {"description": "2-3 sentence description of this feature", "acceptanceCriteria": "3-4 acceptance criteria as a numbered list", "storyPoints": suggested story points (number between 5-13), "priority": "must" or "should"}`
+        : itemType === 'user_story'
+        ? `You are a senior product manager. Given this User Story title: "${title}", generate a JSON response with: {"description": "1-2 sentence description", "userStoryRole": "the role (e.g. team member, project manager, user)", "userStoryCapability": "what they want to do", "userStoryBenefit": "why they want it", "acceptanceCriteria": "3-5 specific acceptance criteria as a numbered list", "storyPoints": suggested story points (number between 1-8), "priority": "must" or "should"}`
+        : `You are a senior software developer. Given this Task title: "${title}", generate a JSON response with: {"description": "1-2 sentence technical description of what needs to be done", "acceptanceCriteria": "2-3 specific done criteria as a numbered list", "storyPoints": suggested story points (number between 1-5), "priority": "must" or "should"}`
+
+      const storedKey = localStorage.getItem('zc-anthropic-key') || ''
+      if (!storedKey) {
+        setAiError('No API key found. Please set your Anthropic API key in the Evaluation page first.')
+        setAiLoading(false)
+        return
+      }
+
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': storedKey,
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 500,
+          messages: [{ role: 'user', content: prompt + '\n\nRespond with ONLY valid JSON, no markdown, no backticks, no explanation.' }],
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.status}`)
+      }
+
+      const data = await response.json()
+      const text = data.content?.[0]?.text || ''
+      const clean = text.replace(/```json|```/g, '').trim()
+      const parsed = JSON.parse(clean)
+
+      setForm((prev) => ({
+        ...prev,
+        description: parsed.description || prev.description,
+        acceptanceCriteria: parsed.acceptanceCriteria || prev.acceptanceCriteria,
+        storyPoints: parsed.storyPoints || prev.storyPoints,
+        priority: parsed.priority || prev.priority,
+        ...(parsed.userStoryRole ? { userStoryRole: parsed.userStoryRole } : {}),
+        ...(parsed.userStoryCapability ? { userStoryCapability: parsed.userStoryCapability } : {}),
+        ...(parsed.userStoryBenefit ? { userStoryBenefit: parsed.userStoryBenefit } : {}),
+      }))
+    } catch (err) {
+      console.error('[AI Fill] Error:', err)
+      setAiError('AI suggestion failed. Please fill manually.')
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   return (
     <Modal
@@ -357,6 +426,32 @@ export function AddTaskModal({
           {touched && errors.title ? (
             <p className="mt-1 text-xs text-rose-300">{errors.title}</p>
           ) : null}
+        </div>
+
+        {/* AI Auto-Fill Button */}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleAiFill}
+            disabled={aiLoading || !form.title?.trim()}
+            className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-600 px-3 py-1.5 text-xs font-medium text-white shadow-md shadow-purple-500/20 hover:from-purple-600 hover:to-indigo-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {aiLoading ? (
+              <>
+                <span className="animate-spin text-sm">⏳</span>
+                AI is thinking...
+              </>
+            ) : (
+              <>
+                <span className="text-sm">🤖</span>
+                AI Auto-Fill
+              </>
+            )}
+          </button>
+          <span className="text-[10px] text-[rgb(var(--zc-subtle))]">
+            Enter a title, then click to auto-fill details
+          </span>
+          {aiError && <span className="text-[10px] text-rose-400">{aiError}</span>}
         </div>
 
         <div>
