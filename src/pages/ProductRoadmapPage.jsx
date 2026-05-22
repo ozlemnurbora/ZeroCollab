@@ -101,6 +101,66 @@ export function ProductRoadmapPage() {
   const lastHydratedAtRef = useRef(0)
   const [selectedItemId, setSelectedItemId] = useState(null)
 
+  const [packages, setPackages] = useState(() => {
+    try {
+      const raw = localStorage.getItem('zc-release-packages')
+      return raw ? JSON.parse(raw) : []
+    } catch { return [] }
+  })
+  const [showPackageForm, setShowPackageForm] = useState(false)
+  const [newPackageName, setNewPackageName] = useState('')
+  const [newPackageDate, setNewPackageDate] = useState('')
+
+  const savePackages = (updated) => {
+    setPackages(updated)
+    localStorage.setItem('zc-release-packages', JSON.stringify(updated))
+  }
+
+  const createPackage = () => {
+    if (!newPackageName.trim()) return
+    const pkg = {
+      id: `pkg_${Date.now()}`,
+      name: newPackageName.trim(),
+      deployDate: newPackageDate || null,
+      epicIds: [],
+      createdAt: Date.now(),
+    }
+    savePackages([...packages, pkg])
+    setNewPackageName('')
+    setNewPackageDate('')
+    setShowPackageForm(false)
+  }
+
+  const deletePackage = (pkgId) => {
+    savePackages(packages.filter((p) => p.id !== pkgId))
+  }
+
+  const assignEpicToPackage = (epicId, pkgId) => {
+    const updated = packages.map((p) => {
+      const ids = new Set(p.epicIds || [])
+      if (p.id === pkgId) {
+        ids.add(epicId)
+      } else {
+        ids.delete(epicId)
+      }
+      return { ...p, epicIds: [...ids] }
+    })
+    savePackages(updated)
+  }
+
+  const removeEpicFromPackage = (epicId, pkgId) => {
+    const updated = packages.map((p) => {
+      if (p.id !== pkgId) return p
+      return { ...p, epicIds: (p.epicIds || []).filter((id) => id !== epicId) }
+    })
+    savePackages(updated)
+  }
+
+  const updatePackageDate = (pkgId, date) => {
+    const updated = packages.map((p) => p.id === pkgId ? { ...p, deployDate: date } : p)
+    savePackages(updated)
+  }
+
   const activeProjectId = activeProject?.id ?? null
 
   const agileSyncDebugEnabled = useMemo(() => {
@@ -683,6 +743,8 @@ export function ProductRoadmapPage() {
                 childText = childCount ? `${childCount} linked tasks` : ''
               }
 
+              const epicPackage = itType === 'epic' ? packages.find((p) => (p.epicIds || []).includes(it.id)) : null
+
               // Progress calculation
               let progressPercent = null
               let progressDone = 0
@@ -720,6 +782,11 @@ export function ProductRoadmapPage() {
                         <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-indigo-200/90">
                           {itemTypeLabel(itType)}
                         </span>
+                        {epicPackage && (
+                          <span className="rounded-full bg-rose-500/15 px-2 py-0.5 text-[10px] font-medium text-rose-300">
+                            📦 {epicPackage.name}
+                          </span>
+                        )}
                         <span>Priority: {it.priority || 'must'}</span>
                         <span>State: {it.__state}</span>
                         {it.targetDate && (
@@ -817,6 +884,29 @@ export function ProductRoadmapPage() {
                         {...lockTooltipProps}
                       />
 
+                      {itType === 'epic' && (
+                        <select
+                          className="h-8 w-[130px] rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-xs text-[rgb(var(--zc-text))] disabled:opacity-50 disabled:cursor-not-allowed"
+                          disabled={roadmapLocked}
+                          value={packages.find((p) => (p.epicIds || []).includes(it.id))?.id || ''}
+                          onChange={(e) => {
+                            e.stopPropagation()
+                            const pkgId = e.target.value
+                            if (pkgId) assignEpicToPackage(it.id, pkgId)
+                            else {
+                              const current = packages.find((p) => (p.epicIds || []).includes(it.id))
+                              if (current) removeEpicFromPackage(it.id, current.id)
+                            }
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <option value="">No package</option>
+                          {packages.map((p) => (
+                            <option key={p.id} value={p.id}>{p.name}</option>
+                          ))}
+                        </select>
+                      )}
+
                       <input
                         type="number"
                         className="h-8 w-[90px] rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))] disabled:cursor-not-allowed"
@@ -893,6 +983,119 @@ export function ProductRoadmapPage() {
             <RoadmapBucket title="Next" bucketKey="next" items={byBucket.next} />
             <RoadmapBucket title="Later" bucketKey="later" items={byBucket.later} />
           </>
+        )}
+      </div>
+
+      {/* ── Release Packages ── */}
+      <div className="mt-6 rounded-xl border border-t-2 border-[rgb(var(--zc-border))] border-t-rose-500 bg-[rgb(var(--zc-bg)/0.35)] overflow-hidden">
+        <div className="flex items-center justify-between border-b border-[rgb(var(--zc-border))] px-4 py-3">
+          <div>
+            <h2 className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-rose-400 to-pink-400">📦 Release Packages</h2>
+            <p className="text-[11px] text-[rgb(var(--zc-subtle))]">Group epics into release packages with deploy dates.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowPackageForm(!showPackageForm)}
+            className="rounded-lg bg-gradient-to-r from-rose-500 to-pink-600 px-3 py-1.5 text-xs font-medium text-white shadow-md hover:from-rose-600 hover:to-pink-700 transition"
+          >
+            + New Package
+          </button>
+        </div>
+
+        {showPackageForm && (
+          <div className="flex items-center gap-2 border-b border-[rgb(var(--zc-border))] px-4 py-3">
+            <input
+              type="text"
+              placeholder="Package name (e.g. Release v1.0)"
+              value={newPackageName}
+              onChange={(e) => setNewPackageName(e.target.value)}
+              className="flex-1 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-1.5 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))]"
+            />
+            <input
+              type="date"
+              value={newPackageDate}
+              onChange={(e) => setNewPackageDate(e.target.value)}
+              className="rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 py-1.5 text-sm text-[rgb(var(--zc-text))]"
+            />
+            <button
+              type="button"
+              onClick={createPackage}
+              className="rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-600 transition"
+            >
+              Create
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowPackageForm(false)}
+              className="rounded-md px-2 py-1.5 text-xs text-[rgb(var(--zc-subtle))] hover:bg-[rgb(var(--zc-border)/0.4)]"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+
+        {packages.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-[rgb(var(--zc-muted2))]">
+            No release packages yet. Create one to group epics for deployment.
+          </div>
+        ) : (
+          <div className="divide-y divide-[rgb(var(--zc-border))]">
+            {packages.map((pkg) => {
+              const pkgEpics = roadmapPrimaryItems.filter((it) => it.__itemType === 'epic' && (pkg.epicIds || []).includes(it.id))
+              const isOverdue = pkg.deployDate && new Date(pkg.deployDate) < new Date()
+              return (
+                <div key={pkg.id} className="px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-[rgb(var(--zc-text))]">📦 {pkg.name}</span>
+                      <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">{pkgEpics.length} epic{pkgEpics.length !== 1 ? 's' : ''}</span>
+                      {pkg.deployDate && (
+                        <span className={`text-xs font-medium ${isOverdue ? 'text-rose-400' : 'text-emerald-400'}`}>
+                          Deploy: {pkg.deployDate} {isOverdue ? '(overdue)' : ''}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={pkg.deployDate || ''}
+                        onChange={(e) => updatePackageDate(pkg.id, e.target.value)}
+                        className="h-7 rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-1 text-[10px] text-[rgb(var(--zc-text))]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => deletePackage(pkg.id)}
+                        className="rounded p-1 text-xs text-[rgb(var(--zc-subtle))] hover:bg-rose-500/10 hover:text-rose-400"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </div>
+                  {pkgEpics.length > 0 ? (
+                    <ul className="mt-2 space-y-1">
+                      {pkgEpics.map((epic) => (
+                        <li key={epic.id} className="flex items-center justify-between rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.2)] px-3 py-1.5">
+                          <div className="flex items-center gap-2">
+                            <span className="rounded bg-purple-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-purple-300">Epic</span>
+                            <span className="text-xs text-[rgb(var(--zc-text))]">{epic.title}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeEpicFromPackage(epic.id, pkg.id)}
+                            className="text-[10px] text-[rgb(var(--zc-subtle))] hover:text-rose-400"
+                          >
+                            Remove
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2 text-[11px] text-[rgb(var(--zc-subtle))]">No epics assigned. Use the package dropdown on epics above to assign them.</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         )}
       </div>
 
