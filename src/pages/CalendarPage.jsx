@@ -37,6 +37,8 @@ import {
   filterCustomCalendarsForScope,
   loadCustomCalendarsFromStorage,
 } from '../utils/customCalendarStorage.js'
+import { addLogEntry } from '../utils/logService.js'
+import { categoryFromItemType } from '../utils/logCategories.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -104,10 +106,15 @@ export function CalendarPage() {
   const [showNewCalendarInput, setShowNewCalendarInput] = useState(false)
   const [newCalendarName, setNewCalendarName] = useState('')
   const tasksRef = useRef(tasks)
+  const meetingsRef = useRef(meetings)
 
   useEffect(() => {
     tasksRef.current = tasks
   }, [tasks])
+
+  useEffect(() => {
+    meetingsRef.current = meetings
+  }, [meetings])
 
   useEffect(() => {
     ownerUserIdRef.current = ownerUserId
@@ -231,16 +238,46 @@ export function CalendarPage() {
           if (exists) return prev.map((m) => (m.id === meeting.id ? meeting : m))
           return [...prev, meeting]
         })
+        void addLogEntry({
+          action: 'meeting.created',
+          category: 'meeting',
+          severity: 'success',
+          message: `Scheduled meeting "${meeting.title || 'Untitled'}"`,
+          userId: user?.id,
+          userName: user?.email?.split('@')[0] || '',
+          projectId: activeProject?.id,
+          projectName: activeProject?.name || '',
+          entityType: 'meeting',
+          entityId: meeting.id,
+          entityName: meeting.title || '',
+        })
       } else if (meetingAction === 'delete' && meetingId) {
         if (projectId && !memberProjectIds.includes(projectId)) return
         if (activeProject?.id && projectId && projectId !== activeProject.id) return
+        const existing = (meetingsRef.current || []).find(
+          (m) => m.id === meetingId,
+        )
+        const removedTitle = existing?.title || ''
         if (ownerUserId) await deleteMeeting(meetingId, ownerUserId)
         setMeetings((prev) => prev.filter((m) => m.id !== meetingId))
+        void addLogEntry({
+          action: 'meeting.deleted',
+          category: 'meeting',
+          severity: 'warning',
+          message: `Cancelled meeting "${removedTitle || meetingId}"`,
+          userId: user?.id,
+          userName: user?.email?.split('@')[0] || '',
+          projectId: activeProject?.id,
+          projectName: activeProject?.name || '',
+          entityType: 'meeting',
+          entityId: meetingId,
+          entityName: removedTitle,
+        })
       }
     }
     window.addEventListener('hub:meeting-update', handleMeetingUpdate)
     return () => window.removeEventListener('hub:meeting-update', handleMeetingUpdate)
-  }, [activeProject?.id, memberProjectIds, ownerUserId])
+  }, [activeProject?.id, activeProject?.name, memberProjectIds, ownerUserId, user?.id, user?.email])
 
   useEffect(() => {
     let hideTimer
@@ -385,12 +422,41 @@ export function CalendarPage() {
     setActiveCalendar(newCal.id)
     setNewCalendarName('')
     setShowNewCalendarInput(false)
+    void addLogEntry({
+      action: 'calendar.created',
+      category: 'calendar',
+      severity: 'success',
+      message: `Created calendar "${name}"`,
+      userId: user?.id,
+      userName: user?.email?.split('@')[0] || '',
+      projectId: activeProject?.id,
+      projectName: activeProject?.name || '',
+      entityType: 'calendar',
+      entityId: newCal.id,
+      entityName: name,
+    })
   }
 
   const deleteCalendar = (id) => {
     if (!visibleCustomCalendars.some((c) => c.id === id)) return
+    const removed = visibleCustomCalendars.find((c) => c.id === id)
     setCustomCalendars((prev) => prev.filter((c) => c.id !== id))
     if (activeCalendar === id) setActiveCalendar('general')
+    if (removed) {
+      void addLogEntry({
+        action: 'calendar.deleted',
+        category: 'calendar',
+        severity: 'warning',
+        message: `Deleted calendar "${removed.name}"`,
+        userId: user?.id,
+        userName: user?.email?.split('@')[0] || '',
+        projectId: activeProject?.id,
+        projectName: activeProject?.name || '',
+        entityType: 'calendar',
+        entityId: removed.id,
+        entityName: removed.name,
+      })
+    }
   }
 
   const tasksByISODate = useMemo(() => {
@@ -560,6 +626,20 @@ export function CalendarPage() {
   const deleteTask = (taskId) => {
     const removed = tasksRef.current.find((t) => t.id === taskId) ?? null
     if (!removed) return
+    const logCat = categoryFromItemType(removed.itemType)
+    void addLogEntry({
+      action: `${logCat}.deleted`,
+      category: logCat,
+      severity: 'warning',
+      message: `Deleted ${logCat} "${removed.title || 'Untitled'}"`,
+      userId: user?.id,
+      userName: user?.email?.split('@')[0] || '',
+      projectId: activeProject?.id,
+      projectName: activeProject?.name || '',
+      entityType: logCat,
+      entityId: removed.id,
+      entityName: removed.title || '',
+    })
     const tombstone = normalizeTaskForStorage(
       markTaskSoftDeleted({ ...removed }, Date.now()),
       ownerUserId,

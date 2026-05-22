@@ -11,6 +11,7 @@ import { connectToProjectHub, disconnectFromProjectHub } from './appHub.js'
 import { pruneSharedTasksByProjectIds } from '../components/kanban/taskStorage.js'
 import { pruneMeetingsByProjectIds } from './meetingStorage.js'
 import { isAdminRole, normalizeProjectRole } from './roleOntology.js'
+import { addLogEntry } from './logService.js'
 import {
   canCreateProject,
   getProjectLimit,
@@ -384,6 +385,17 @@ export function WorkspaceProvider({ children }) {
     }
     await createProject(newProject, user.id, user.email)
     await loadProjects()
+    void addLogEntry({
+      action: 'project.created',
+      category: 'project',
+      severity: 'success',
+      message: `Created project "${name}"`,
+      userId: user?.id,
+      userName: user?.email?.split('@')[0] || '',
+      entityType: 'project',
+      entityId: newProject.id,
+      entityName: name,
+    })
     return newProject
   }
 
@@ -391,6 +403,17 @@ export function WorkspaceProvider({ children }) {
     if (!user) return
     const project = projects.find((p) => p.id === projectId)
     if (!project) return
+    void addLogEntry({
+      action: 'project.deleted',
+      category: 'project',
+      severity: 'warning',
+      message: `Deleted project "${project.name || projectId}"`,
+      userId: user?.id,
+      userName: user?.email?.split('@')[0] || '',
+      entityType: 'project',
+      entityId: project.id,
+      entityName: project.name || '',
+    })
 
     const isProjOwner =
       project.owner_id === user.id || project.ownerId === user.id
@@ -525,6 +548,17 @@ export function WorkspaceProvider({ children }) {
     }
     await createTeam(newTeam, user.id, user.email)
     await loadTeams()
+    void addLogEntry({
+      action: 'team.created',
+      category: 'team',
+      severity: 'success',
+      message: `Created team "${name}"`,
+      userId: user?.id,
+      userName: user?.email?.split('@')[0] || '',
+      entityType: 'team',
+      entityId: newTeam.id,
+      entityName: name,
+    })
     return newTeam
   }
 
@@ -541,6 +575,18 @@ export function WorkspaceProvider({ children }) {
       )
       return
     }
+
+    void addLogEntry({
+      action: 'team.deleted',
+      category: 'team',
+      severity: 'warning',
+      message: `Deleted team "${team.name || teamId}"`,
+      userId: user?.id,
+      userName: user?.email?.split('@')[0] || '',
+      entityType: 'team',
+      entityId: team.id,
+      entityName: team.name || '',
+    })
 
     await dbDeleteTeam(teamId, user.id)
     if (activeTeamRef.current?.id === teamId) {

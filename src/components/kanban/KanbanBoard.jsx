@@ -63,6 +63,8 @@ import { resolveDoneAtForStatusChange } from '../../utils/taskDoneAt.js'
 import { Link } from 'react-router-dom'
 import { BurndownChart } from '../sprint/BurndownChart.jsx'
 import { addNotification } from '../../utils/notificationService.js'
+import { addLogEntry } from '../../utils/logService.js'
+import { categoryFromItemType } from '../../utils/logCategories.js'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -582,6 +584,11 @@ export function KanbanBoard({
   }, [filteredTasks])
 
   const handleKanbanDrop = (taskId, columnId, insertBeforeTaskId) => {
+    const taskBeforeMove =
+      tasksRef.current.find((t) => t.id === taskId) ?? null
+    const srcStatusBeforeMove = taskBeforeMove?.status || 'todo'
+    const willBeCrossColumn =
+      !!taskBeforeMove && srcStatusBeforeMove !== columnId
     setTasks((prev) => {
       const task = prev.find((t) => t.id === taskId)
       if (!task) return prev
@@ -759,6 +766,22 @@ export function KanbanBoard({
 
       return working
     })
+    if (willBeCrossColumn && taskBeforeMove) {
+      void addLogEntry({
+        action: 'task.moved',
+        category: 'task',
+        severity: 'info',
+        message: `Moved "${taskBeforeMove.title || 'Untitled'}" from ${srcStatusBeforeMove} to ${columnId}`,
+        userId: user?.id,
+        userName: user?.email?.split('@')[0] || '',
+        projectId: activeProject?.id,
+        projectName: activeProject?.name || '',
+        entityType: 'task',
+        entityId: taskBeforeMove.id,
+        entityName: taskBeforeMove.title || '',
+        metadata: { fromStatus: srcStatusBeforeMove, toStatus: columnId },
+      })
+    }
   }
 
   const reorderTaskInColumnByKeyboard = (taskId, delta) => {
@@ -821,22 +844,24 @@ export function KanbanBoard({
     const normalizedPayload = createOnlyTask
       ? { ...payload, itemType: 'task', type: 'Task' }
       : payload
+    const taskId =
+      typeof normalizedPayload?.id === 'string' && normalizedPayload.id.trim()
+        ? normalizedPayload.id.trim()
+        : createId()
+    const taskItemType =
+      normalizedPayload?.itemType ?? normalizedPayload?.type ?? 'task'
     setTasks((prev) => {
       const projectId = activeProject?.id ? activeProject.id : null
-      const id =
-        typeof normalizedPayload?.id === 'string' && normalizedPayload.id.trim()
-          ? normalizedPayload.id.trim()
-          : createId()
       const newPriority = normalizedPayload?.priority || 'must'
       const position = nextPositionForGroup(prev, 'todo', newPriority)
       const created = {
-        id,
         status: 'todo',
         createdAt: now,
         updatedAt: now,
         ...normalizedPayload,
+        id: taskId,
         type: normalizedPayload?.type ?? undefined,
-        itemType: normalizedPayload?.itemType ?? normalizedPayload?.type ?? 'task',
+        itemType: taskItemType,
         backlogState: normalizedPayload?.backlogState ?? 'new',
         sprintId: normalizedPayload?.sprintId ?? null,
         storyPoints: normalizeStoryPointsValue(
@@ -856,7 +881,7 @@ export function KanbanBoard({
       }
       const next = dedupeAndNormalizePositions([
         created,
-        ...(Array.isArray(prev) ? prev.filter((t) => t?.id !== id) : []),
+        ...(Array.isArray(prev) ? prev.filter((t) => t?.id !== taskId) : []),
       ])
       broadcastTasks(next)
       const uid = ownerUserIdRef.current
@@ -864,6 +889,20 @@ export function KanbanBoard({
         void upsertRemoteTasks([created], uid)
       }
       return next
+    })
+    const logCat = categoryFromItemType(taskItemType)
+    void addLogEntry({
+      action: `${logCat}.created`,
+      category: logCat,
+      severity: 'success',
+      message: `Created ${logCat} "${normalizedPayload?.title || 'Untitled'}"`,
+      userId: user?.id,
+      userName: user?.email?.split('@')[0] || '',
+      projectId: activeProject?.id,
+      projectName: activeProject?.name || '',
+      entityType: logCat,
+      entityId: taskId,
+      entityName: normalizedPayload?.title || '',
     })
   }
 
@@ -958,6 +997,20 @@ export function KanbanBoard({
   const deleteTask = (taskId) => {
     const removed = tasksRef.current.find((t) => t.id === taskId) ?? null
     if (!removed) return
+    const logCat = categoryFromItemType(removed.itemType)
+    void addLogEntry({
+      action: `${logCat}.deleted`,
+      category: logCat,
+      severity: 'warning',
+      message: `Deleted ${logCat} "${removed.title || 'Untitled'}"`,
+      userId: user?.id,
+      userName: user?.email?.split('@')[0] || '',
+      projectId: activeProject?.id,
+      projectName: activeProject?.name || '',
+      entityType: logCat,
+      entityId: removed.id,
+      entityName: removed.title || '',
+    })
     // Personal/no-project tasks: remove locally immediately.
     if (!removed.projectId) {
       setTasks((prev) => {

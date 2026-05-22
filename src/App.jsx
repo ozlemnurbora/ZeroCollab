@@ -20,6 +20,7 @@ import { MeetingRoomPage } from './pages/MeetingRoomPage.jsx'
 import { EvaluationPage } from './pages/EvaluationPage.jsx'
 import { TokenEconomicsPage } from './pages/TokenEconomicsPage.jsx'
 import { SettingsPage } from './pages/SettingsPage.jsx'
+import { LogManagementPage } from './pages/LogManagementPage.jsx'
 import { AuthPage } from './pages/AuthPage.jsx'
 
 function AppRoutes() {
@@ -53,6 +54,7 @@ function AppRoutes() {
         <Route path="evaluation" element={<EvaluationPage />} />
         <Route path="token-economics" element={<TokenEconomicsPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        <Route path="logs" element={<LogManagementPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

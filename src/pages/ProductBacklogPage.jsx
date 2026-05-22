@@ -33,6 +33,8 @@ import {
   extractAgileItemsFromSyncMessage,
 } from '../features/agile/sync/agileSyncEngine.js'
 import { hasSeenSync, markSyncSeen } from '../features/agile/sync/syncDedupe.js'
+import { addLogEntry } from '../utils/logService.js'
+import { categoryFromItemType } from '../utils/logCategories.js'
 
 function normalizeItemType(item) {
   if (!item) return 'task'
@@ -935,6 +937,8 @@ export function ProductBacklogPage() {
   }
 
   const deleteItem = (itemId) => {
+    const snapshot = Array.isArray(itemsRef.current) ? itemsRef.current : []
+    const existingBefore = snapshot.find((it) => it?.id === itemId) ?? null
     setItems((prev) => {
       const uid = ownerUserIdRef.current
       const list = Array.isArray(prev) ? prev : []
@@ -954,6 +958,22 @@ export function ProductBacklogPage() {
       }
       return next
     })
+    if (existingBefore) {
+      const logCat = categoryFromItemType(existingBefore.itemType)
+      void addLogEntry({
+        action: `${logCat}.deleted`,
+        category: logCat,
+        severity: 'warning',
+        message: `Deleted ${logCat} "${existingBefore.title || 'Untitled'}"`,
+        userId: user?.id,
+        userName: user?.email?.split('@')[0] || '',
+        projectId: activeProject?.id,
+        projectName: activeProject?.name || '',
+        entityType: logCat,
+        entityId: existingBefore.id,
+        entityName: existingBefore.title || '',
+      })
+    }
   }
 
   const selectedItem = useMemo(() => {

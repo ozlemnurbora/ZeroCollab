@@ -111,6 +111,7 @@ export function SidebarLayout() {
       { to: '/chat', label: t('nav_chat'), icon: '💬', color: 'text-sky-400' },
       { to: '/evaluation', label: t('nav_evaluation'), icon: '🤖', color: 'text-purple-400' },
       { to: '/token-economics', label: 'Token Economics', icon: '🪙', color: 'text-yellow-400' },
+      { to: '/logs', label: t('nav_logs'), icon: '📜', color: 'text-fuchsia-400' },
       { to: '/settings', label: t('nav_settings'), icon: '⚙️', color: 'text-slate-400' },
     ],
     [t],
