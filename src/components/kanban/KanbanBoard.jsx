@@ -1012,76 +1012,54 @@ export function KanbanBoard({
   return (
     <div className={isSprintBoard ? 'mt-0' : 'mt-6'}>
       {isSprintBoard && activeSprint && sprintBoardHeaderMetrics ? (
-        <section className="mb-6 rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-5">
-          <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-            Active sprint
-          </p>
-          <h2 className="mt-1 text-xl font-semibold text-[rgb(var(--zc-text))]">
-            Sprint #{activeSprint.sprint_number}
-          </h2>
-          <p className="mt-2 text-sm text-[rgb(var(--zc-text))]">
-            <span className="text-[rgb(var(--zc-muted))]">Goal: </span>
-            {activeSprint.sprint_goal || activeSprint.sprintGoal || '—'}
-          </p>
-          <p className="mt-1 text-xs text-[rgb(var(--zc-muted2))]">
-            {activeSprint.start_date} → {activeSprint.end_date}
-          </p>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
-              <p className="text-xs text-[rgb(var(--zc-subtle))]">Capacity</p>
-              <p className="text-[rgb(var(--zc-text))]">
-                {sprintBoardHeaderMetrics.cap} SP
-              </p>
-            </div>
-            <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
-              <p className="text-xs text-[rgb(var(--zc-subtle))]">Selected</p>
-              <p className="text-[rgb(var(--zc-text))]">
-                {sprintBoardHeaderMetrics.selectedSP} SP
-              </p>
-            </div>
-            <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
-              <p className="text-xs text-[rgb(var(--zc-subtle))]">Remaining</p>
-              <p className="text-[rgb(var(--zc-text))]">
-                {sprintBoardHeaderMetrics.remainingSP} SP
-              </p>
-            </div>
-            <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm sm:col-span-2 lg:col-span-3">
-              <p className="text-xs text-[rgb(var(--zc-subtle))]">Planning</p>
-              <p className="text-[rgb(var(--zc-text))]">
-                {sprintBoardHeaderMetrics.planningCompleted
-                  ? 'Completed'
-                  : 'Draft'}
-              </p>
-            </div>
-          </div>
-          <div className="mt-4 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] px-3 py-3">
-            <div className="flex items-center justify-between gap-2 text-sm">
-              <span className="text-[rgb(var(--zc-muted))]">Sprint progress</span>
-              <span className="font-medium text-[rgb(var(--zc-text))]">
-                {sprintBoardHeaderMetrics.completionPercentage}%
+        <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] px-4 py-2">
+          <div className="flex flex-wrap items-center gap-4 text-sm">
+            <span className="font-semibold text-[rgb(var(--zc-text))]">
+              Sprint #{activeSprint.sprint_number}
+            </span>
+            <span className="text-[rgb(var(--zc-subtle))] text-xs">
+              {activeSprint.start_date || activeSprint.startDate} → {activeSprint.end_date || activeSprint.endDate}
+            </span>
+            <span className="text-xs text-[rgb(var(--zc-muted))]">
+              Capacity: {sprintBoardHeaderMetrics.cap} SP
+            </span>
+            <span className="text-xs text-amber-300">
+              Selected: {sprintBoardHeaderMetrics.selectedSP} SP
+            </span>
+            <span className="text-xs text-emerald-300">
+              Remaining: {sprintBoardHeaderMetrics.remainingSP} SP
+            </span>
+            <span className="text-xs text-[rgb(var(--zc-muted))]">
+              {sprintBoardHeaderMetrics.completionPercentage}% done ({sprintBoardHeaderMetrics.doneSprintTasks}/{sprintBoardHeaderMetrics.totalSprintTasks} tasks)
+            </span>
+            {sprintRemainingDays != null && (
+              <span className={`text-xs font-medium ${sprintRemainingDays <= 2 ? 'text-rose-400' : 'text-[rgb(var(--zc-subtle))]'}`}>
+                {sprintRemainingDays}d left
               </span>
-            </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-[rgb(var(--zc-border)/0.6)]">
-              <div
-                className="h-full rounded-full bg-emerald-500/80 transition-[width]"
-                style={{
-                  width: `${sprintBoardHeaderMetrics.completionPercentage}%`,
-                }}
-              />
-            </div>
-            <p className="mt-2 text-xs text-[rgb(var(--zc-subtle))]">
-              {sprintBoardHeaderMetrics.doneSprintTasks} of{' '}
-              {sprintBoardHeaderMetrics.totalSprintTasks} tasks done
-            </p>
+            )}
           </div>
-        </section>
+          {/* Progress bar */}
+          <div className="mt-1.5 h-1.5 w-full rounded-full bg-[rgb(var(--zc-border))]">
+            <div
+              className={`h-1.5 rounded-full transition-all ${sprintBoardHeaderMetrics.completionPercentage === 100 ? 'bg-emerald-400' : 'bg-indigo-400'}`}
+              style={{ width: `${sprintBoardHeaderMetrics.completionPercentage}%` }}
+            />
+          </div>
+        </div>
       ) : null}
       {isSprintBoard && activeSprint ? (
-        <BurndownChart
-          activeSprint={activeSprint}
-          sprintTasks={boardScopedTasks}
-          isLoading={isLoadingTasks}
-        />
+        <details className="mt-3 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
+          <summary className="cursor-pointer px-4 py-2 text-sm font-semibold text-[rgb(var(--zc-text))] hover:bg-[rgb(var(--zc-border)/0.2)] rounded-lg select-none">
+            📊 Burndown Chart — {sprintBoardHeaderMetrics?.doneSprintTasks ?? 0}/{sprintBoardHeaderMetrics?.totalSprintTasks ?? 0} tasks, {sprintBoardHeaderMetrics?.completionPercentage ?? 0}% done
+          </summary>
+          <div className="px-4 pb-4">
+            <BurndownChart
+              activeSprint={activeSprint}
+              sprintTasks={boardScopedTasks}
+              isLoading={isLoadingTasks}
+            />
+          </div>
+        </details>
       ) : null}
       {syncNotice ? (
         <p

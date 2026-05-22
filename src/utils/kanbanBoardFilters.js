@@ -56,10 +56,18 @@ export function filterReadyBacklogTasks(visibleProjectTasks, activeProjectId) {
 /** Sprint board variant: tasks in active project + active sprint. */
 export function filterSprintBoardScopedTasks(visibleProjectTasks, activeProjectId, activeSprintId) {
   if (!activeProjectId || !activeSprintId) return []
-  return list(visibleProjectTasks).filter(
-    (task) =>
-      task &&
-      String(task.projectId) === String(activeProjectId) &&
-      String(task.sprintId) === String(activeSprintId),
-  )
+  const pid = String(activeProjectId)
+  const sid = String(activeSprintId)
+  return list(visibleProjectTasks).filter((task) => {
+    if (!task) return false
+    // Must be in the active project
+    if (String(task.projectId ?? '') !== pid) return false
+    // Match by sprintId (various field names)
+    if (String(task.sprintId ?? '') === sid) return true
+    if (String(task.sprint_id ?? '') === sid) return true
+    if (String(task.activeSprintId ?? '') === sid) return true
+    // Also include tasks marked as committed to sprint
+    if (task.inSprint === true || task.committedToSprint === true) return true
+    return false
+  })
 }
