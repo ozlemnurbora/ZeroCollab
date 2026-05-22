@@ -704,6 +704,22 @@ export function KanbanBoard({
         if (shared.length) void upsertRemoteTasks(shared, uid)
       }
 
+      // Record history for cross-column move
+      if (crossColumn) {
+        const movedIdx = working.findIndex((t) => t.id === taskId)
+        if (movedIdx !== -1) {
+          const movedTask = working[movedIdx]
+          const prevHistory = Array.isArray(movedTask.history) ? [...movedTask.history] : []
+          prevHistory.push({
+            action: 'status_change',
+            details: `Moved from ${srcStatus} to ${columnId}`,
+            timestamp: Date.now(),
+            user: user?.email || user?.user_metadata?.name || 'Someone',
+          })
+          working[movedIdx] = { ...movedTask, history: prevHistory }
+        }
+      }
+
       // Trigger notification for cross-column moves (with dedup guard)
       if (crossColumn && !window.__zcLastNotifTaskId || window.__zcLastNotifTaskId !== taskId + columnId) {
         window.__zcLastNotifTaskId = taskId + columnId

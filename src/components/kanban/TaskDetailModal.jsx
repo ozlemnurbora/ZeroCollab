@@ -114,6 +114,17 @@ export function TaskDetailModal({
     t('chat_anonymous')
   const taskChannelId = task?.id ? `task:${task.id}` : ''
 
+  const addHistoryEntry = (task, action, details) => {
+    const history = Array.isArray(task.history) ? [...task.history] : []
+    history.push({
+      action,
+      details,
+      timestamp: Date.now(),
+      user: user?.email || user?.id || 'Unknown',
+    })
+    return history
+  }
+
   const calendarOptions = useMemo(() => {
     const base = [
       { id: 'personal', name: t('cal_calendar_personal') },
@@ -385,6 +396,7 @@ export function TaskDetailModal({
       calendarType: nextCalendarType,
       storyPoints: nextStoryPoints,
       definitionOfReady: nextDefinitionOfReady,
+      history: addHistoryEntry(task, 'updated', `Task updated`),
     })
     setIsEditing(false)
   }
@@ -855,6 +867,30 @@ export function TaskDetailModal({
             className="mt-1 min-h-[120px] w-full resize-y rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:opacity-70"
           />
         </div>
+
+        {/* ── Task History ── */}
+        {task && (
+          <div className="mt-4">
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-muted))]">📋 History</h3>
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.2)] divide-y divide-[rgb(var(--zc-border)/0.5)]">
+              {Array.isArray(task?.history) && task.history.length > 0 ? (
+                [...task.history].reverse().map((entry, i) => (
+                <div key={i} className="px-3 py-2 text-[11px]">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-[rgb(var(--zc-text))]">{entry.details || entry.action}</span>
+                    <span className="text-[rgb(var(--zc-subtle))]">
+                      {entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}
+                    </span>
+                  </div>
+                  <span className="text-[rgb(var(--zc-subtle))]">by {entry.user}</span>
+                </div>
+                ))
+              ) : (
+                <div className="px-3 py-4 text-center text-[11px] text-[rgb(var(--zc-subtle))]">No history yet. Edit or move this task to start recording.</div>
+              )}
+            </div>
+          </div>
+        )}
 
         <section className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
           <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">Task Chat</h3>

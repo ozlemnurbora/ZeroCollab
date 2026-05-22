@@ -646,7 +646,7 @@ export function CalendarPage() {
                 className="h-2.5 w-2.5 shrink-0 rounded-full bg-indigo-500"
                 aria-hidden="true"
               />
-              {t('cal_calendar_general')}
+              {activeProject?.name || t('cal_calendar_general')}
             </button>
 
             <button

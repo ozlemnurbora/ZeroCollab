@@ -534,6 +534,7 @@ export function ProductBacklogPage() {
 
   const filteredItems = useMemo(() => {
     let list = Array.isArray(visibleItems) ? [...visibleItems] : []
+    list = list.filter((it) => normalizeItemType(it) !== 'task')
 
     // Filter by type
     if (filterType !== 'all') {
@@ -560,6 +561,13 @@ export function ProductBacklogPage() {
     const stateOrder = { new: 0, refined: 1, ready: 2, done: 3 }
     const priorityOrder = { must: 0, should: 1, could: 2, wont: 3 }
     list.sort((a, b) => {
+      // First: items with orderIndex come before items without
+      const aOrder = Number(a.orderIndex ?? a.order_index ?? 0)
+      const bOrder = Number(b.orderIndex ?? b.order_index ?? 0)
+      if (aOrder > 0 && bOrder > 0) return aOrder - bOrder
+      if (aOrder > 0 && bOrder === 0) return -1
+      if (aOrder === 0 && bOrder > 0) return 1
+      // Then by priority
       const pa = priorityOrder[String(a.priority ?? 'must').toLowerCase()] ?? 0
       const pb = priorityOrder[String(b.priority ?? 'must').toLowerCase()] ?? 0
       if (pa !== pb) return pa - pb
@@ -1030,6 +1038,7 @@ export function ProductBacklogPage() {
       const indentPx = viewMode === 'hierarchy' ? depth * 34 : 0
       const priorityLabel = it.priority === 'must' ? 'Must' : it.priority === 'should' ? 'Should' : it.priority === 'could' ? 'Could' : it.priority === 'wont' ? "Won't" : it.priority || '—'
       const priorityIcon = it.priority === 'must' ? '🔴' : it.priority === 'should' ? '🟠' : it.priority === 'could' ? '🔵' : it.priority === 'wont' ? '⚪' : '⚪'
+      const orderIndex = it.orderIndex ?? it.order_index ?? ''
       const assigneeName = it.assignee || ''
       const assigneeInitial = assigneeName ? assigneeName.charAt(0).toUpperCase() : ''
       const getRelativeTime = (timestamp) => {
@@ -1085,7 +1094,10 @@ export function ProductBacklogPage() {
                 {itemTypeLabel(itType)}
               </span>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-[rgb(var(--zc-text))]">{it.title || '(untitled)'}</p>
+                <p className="truncate text-sm font-medium text-[rgb(var(--zc-text))]">
+                  {orderIndex > 0 && <span className="text-indigo-400 mr-1">#{orderIndex}</span>}
+                  {it.title || '(untitled)'}
+                </p>
                 <div className="mt-1 flex flex-wrap items-center gap-1.5">
                   {itType === 'task' && it.parentStoryId ? (
                     <span className="text-[10px] text-[rgb(var(--zc-subtle))]">
@@ -1133,7 +1145,17 @@ export function ProductBacklogPage() {
             </div>
           </div>
 
-          <div className="hidden sm:grid sm:grid-cols-[1fr_90px_80px_80px_50px_36px_70px] gap-2 items-center">
+          <div className="hidden sm:grid sm:grid-cols-[40px_1fr_90px_80px_80px_50px_36px_70px] gap-2 items-center">
+            <input
+              type="number"
+              min="1"
+              className="h-7 w-10 rounded border border-[rgb(var(--zc-border))] bg-transparent px-1 text-center text-xs text-[rgb(var(--zc-muted))] focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+              value={orderIndex}
+              onChange={(e) => { e.stopPropagation(); updateItem(it.id, { orderIndex: Number(e.target.value) || 0 }) }}
+              onClick={(e) => e.stopPropagation()}
+              placeholder="#"
+              title="Priority order"
+            />
             <div className="min-w-0 flex items-center" style={{ paddingLeft: `${indentPx}px` }}>
               {viewMode === 'hierarchy' && depth > 0 && (
                 <span className="text-[rgb(var(--zc-subtle))] text-xs select-none shrink-0 mr-1.5">└</span>
@@ -1250,7 +1272,6 @@ export function ProductBacklogPage() {
             <option value="epic">Epic</option>
             <option value="feature">Feature</option>
             <option value="user_story">User Story</option>
-            <option value="task">Task</option>
           </select>
 
           {/* State filter */}
