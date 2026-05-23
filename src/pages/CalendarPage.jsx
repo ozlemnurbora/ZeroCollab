@@ -78,6 +78,42 @@ const CALENDAR_COLORS = [
   'bg-orange-500',
 ]
 
+function CalendarChip({ active, onClick, color, label, onDelete }) {
+  return (
+    <div className="group relative flex shrink-0 items-center">
+      <button
+        type="button"
+        role="tab"
+        aria-selected={active}
+        onClick={onClick}
+        className={[
+          'flex shrink-0 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition',
+          active
+            ? 'bg-indigo-500/20 text-[rgb(var(--zc-text))] ring-1 ring-indigo-400/50'
+            : 'bg-[rgb(var(--zc-border)/0.35)] text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.6)] hover:text-[rgb(var(--zc-text))]',
+          onDelete ? 'pr-7' : '',
+        ].join(' ')}
+      >
+        <span
+          className={`h-2 w-2 shrink-0 rounded-full ${color}`}
+          aria-hidden="true"
+        />
+        <span className="max-w-[10rem] truncate">{label}</span>
+      </button>
+      {onDelete ? (
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label="Remove calendar"
+          className="absolute right-1.5 top-1/2 hidden h-4 w-4 -translate-y-1/2 items-center justify-center rounded text-[10px] text-[rgb(var(--zc-subtle))] hover:bg-rose-500/15 hover:text-rose-400 group-hover:flex"
+        >
+          ✕
+        </button>
+      ) : null}
+    </div>
+  )
+}
+
 export function CalendarPage() {
   const { t } = useLanguage()
   const { user } = useAuth()
@@ -668,11 +704,11 @@ export function CalendarPage() {
 
   return (
     <section>
-      <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
+      <h1 className="text-xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-2xl">
         {t('page_calendar_title')}
       </h1>
       {activeProject ? (
-        <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
+        <div className="mt-1 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
           <span
             className={`h-2 w-2 rounded-full ${activeProject.color}`}
           />
@@ -681,9 +717,6 @@ export function CalendarPage() {
           </span>
         </div>
       ) : null}
-      <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
-        {t('page_calendar_subtitle')}
-      </p>
       {syncNotice ? (
         <p
           className="mt-3 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200"
@@ -693,176 +726,132 @@ export function CalendarPage() {
         </p>
       ) : null}
 
-      <div className="mt-6 flex flex-wrap gap-2">
-        {['day', 'week', 'month'].map((id) => (
-          <Button
-            key={id}
-            size="sm"
-            variant={activeView === id ? 'primary' : 'secondary'}
-            onClick={() => setActiveView(id)}
-          >
-            {id === 'day' ? t('cal_view_day') : id === 'week' ? t('cal_view_week') : t('cal_view_month')}
-          </Button>
-        ))}
+      <div className="mt-3 flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap gap-2 shrink-0">
+          {['day', 'week', 'month'].map((id) => (
+            <Button
+              key={id}
+              size="sm"
+              variant={activeView === id ? 'primary' : 'secondary'}
+              onClick={() => setActiveView(id)}
+            >
+              {id === 'day' ? t('cal_view_day') : id === 'week' ? t('cal_view_week') : t('cal_view_month')}
+            </Button>
+          ))}
+        </div>
+        <p className="text-xs text-[rgb(var(--zc-muted))] sm:text-sm">
+          {t('page_calendar_subtitle')}
+        </p>
       </div>
 
-      <div className="mt-6 flex flex-col gap-4 lg:flex-row lg:items-start">
-        <aside className="shrink-0 rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.25)] p-3 lg:w-56">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[rgb(var(--zc-muted2))]">
+      <div className="mt-3 rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.25)] p-2">
+        <div className="mb-1.5 flex items-center justify-between">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-[rgb(var(--zc-muted2))]">
             {t('cal_sidebar_calendars')}
           </p>
-          <div className="flex flex-col gap-1">
-            <button
-              type="button"
-              onClick={() => setActiveCalendar('general')}
-              className={[
-                'flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm font-medium transition',
-                activeCalendar === 'general'
-                  ? 'bg-[rgb(var(--zc-border)/0.5)] text-[rgb(var(--zc-text))]'
-                  : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.35)]',
-              ].join(' ')}
-            >
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full bg-indigo-500"
-                aria-hidden="true"
-              />
-              {activeProject?.name || t('cal_calendar_general')}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setActiveCalendar('personal')}
-              className={[
-                'flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-sm font-medium transition',
-                activeCalendar === 'personal'
-                  ? 'bg-[rgb(var(--zc-border)/0.5)] text-[rgb(var(--zc-text))]'
-                  : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.35)]',
-              ].join(' ')}
-            >
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full bg-emerald-500"
-                aria-hidden="true"
-              />
-              {t('cal_calendar_personal')}
-            </button>
-
-            {visibleCustomCalendars.map((cal) => (
-              <div key={cal.id} className="group flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => setActiveCalendar(cal.id)}
-                  className={[
-                    'flex flex-1 items-center gap-2 rounded-lg px-2 py-2 text-left text-sm font-medium transition',
-                    activeCalendar === cal.id
-                      ? 'bg-[rgb(var(--zc-border)/0.5)] text-[rgb(var(--zc-text))]'
-                      : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.35)]',
-                  ].join(' ')}
-                >
-                  <span
-                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${cal.color}`}
-                    aria-hidden="true"
-                  />
-                  <span className="truncate">{cal.name}</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => deleteCalendar(cal.id)}
-                  className="hidden h-5 w-5 items-center justify-center rounded text-xs text-[rgb(var(--zc-subtle))] hover:bg-rose-500/10 hover:text-rose-400 group-hover:flex"
-                  aria-label={t('cal_remove_calendar')}
-                >
-                  ✕
-                </button>
-              </div>
-            ))}
-
-            <div className="mt-2 border-t border-[rgb(var(--zc-border))] pt-2">
-              {showNewCalendarInput ? (
-                <div className="flex flex-col gap-1.5">
-                  <input
-                    autoFocus
-                    type="text"
-                    value={newCalendarName}
-                    onChange={(e) => setNewCalendarName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') addCalendar()
-                      if (e.key === 'Escape') {
-                        setShowNewCalendarInput(false)
-                        setNewCalendarName('')
-                      }
-                    }}
-                    placeholder={t('cal_calendar_name_ph')}
-                    className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 py-1.5 text-xs text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
-                  />
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      onClick={addCalendar}
-                      className="flex-1 rounded-md bg-indigo-500/20 px-2 py-1 text-xs font-medium text-indigo-300 hover:bg-indigo-500/30"
-                    >
-                      {t('cal_add')}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowNewCalendarInput(false)
-                        setNewCalendarName('')
-                      }}
-                      className="flex-1 rounded-md bg-[rgb(var(--zc-border)/0.5)] px-2 py-1 text-xs text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border))]"
-                    >
-                      {t('btn_cancel')}
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  disabled={!activeProject?.id || !ownerUserId}
-                  title={
-                    !activeProject?.id || !ownerUserId
-                      ? t('cal_new_calendar_need_project')
-                      : undefined
-                  }
-                  onClick={() => setShowNewCalendarInput(true)}
-                  className={[
-                    'flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs font-medium transition',
-                    !activeProject?.id || !ownerUserId
-                      ? 'cursor-not-allowed text-[rgb(var(--zc-subtle))]'
-                      : 'text-[rgb(var(--zc-muted2))] hover:bg-[rgb(var(--zc-border)/0.35)] hover:text-[rgb(var(--zc-text))]',
-                  ].join(' ')}
-                >
-                  <span className="text-base leading-none">+</span>
-                  {t('cal_new_calendar')}
-                </button>
-              )}
-            </div>
-          </div>
-        </aside>
-
+        </div>
         <div
-          className={[
-            'min-w-0 flex-1 transition-[margin] duration-200 ease-out',
-            isDayOpen ? 'lg:mr-80' : '',
-          ].join(' ')}
+          className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:thin] [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[rgb(var(--zc-border))]"
+          role="tablist"
+          aria-label={t('cal_sidebar_calendars')}
         >
-          {isLoadingTasks ? (
-            <div className="rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
-              {t('loading_tasks')}
+          <CalendarChip
+            active={activeCalendar === 'general'}
+            onClick={() => setActiveCalendar('general')}
+            color="bg-indigo-500"
+            label={activeProject?.name || t('cal_calendar_general')}
+          />
+          <CalendarChip
+            active={activeCalendar === 'personal'}
+            onClick={() => setActiveCalendar('personal')}
+            color="bg-emerald-500"
+            label={t('cal_calendar_personal')}
+          />
+          {visibleCustomCalendars.map((cal) => (
+            <CalendarChip
+              key={cal.id}
+              active={activeCalendar === cal.id}
+              onClick={() => setActiveCalendar(cal.id)}
+              color={cal.color}
+              label={cal.name}
+              onDelete={() => deleteCalendar(cal.id)}
+            />
+          ))}
+          {showNewCalendarInput ? (
+            <div className="flex shrink-0 items-center gap-1">
+              <input
+                autoFocus
+                type="text"
+                value={newCalendarName}
+                onChange={(e) => setNewCalendarName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') addCalendar()
+                  if (e.key === 'Escape') {
+                    setShowNewCalendarInput(false)
+                    setNewCalendarName('')
+                  }
+                }}
+                placeholder={t('cal_calendar_name_ph')}
+                className="w-40 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 py-1 text-xs text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
+              />
+              <button
+                type="button"
+                onClick={addCalendar}
+                className="rounded-md bg-indigo-500/20 px-2 py-1 text-xs font-medium text-indigo-300 hover:bg-indigo-500/30"
+              >
+                {t('cal_add')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowNewCalendarInput(false)
+                  setNewCalendarName('')
+                }}
+                className="rounded-md bg-[rgb(var(--zc-border)/0.5)] px-2 py-1 text-xs text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border))]"
+              >
+                {t('btn_cancel')}
+              </button>
             </div>
           ) : (
-            <MonthlyCalendar
-              viewMode={activeView}
-              viewDate={viewDate}
-              onChangeViewDate={setViewDate}
-              selectedISODate={selectedISODate}
-              onSelectISODate={handleSelectISODate}
-              tasksByISODate={tasksByISODate}
-              meetingsByISODate={meetingsByISODate}
-              onNavigatePrev={onNavigatePrev}
-              onNavigateNext={onNavigateNext}
-              onGoToday={onGoToday}
-            />
+            <button
+              type="button"
+              disabled={!activeProject?.id || !ownerUserId}
+              title={
+                !activeProject?.id
+                  ? t('cal_new_calendar_need_project')
+                  : !ownerUserId
+                    ? t('cal_new_calendar_need_owner')
+                    : t('cal_new_calendar')
+              }
+              onClick={() => setShowNewCalendarInput(true)}
+              className="flex shrink-0 items-center gap-1 rounded-full border border-dashed border-[rgb(var(--zc-border))] bg-transparent px-3 py-1.5 text-xs font-medium text-[rgb(var(--zc-muted))] transition hover:border-indigo-400 hover:text-indigo-300 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <span aria-hidden="true">+</span>
+              <span>{t('cal_new_calendar')}</span>
+            </button>
           )}
         </div>
+      </div>
+
+      <div className={`mt-3 ${isDayOpen ? 'lg:mr-80' : ''}`}>
+        {isLoadingTasks ? (
+          <div className="rounded-xl border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] p-6 text-sm text-[rgb(var(--zc-muted2))]">
+            {t('loading_tasks')}
+          </div>
+        ) : (
+          <MonthlyCalendar
+            viewMode={activeView}
+            viewDate={viewDate}
+            onChangeViewDate={setViewDate}
+            selectedISODate={selectedISODate}
+            onSelectISODate={handleSelectISODate}
+            tasksByISODate={tasksByISODate}
+            meetingsByISODate={meetingsByISODate}
+            onNavigatePrev={onNavigatePrev}
+            onNavigateNext={onNavigateNext}
+            onGoToday={onGoToday}
+          />
+        )}
       </div>
 
       <DayTasksModal
