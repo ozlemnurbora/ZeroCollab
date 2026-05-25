@@ -88,5 +88,123 @@
     /* Amber warning banners */
     & [class*="bg-amber-500/10"] { background-color: rgba(245, 158, 11, 0.1) !important; }
     & [class*="text-amber-2"] { color: #92400e !important; }
+
+    /* Solid buttons must keep their solid backgrounds */
+    & button.bg-indigo-600,
+    & button[class*="bg-indigo-600"],
+    & [class*="bg-indigo-600"] { background-color: #4338ca !important; color: white !important; }
+    & button.bg-indigo-700,
+    & button[class*="bg-indigo-700"] { background-color: #3730a3 !important; color: white !important; }
+    & button.bg-rose-600,
+    & button[class*="bg-rose-600"] { background-color: #be123c !important; color: white !important; }
+    & button.bg-rose-700,
+    & button[class*="bg-rose-700"] { background-color: #9f1239 !important; color: white !important; }
+
+    /* Gradient buttons */
+    & [class*="bg-gradient"] { opacity: 1 !important; }
+    & [class*="from-indigo"][class*="to-purple"] { color: white !important; }
+    & [class*="from-rose"][class*="to-pink"] { color: white !important; }
+    & [class*="from-emerald"] { color: white !important; }
+  }
+
+  /* ── Light mode button & interactive element visibility ── */
+  [data-theme='light'] {
+    /* Primary buttons (indigo/purple) - make text white and bg darker */
+    & [class*="bg-indigo-500"] button,
+    & button[class*="bg-indigo-500"],
+    & [class*="bg-indigo-600"],
+    & button[class*="bg-gradient-to-r"] {
+      color: white !important;
+    }
+
+    /* All buttons with low-opacity backgrounds need darker treatment */
+    & button[class*="/25"], & button[class*="/20"], & button[class*="/15"], & button[class*="/10"] {
+      filter: saturate(1.5) !important;
+    }
+
+    /* Send buttons, action buttons */
+    & button[class*="bg-indigo-500"],
+    & button[class*="bg-indigo-600"],
+    & button[class*="bg-emerald-500"],
+    & button[class*="bg-violet-500"],
+    & button[class*="bg-purple-500"],
+    & button[class*="bg-rose-500"],
+    & button[class*="bg-rose-600"],
+    & button[class*="bg-amber-500"] {
+      color: white !important;
+      opacity: 1 !important;
+    }
+
+    /* Ghost/secondary buttons need visible text */
+    & button[class*="text-indigo-2"], & button[class*="text-indigo-3"] { color: #4338ca !important; }
+    & button[class*="text-emerald-2"], & button[class*="text-emerald-3"] { color: #047857 !important; }
+    & button[class*="text-violet-2"], & button[class*="text-violet-3"] { color: #6d28d9 !important; }
+    & button[class*="text-rose-2"], & button[class*="text-rose-3"], & button[class*="text-rose-4"] { color: #be123c !important; }
+    & button[class*="text-amber-2"], & button[class*="text-amber-3"] { color: #b45309 !important; }
+
+    /* Links and anchors */
+    & a[class*="text-indigo-2"], & a[class*="text-indigo-3"] { color: #4338ca !important; }
+
+    /* Disabled state should still look disabled */
+    & button:disabled { opacity: 0.45 !important; }
+
+    /* Input borders more visible */
+    & input, & select, & textarea {
+      border-color: rgba(71, 85, 105, 0.5) !important;
+    }
+
+    /* Dropdown/select text readable */
+    & select option { color: #1e293b !important; background: white !important; }
+
+    /* Badge text on colored backgrounds */
+    & [class*="bg-indigo-500"] span,
+    & [class*="bg-emerald-500"] span,
+    & [class*="bg-violet-500"] span,
+    & [class*="bg-rose-500"] span,
+    & [class*="bg-purple-500"] span,
+    & [class*="bg-amber-500"] span {
+      color: white !important;
+    }
+
+    /* Muted text should be darker in light mode */
+    & [class*="text-slate-3"], & [class*="text-slate-4"] { color: #475569 !important; }
+    & [class*="text-gray-3"], & [class*="text-gray-4"] { color: #4b5563 !important; }
+
+    /* Placeholder text */
+    & ::placeholder { color: #94a3b8 !important; }
+
+    /* Card hover states */
+    & [class*="hover:bg-[rgb(var(--zc-border)"]:hover { background-color: rgba(100, 116, 139, 0.1) !important; }
   }
 }
+
+/* ── Light mode heading & accent text visibility ── */
+body[data-theme='light'] .text-indigo-300,
+body[data-theme='light'] .text-indigo-400 { color: #4338ca !important; }
+body[data-theme='light'] .text-emerald-300,
+body[data-theme='light'] .text-emerald-400 { color: #047857 !important; }
+body[data-theme='light'] .text-violet-300,
+body[data-theme='light'] .text-violet-400 { color: #6d28d9 !important; }
+body[data-theme='light'] .text-purple-300,
+body[data-theme='light'] .text-purple-400 { color: #7c3aed !important; }
+body[data-theme='light'] .text-cyan-300,
+body[data-theme='light'] .text-cyan-400 { color: #0891b2 !important; }
+body[data-theme='light'] .text-amber-300,
+body[data-theme='light'] .text-amber-400 { color: #b45309 !important; }
+body[data-theme='light'] .text-rose-300,
+body[data-theme='light'] .text-rose-400 { color: #be123c !important; }
+body[data-theme='light'] .text-blue-300,
+body[data-theme='light'] .text-blue-400 { color: #2563eb !important; }
+body[data-theme='light'] .text-green-300,
+body[data-theme='light'] .text-green-400 { color: #15803d !important; }
+body[data-theme='light'] .text-orange-300,
+body[data-theme='light'] .text-orange-400 { color: #c2410c !important; }
+body[data-theme='light'] .text-pink-300,
+body[data-theme='light'] .text-pink-400 { color: #be185d !important; }
+body[data-theme='light'] .text-sky-300,
+body[data-theme='light'] .text-sky-400 { color: #0369a1 !important; }
+
+body[data-theme='light'] .bg-indigo-600 { background-color: #4338ca !important; }
+body[data-theme='light'] .bg-rose-600 { background-color: #be123c !important; }
+body[data-theme='light'] .bg-violet-500 { background-color: #6d28d9 !important; }
+body[data-theme='light'] .bg-emerald-500 { background-color: #047857 !important; }

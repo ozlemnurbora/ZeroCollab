@@ -10,13 +10,13 @@ export function Button({
 
   const variants = {
     primary:
-      'bg-indigo-500 text-white hover:bg-indigo-400 active:bg-indigo-500/90',
+      'bg-indigo-600 text-white hover:bg-indigo-700 active:bg-indigo-800 shadow-sm',
     secondary:
-      'bg-[rgb(var(--zc-border))] text-[rgb(var(--zc-text))] hover:bg-[rgb(var(--zc-border)/0.85)] active:bg-[rgb(var(--zc-border))] border border-[rgb(var(--zc-border))]',
+      'bg-slate-200 text-slate-800 hover:bg-slate-300 active:bg-slate-400 border border-slate-300 dark:bg-[rgb(var(--zc-border))] dark:text-[rgb(var(--zc-text))] dark:hover:bg-[rgb(var(--zc-border)/0.85)] dark:active:bg-[rgb(var(--zc-border))] dark:border-[rgb(var(--zc-border))]',
     ghost:
-      'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.7)] hover:text-[rgb(var(--zc-text))] active:bg-[rgb(var(--zc-border)/0.6)]',
+      'text-slate-600 hover:bg-slate-100 hover:text-slate-900 active:bg-slate-200 dark:text-[rgb(var(--zc-muted))] dark:hover:bg-[rgb(var(--zc-border)/0.7)] dark:hover:text-[rgb(var(--zc-text))] dark:active:bg-[rgb(var(--zc-border)/0.6)]',
     danger:
-      'bg-rose-600 text-white hover:bg-rose-500 active:bg-rose-600/90',
+      'bg-rose-600 text-white hover:bg-rose-700 active:bg-rose-800 shadow-sm',
   }
 
   const sizes = {
