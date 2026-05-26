@@ -19,6 +19,8 @@
     "@tailwindcss/vite": "^4.2.1",
     "idb": "^8.0.3",
     "jszip": "^3.10.1",
+    "mammoth": "^1.12.0",
+    "pdfjs-dist": "^5.7.284",
     "peerjs": "^1.5.5",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

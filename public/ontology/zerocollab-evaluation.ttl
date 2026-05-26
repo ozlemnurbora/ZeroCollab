@@ -50,6 +50,38 @@ zce:ScoringRule a owl:Class ;
     skos:definition """A rule that governs how raw dimension scores are computed and 
     normalized to produce a final score out of 100."""@en .
 
+zce:SubmissionScope a owl:Class ;
+    rdfs:label "Submission Scope"@en ;
+    skos:definition """Describes what kind of artifact the user uploaded for evaluation.
+    The AI uses the submission scope to decide which QualityDimensions are applicable,
+    which file types to prioritize, and how to weight the final assessment. If no scope
+    is selected by the user, the AI infers one from a quick scan of file names and
+    folder structure, then confirms with the user before proceeding."""@en .
+
+zce:scopeKey a owl:DatatypeProperty ;
+    rdfs:label "scope key"@en ;
+    rdfs:domain zce:SubmissionScope ;
+    rdfs:range xsd:string ;
+    skos:definition "Stable machine-readable identifier for a SubmissionScope (e.g. 'full_project', 'testing_only'). Used by the frontend to map ontology instances to UI options."@en .
+
+zce:scopeFocus a owl:DatatypeProperty ;
+    rdfs:label "scope focus"@en ;
+    rdfs:domain zce:SubmissionScope ;
+    rdfs:range xsd:string ;
+    skos:definition "Short instruction the AI prepends to its evaluation when this scope is selected. Tells the AI what to focus on."@en .
+
+zce:scopeFilePatterns a owl:DatatypeProperty ;
+    rdfs:label "scope file patterns"@en ;
+    rdfs:domain zce:SubmissionScope ;
+    rdfs:range xsd:string ;
+    skos:definition "Comma-separated list of file glob patterns the file prioritizer should rank highest for this scope."@en .
+
+zce:scopeOrder a owl:DatatypeProperty ;
+    rdfs:label "scope display order"@en ;
+    rdfs:domain zce:SubmissionScope ;
+    rdfs:range xsd:integer ;
+    skos:definition "Order in which scopes appear in the UI dropdown."@en .
+
 # ─────────────────────────────────────────────
 # Evaluation Methodology Instance
 # ─────────────────────────────────────────────
@@ -340,3 +372,99 @@ zce:GradeF a zce:GradeThreshold ;
     zce:gradeLabel "F" ;
     zce:gradeName "Insufficient" ;
     zce:minPercentage "0"^^xsd:integer .
+
+# ─────────────────────────────────────────────
+# Submission Scope Instances
+# ─────────────────────────────────────────────
+
+zce:FullProjectScope a zce:SubmissionScope ;
+    rdfs:label "Full project"@en ;
+    zce:scopeKey "full_project" ;
+    zce:scopeOrder 1 ;
+    zce:scopeFocus """The user uploaded the complete project. Evaluate ALL applicable
+    quality dimensions in the ontology. Detect technologies and select dimensions
+    accordingly. This is the default, broadest evaluation mode.""" ;
+    zce:scopeFilePatterns "src/**, public/**, *.md, *.json, *.ttl, package.json, README*, __tests__/**, *.test.js, *.test.jsx, *.test.ts, *.test.tsx, *.spec.js, *.spec.jsx, supabase/**, scripts/**" ;
+    skos:definition "Complete project submission — evaluate everything that is present."@en .
+
+zce:DesignOnlyScope a zce:SubmissionScope ;
+    rdfs:label "Design only"@en ;
+    zce:scopeKey "design_only" ;
+    zce:scopeOrder 2 ;
+    zce:scopeFocus """The user uploaded UI/UX design artifacts — components, styles,
+    wireframes, design tokens, or HTML/CSS. Focus on UIUXDimension, Code Quality
+    (component structure), and accessibility. Skip dimensions tied to backend,
+    networking, blockchain, or testing unless evidence is present.""" ;
+    zce:scopeFilePatterns "*.css, *.scss, *.jsx, *.tsx, *.html, *.svg, *.figma, *.sketch, components/**, styles/**, design/**, ui/**" ;
+    skos:definition "Design-focused submission — UI components, styles, visual artifacts."@en .
+
+zce:TestingOnlyScope a zce:SubmissionScope ;
+    rdfs:label "Testing only"@en ;
+    zce:scopeKey "testing_only" ;
+    zce:scopeOrder 3 ;
+    zce:scopeFocus """The user uploaded test code or test artifacts. Focus on
+    TestingDimension as primary. Examine test coverage breadth, assertion quality,
+    mocking strategy, and test organization. Do NOT score dimensions like UI/UX
+    or Blockchain unless test files themselves cover those concerns.""" ;
+    zce:scopeFilePatterns "*.test.*, *.spec.*, __tests__/**, tests/**, test/**, e2e/**, cypress/**, jest.config.*, vitest.config.*, playwright.config.*" ;
+    skos:definition "Testing submission — unit, integration, or e2e tests."@en .
+
+zce:DocumentationOnlyScope a zce:SubmissionScope ;
+    rdfs:label "Documentation only"@en ;
+    zce:scopeKey "documentation_only" ;
+    zce:scopeOrder 4 ;
+    zce:scopeFocus """The user uploaded documentation — README, project proposal,
+    conference paper, technical report, or design document. Focus on DocumentationDimension
+    as primary. Evaluate clarity, completeness, technical accuracy, citations,
+    structure, and the alignment of stated goals with the described approach.
+    Skip code-quality dimensions entirely.""" ;
+    zce:scopeFilePatterns "*.md, *.pdf, *.docx, *.txt, *.tex, docs/**, doc/**, README*, CHANGELOG*, paper/**" ;
+    skos:definition "Documentation submission — text deliverables, no executable code expected."@en .
+
+zce:AnalysisOnlyScope a zce:SubmissionScope ;
+    rdfs:label "Analysis only"@en ;
+    zce:scopeKey "analysis_only" ;
+    zce:scopeOrder 5 ;
+    zce:scopeFocus """The user uploaded analysis artifacts — requirements analysis,
+    use cases, UML diagrams, domain model, ontology, or system specification.
+    Focus on completeness of stakeholder coverage, clarity of requirements, and
+    soundness of modelling. If ontology files are present, score OntologyDimension.
+    Skip implementation-quality dimensions.""" ;
+    zce:scopeFilePatterns "*.uml, *.ttl, *.owl, *.rdf, *.bpmn, analysis/**, requirements/**, models/**, *.puml, *.drawio" ;
+    skos:definition "Analysis submission — requirements, models, ontologies, diagrams."@en .
+
+zce:ArchitectureOnlyScope a zce:SubmissionScope ;
+    rdfs:label "Architecture only"@en ;
+    zce:scopeKey "architecture_only" ;
+    zce:scopeOrder 6 ;
+    zce:scopeFocus """The user uploaded architecture artifacts — module diagrams,
+    component diagrams, deployment views, ADRs, or high-level design documents.
+    Focus on separation of concerns, modularity, scalability considerations, and
+    the rationale behind structural choices. Skip dimensions tied to a single
+    feature implementation.""" ;
+    zce:scopeFilePatterns "architecture/**, adr/**, ADR-*.md, docs/architecture/**, *.drawio, diagrams/**, design-docs/**" ;
+    skos:definition "Architecture submission — structural design and rationale."@en .
+
+zce:SecurityAuditScope a zce:SubmissionScope ;
+    rdfs:label "Security audit"@en ;
+    zce:scopeKey "security_audit" ;
+    zce:scopeOrder 7 ;
+    zce:scopeFocus """The user uploaded code or artifacts for a security review.
+    Focus on SecurityDimension as primary. Examine authentication flows, input
+    validation, secrets handling, encryption usage, dependency risks, and exposed
+    endpoints. Score Performance and Code Quality only when they intersect with
+    security concerns.""" ;
+    zce:scopeFilePatterns "auth/**, security/**, middleware/**, *.env*, *.pem, *.key, supabase/migrations/**, *config*, package-lock.json" ;
+    skos:definition "Security-focused submission — auditing code for vulnerabilities."@en .
+
+zce:PerformanceAuditScope a zce:SubmissionScope ;
+    rdfs:label "Performance audit"@en ;
+    zce:scopeKey "performance_audit" ;
+    zce:scopeOrder 8 ;
+    zce:scopeFocus """The user uploaded code or profiling artifacts for a performance
+    review. Focus on PerformanceDimension as primary. Examine algorithmic complexity,
+    memoization, lazy loading, network round trips, bundle size, render performance,
+    and database query efficiency. Score other dimensions only when they directly
+    affect performance.""" ;
+    zce:scopeFilePatterns "*.perf, lighthouse-*.json, vite.config.*, webpack.config.*, hooks/**, utils/**, *.bench.*, benchmarks/**" ;
+    skos:definition "Performance-focused submission — auditing code for speed and efficiency."@en .

@@ -9,7 +9,7 @@ import {
 } from '../components/settings/settingsConstants.js'
 
 const DB_NAME = 'zerocollab-db'
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 const STORES = {
   tasks: 'tasks',
@@ -111,15 +111,18 @@ async function migrateFromLocalStorageIfNeeded(db) {
 export async function getDatabase() {
   if (!dbPromise) {
     dbPromise = openDB(DB_NAME, DB_VERSION, {
-      upgrade(db) {
+      upgrade(db, _oldVersion, _newVersion, tx) {
         if (!db.objectStoreNames.contains(STORES.tasks)) {
           db.createObjectStore(STORES.tasks, { keyPath: 'id' })
         }
         if (!db.objectStoreNames.contains(STORES.messages)) {
           db.createObjectStore(STORES.messages, { keyPath: 'id' })
         }
-        if (!db.objectStoreNames.contains(STORES.evaluations)) {
-          db.createObjectStore(STORES.evaluations, { keyPath: 'id' })
+        const evalStore = db.objectStoreNames.contains(STORES.evaluations)
+          ? tx.objectStore(STORES.evaluations)
+          : db.createObjectStore(STORES.evaluations, { keyPath: 'id' })
+        if (!evalStore.indexNames.contains('projectId')) {
+          evalStore.createIndex('projectId', 'projectId', { unique: false })
         }
         if (!db.objectStoreNames.contains(STORES.settings)) {
           db.createObjectStore(STORES.settings, { keyPath: 'key' })
@@ -369,6 +372,29 @@ export async function replaceEvaluationsForOwner(ownerUserId, items) {
   const all = (await db.getAll(STORES.evaluations)) ?? []
   const others = all.filter((e) => e?.ownerUserId && e.ownerUserId !== ownerUserId)
   const stamped = (items ?? []).map((e) => ({ ...e, ownerUserId }))
+  const next = [...others, ...stamped]
+  const tx = db.transaction(STORES.evaluations, 'readwrite')
+  await tx.store.clear()
+  for (const e of next) {
+    if (e && typeof e === 'object' && e.id) await tx.store.put(e)
+  }
+  await tx.done
+  emitChange({ store: STORES.evaluations })
+}
+
+export async function getEvaluationsForProject(projectId) {
+  if (!projectId) return []
+  const db = await getDatabase()
+  const all = (await db.getAll(STORES.evaluations)) ?? []
+  return all.filter((e) => String(e?.projectId ?? '') === String(projectId))
+}
+
+export async function replaceEvaluationsForProject(projectId, items) {
+  if (!projectId) return
+  const db = await getDatabase()
+  const all = (await db.getAll(STORES.evaluations)) ?? []
+  const others = all.filter((e) => String(e?.projectId ?? '') !== String(projectId))
+  const stamped = (items ?? []).map((e) => ({ ...e, projectId: String(projectId) }))
   const next = [...others, ...stamped]
   const tx = db.transaction(STORES.evaluations, 'readwrite')
   await tx.store.clear()

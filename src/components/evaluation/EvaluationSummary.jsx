@@ -11,21 +11,43 @@ function gradeColor(label) {
 
 const DEFAULT_GRADE = { label: 'F', name: 'Insufficient' }
 
-export function EvaluationSummary({ total, max, percentage, grade }) {
+export function EvaluationSummary({ total, max, percentage, grade, snapshot }) {
   const { t } = useLanguage()
   const pct = Math.max(0, Math.min(100, Math.round(percentage)))
   const g = grade && grade.label != null ? grade : DEFAULT_GRADE
 
   return (
-    <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
+    <section className="overflow-hidden rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
+      <div
+        className="-mx-px -mt-px h-0.5 rounded-t bg-gradient-to-r from-indigo-500/60 via-fuchsia-500/60 to-emerald-500/60"
+        aria-hidden="true"
+      />
       <header className="border-b border-[rgb(var(--zc-border))] px-4 py-3">
-        <h2 className="text-sm font-semibold text-[rgb(var(--zc-text))]">
+        <h2 className="bg-gradient-to-r from-indigo-500 to-fuchsia-500 bg-clip-text text-base font-semibold text-transparent">
           {t('eval_summary')}
         </h2>
         <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">{t('eval_summary_sub')}</p>
       </header>
 
       <div className="px-4 py-4">
+        {Array.isArray(snapshot?.uploadedFiles) && snapshot.uploadedFiles.length > 0 ? (
+          <div className="mb-2 min-w-0 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.5)] px-3 py-2">
+            <p className="text-[11px] uppercase tracking-wide text-[rgb(var(--zc-muted2))]">
+              Evaluated submission
+            </p>
+            <p
+              className="mt-0.5 break-all text-sm text-[rgb(var(--zc-text))]"
+              title={snapshot.uploadedFiles.join(', ')}
+            >
+              {snapshot.uploadedFiles.join(', ')}
+            </p>
+            {snapshot.packageType ? (
+              <p className="mt-0.5 text-xs text-[rgb(var(--zc-muted))]">
+                Scope: {snapshot.packageType.replace(/_/g, ' ')}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-medium text-[rgb(var(--zc-muted2))]">

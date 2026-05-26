@@ -1,6 +1,40 @@
 import { clampScore } from './evaluationUtils.js'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 
+function ScoreBar({ score, max }) {
+  const pct = max > 0 ? Math.min(1, Math.max(0, score / max)) : 0
+  const filled = Math.round(pct * 10)
+  const tone =
+    pct >= 0.7
+      ? 'bg-emerald-500'
+      : pct >= 0.4
+        ? 'bg-amber-500'
+        : 'bg-rose-500'
+
+  return (
+    <div
+      className="flex w-full items-center gap-1"
+      role="progressbar"
+      aria-valuemin={0}
+      aria-valuemax={max}
+      aria-valuenow={score}
+    >
+      {Array.from({ length: 10 }).map((_, i) => {
+        const isFilled = i < filled
+        return (
+          <div
+            key={i}
+            className={[
+              'h-2.5 flex-1 rounded-sm transition-colors',
+              isFilled ? tone : 'bg-[rgb(var(--zc-border)/0.6)]',
+            ].join(' ')}
+          />
+        )
+      })}
+    </div>
+  )
+}
+
 export function CriterionCard({ criterion, value, onChange }) {
   const { t } = useLanguage()
   const min = criterion.min ?? 1
@@ -38,18 +72,8 @@ export function CriterionCard({ criterion, value, onChange }) {
       <div className="px-4 py-4">
         {notApplicable ? null : (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <div className="flex-1 opacity-60">
-              <input
-                type="range"
-                min={min}
-                max={max}
-                value={clamped}
-                disabled
-                readOnly
-                aria-readonly="true"
-                tabIndex={-1}
-                className="w-full cursor-not-allowed accent-indigo-500"
-              />
+            <div className="flex-1">
+              <ScoreBar score={displayScore} max={max} />
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
