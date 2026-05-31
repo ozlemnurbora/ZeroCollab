@@ -232,6 +232,9 @@ try {
     console.error(
       'Hint: the recipient account must associate the ZC token before it can receive transfers.',
     )
+    console.error(
+      'Hint: recipient must associate the ZC token first. Run: npm run hedera:associate-token -- --account RECIPIENT_ID --key RECIPIENT_KEY',
+    )
   }
   console.log('  Result    : FAILED')
   process.exit(1)

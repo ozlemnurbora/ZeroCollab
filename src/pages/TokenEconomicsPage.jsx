@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { TOKEN_TIERS, getTierByBalance, getTierLimits } from '../utils/tokenEconomics/tokenTiers.js'
 import {
   clearTokenProfile,
@@ -33,6 +33,27 @@ function clampNumber(n) {
   const v = Number(n)
   if (!Number.isFinite(v)) return 0
   return Math.max(0, v)
+}
+
+function coerceInputString(raw) {
+  if (typeof raw === 'string') return raw.trim()
+  if (typeof raw?.target?.value === 'string') return raw.target.value.trim()
+  if (typeof raw?.currentTarget?.value === 'string') return raw.currentTarget.value.trim()
+  if (typeof raw?.value === 'string') return raw.value.trim()
+  return ''
+}
+
+function parseHederaPrivateKey(PrivateKey, raw) {
+  const s = coerceInputString(raw)
+  try {
+    return PrivateKey.fromStringED25519(s)
+  } catch {
+    try {
+      return PrivateKey.fromStringECDSA(s)
+    } catch {
+      return PrivateKey.fromString(s)
+    }
+  }
 }
 
 const TIER_UI = {
@@ -214,6 +235,8 @@ export function TokenEconomicsPage() {
     amount: '',
   })
   const [adminTransferInfo, setAdminTransferInfo] = useState(null)
+  const [isSendingAdminTransfer, setIsSendingAdminTransfer] = useState(false)
+  const adminOperatorKeyRef = useRef(null)
 
   const isProjectAdmin = useMemo(() => {
     if (!user?.id || !activeProject) return false
@@ -314,41 +337,105 @@ export function TokenEconomicsPage() {
     window.setTimeout(() => setStatus(null), 2500)
   }
 
-  const buildTransferCli = (recipient, amount) => {
-    const safeRecipient = String(recipient || '').trim() || '0.0.xxxxx'
-    const safeAmount = Number(amount) > 0 ? String(amount).trim() : '<amount>'
-    return `npm run hedera:transfer-token -- --to ${safeRecipient} --amount ${safeAmount}`
+  const clearAdminOperatorKey = () => {
+    if (adminOperatorKeyRef.current) adminOperatorKeyRef.current.value = ''
   }
 
-  const handleAdminTransfer = () => {
+  const handleAdminTransfer = async () => {
     if (!isProjectAdmin) return
     const recipient = String(adminTransferForm.recipient || '').trim()
     const amount = Number(adminTransferForm.amount)
+    const operatorKeyRaw = coerceInputString(adminOperatorKeyRef.current)
+
+    const failBeforeSend = (message) => {
+      setAdminTransferInfo({ type: 'error', message })
+      clearAdminOperatorKey()
+    }
 
     if (!recipient || !isValidHederaAccountId(recipient)) {
-      setAdminTransferInfo({
-        type: 'error',
-        message:
-          'Invalid recipient Hedera account ID. Expected format like 0.0.12345.',
-      })
+      failBeforeSend(
+        'Invalid recipient Hedera account ID. Expected format like 0.0.12345.',
+      )
       return
     }
     if (!Number.isFinite(amount) || amount <= 0) {
-      setAdminTransferInfo({
-        type: 'error',
-        message: 'Amount must be a positive number of ZC tokens.',
-      })
+      failBeforeSend('Amount must be a positive number of ZC tokens.')
+      return
+    }
+    if (!ZC_TOKEN_ID || !isValidHederaAccountId(ZC_TOKEN_ID)) {
+      failBeforeSend('ZC token ID is not configured correctly.')
+      return
+    }
+    if (!HEDERA_OPERATOR_ID || !isValidHederaAccountId(HEDERA_OPERATOR_ID)) {
+      failBeforeSend('Hedera operator account ID is not configured correctly.')
+      return
+    }
+    if (!operatorKeyRaw) {
+      failBeforeSend('Operator private key is required to sign the transfer.')
       return
     }
 
-    const cli = buildTransferCli(recipient, amount)
-    console.log('[Admin Token Distribution] suggested CLI:', cli)
+    let client
+    setIsSendingAdminTransfer(true)
     setAdminTransferInfo({
       type: 'info',
-      message:
-        'Token transfer requires backend/operator signing. This prototype uses Hedera Testnet operator credentials outside the browser.',
-      cli,
+      message: 'Submitting ZC token transfer on Hedera Testnet…',
     })
+
+    try {
+      const {
+        AccountId,
+        Client,
+        PrivateKey,
+        TokenId,
+        TransferTransaction,
+      } = await import('@hashgraph/sdk')
+      const operatorKey = parseHederaPrivateKey(PrivateKey, operatorKeyRaw)
+      const operatorId = AccountId.fromString(HEDERA_OPERATOR_ID)
+      const recipientId = AccountId.fromString(recipient)
+      const tokenId = TokenId.fromString(ZC_TOKEN_ID)
+
+      client = Client.forTestnet()
+      client.setOperator(operatorId, operatorKey)
+
+      const tx = new TransferTransaction()
+        .addTokenTransfer(tokenId, operatorId, -amount)
+        .addTokenTransfer(tokenId, recipientId, amount)
+
+      const frozen = await tx.freezeWith(client)
+      const signed = await frozen.sign(operatorKey)
+      const submit = await signed.execute(client)
+      const receipt = await submit.getReceipt(client)
+      const txId = submit.transactionId?.toString?.() ?? '(unknown)'
+      const receiptStatus = receipt.status?.toString?.() ?? String(receipt.status)
+
+      if (receiptStatus !== 'SUCCESS') {
+        throw new Error(`Transfer failed with receipt status: ${receiptStatus}`)
+      }
+
+      setAdminTransferInfo({
+        type: 'success',
+        message: `ZC token transfer submitted successfully. Transaction ID: ${txId}`,
+      })
+    } catch (err) {
+      const msg = err?.message || String(err)
+      if (/TOKEN_NOT_ASSOCIATED_TO_ACCOUNT/i.test(msg)) {
+        setAdminTransferInfo({
+          type: 'error',
+          message:
+            "Recipient must first associate the ZC token. They need to add token 0.0.8904048 in their HashPack wallet under 'Add Token'.",
+        })
+      } else {
+        setAdminTransferInfo({
+          type: 'error',
+          message: `Transfer error: ${msg}`,
+        })
+      }
+    } finally {
+      client?.close?.()
+      clearAdminOperatorKey()
+      setIsSendingAdminTransfer(false)
+    }
   }
 
   const handleFetchBalance = async () => {
@@ -683,7 +770,7 @@ export function TokenEconomicsPage() {
             <SectionCard
               eyebrow="Admin · Hedera Testnet"
               title="Admin Token Distribution"
-              subtitle="Send ZC tokens from the project operator to a team member's Hedera account. Browser cannot sign — see safety note below."
+              subtitle="Send ZC tokens from the project operator to a team member's Hedera account."
             >
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="space-y-1.5">
@@ -726,14 +813,31 @@ export function TokenEconomicsPage() {
                 </label>
               </div>
 
+              <label className="mt-3 block space-y-1.5">
+                <span className="text-xs font-medium text-[rgb(var(--zc-muted2))]">
+                  Operator Private Key
+                </span>
+                <input
+                  ref={adminOperatorKeyRef}
+                  type="password"
+                  autoComplete="off"
+                  placeholder="Paste operator private key for this transfer"
+                  className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.5)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/45"
+                />
+                <span className="block text-[11px] text-[rgb(var(--zc-subtle))]">
+                  Your key is used only for this transaction and never stored.
+                </span>
+              </label>
+
               <div className="mt-4 flex flex-wrap items-center gap-2">
                 <button
                   type="button"
                   onClick={handleAdminTransfer}
-                  className="rounded-md bg-amber-500/15 px-3 py-2 text-xs font-medium text-amber-200 ring-1 ring-amber-500/30 transition hover:bg-amber-500/25"
-                  title="Validate inputs and reveal the operator-signed CLI command"
+                  disabled={isSendingAdminTransfer}
+                  className="rounded-md bg-amber-500/15 px-3 py-2 text-xs font-medium text-amber-200 ring-1 ring-amber-500/30 transition hover:bg-amber-500/25 disabled:cursor-not-allowed disabled:opacity-60"
+                  title="Sign and send a ZC token transfer"
                 >
-                  Send ZC Token
+                  {isSendingAdminTransfer ? 'Sending…' : 'Send ZC Token'}
                 </button>
                 <span className="text-[11px] text-[rgb(var(--zc-subtle))]">
                   Token: {ZC_TOKEN_ID || '—'} · Network: {HEDERA_NETWORK}
@@ -746,29 +850,20 @@ export function TokenEconomicsPage() {
                     'mt-3 rounded-md border px-3 py-2 text-[11px]',
                     adminTransferInfo.type === 'error'
                       ? 'border-rose-500/30 bg-rose-500/10 text-rose-300'
-                      : 'border-amber-500/30 bg-amber-500/10 text-amber-200',
+                      : adminTransferInfo.type === 'success'
+                        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                        : 'border-amber-500/30 bg-amber-500/10 text-amber-200',
                   ].join(' ')}
                   role="status"
                 >
                   <p>{adminTransferInfo.message}</p>
-                  {adminTransferInfo.cli ? (
-                    <p className="mt-2 break-all">
-                      Run on the operator machine:{' '}
-                      <code className="rounded bg-[rgb(var(--zc-bg)/0.6)] px-1.5 py-0.5 font-mono text-[rgb(var(--zc-text))] ring-1 ring-[rgb(var(--zc-border))]">
-                        {adminTransferInfo.cli}
-                      </code>
-                    </p>
-                  ) : null}
                 </div>
               ) : null}
 
               <p className="mt-4 border-t border-[rgb(var(--zc-border))] pt-3 text-[11px] text-[rgb(var(--zc-subtle))]">
-                Why no in-browser signing? The Hedera operator private key must
-                never be shipped to the browser. Production should sign through
-                a wallet (HashPack / WalletConnect) or a trusted backend; this
-                prototype uses local <code className="font-mono">.env.local</code>{' '}
-                credentials with the{' '}
-                <code className="font-mono">hedera:transfer-token</code> script.
+                Admin signing is available for Hedera Testnet only. Do not paste
+                production keys into the browser; production should sign through
+                a wallet (HashPack / WalletConnect) or a trusted backend.
               </p>
             </SectionCard>
           ) : null}
