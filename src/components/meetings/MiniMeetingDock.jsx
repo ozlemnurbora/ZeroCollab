@@ -1,8 +1,9 @@
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useMeetingSession } from '../../utils/MeetingSessionContext.jsx'
 
 export function MiniMeetingDock() {
   const navigate = useNavigate()
+  const location = useLocation()
   const {
     activeMeeting,
     sessionStatus,
@@ -12,10 +13,14 @@ export function MiniMeetingDock() {
     toggleMute,
     toggleCamera,
     leaveMeeting,
-    isMeetingPageOpen,
   } = useMeetingSession()
 
   if (!activeMeeting) return null
+
+  // Hide the floating dock when the user is already on the meeting room page
+  // (/meetings/:id). It only acts as a "return to meeting" affordance elsewhere.
+  const onMeetingRoomRoute = /^\/meetings\/[^/]+/.test(location.pathname)
+  if (onMeetingRoomRoute) return null
 
   const statusLabel =
     sessionStatus === 'live'
@@ -37,15 +42,13 @@ export function MiniMeetingDock() {
             {statusLabel} • {participantCount} participants
           </p>
         </div>
-        {!isMeetingPageOpen ? (
-          <button
-            type="button"
-            onClick={() => navigate(`/meetings/${activeMeeting.meetingId}`)}
-            className="rounded-md bg-indigo-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-400"
-          >
-            Return
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => navigate(`/meetings/${activeMeeting.meetingId}`)}
+          className="rounded-md bg-indigo-500 px-2.5 py-1 text-xs font-medium text-white hover:bg-indigo-400"
+        >
+          Return
+        </button>
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">

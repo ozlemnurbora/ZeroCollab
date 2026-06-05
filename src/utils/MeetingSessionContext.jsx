@@ -95,6 +95,12 @@ export function MeetingSessionProvider({ children }) {
   const [isMuted, setIsMuted] = useState(false)
   const [isCameraOff, setIsCameraOff] = useState(false)
   const [isSharingScreen, setIsSharingScreen] = useState(false)
+  // Remote mic-mute state keyed by participant userKey (local mute uses isMuted).
+  const [mutedRegistry, setMutedRegistry] = useState({})
+  // userKey of whoever is currently sharing their screen (local or remote), or null.
+  const [screenShareOwnerKey, setScreenShareOwnerKey] = useState(null)
+  // The local display-capture stream, only set while THIS client is sharing.
+  const [screenShareStream, setScreenShareStream] = useState(null)
   const [roomMessages, setRoomMessages] = useState([])
   const [participantRegistry, setParticipantRegistry] = useState({})
   const [localIdentity, setLocalIdentity] = useState({
@@ -114,6 +120,21 @@ export function MeetingSessionProvider({ children }) {
   const roomMessageIdsRef = useRef(new Set())
   const participantByPeerRef = useRef(new Map())
   const roomPeerIdsRef = useRef(new Set())
+  const isMutedRef = useRef(false)
+  const isSharingScreenRef = useRef(false)
+  const screenShareOwnerKeyRef = useRef(null)
+
+  useEffect(() => {
+    isMutedRef.current = isMuted
+  }, [isMuted])
+
+  useEffect(() => {
+    isSharingScreenRef.current = isSharingScreen
+  }, [isSharingScreen])
+
+  useEffect(() => {
+    screenShareOwnerKeyRef.current = screenShareOwnerKey
+  }, [screenShareOwnerKey])
 
   useEffect(() => {
     localStreamRef.current = localStream
@@ -266,6 +287,11 @@ export function MeetingSessionProvider({ children }) {
 
   const removePeerSession = useCallback((peerId) => {
     if (!peerId) return
+    const leavingUserKey = participantByPeerRef.current.get(peerId)
+    if (leavingUserKey && screenShareOwnerKeyRef.current === leavingUserKey) {
+      setScreenShareOwnerKey(null)
+      screenShareOwnerKeyRef.current = null
+    }
     activeCallsRef.current.delete(peerId)
     setRemoteStreams((prev) => {
       const next = new Map(prev)
@@ -373,6 +399,10 @@ export function MeetingSessionProvider({ children }) {
     setIsMuted(false)
     setIsCameraOff(false)
     setIsSharingScreen(false)
+    setMutedRegistry({})
+    setScreenShareOwnerKey(null)
+    setScreenShareStream(null)
+    screenShareOwnerKeyRef.current = null
     setParticipantRegistry({})
     participantByPeerRef.current.clear()
     roomPeerIdsRef.current.clear()
@@ -406,12 +436,17 @@ export function MeetingSessionProvider({ children }) {
     localStreamRef.current = null
     setLocalStream(null)
     inSessionRef.current = false
+    try {
+      screenTrackRef.current?.stop?.()
+    } catch {
+      // ignore
+    }
     screenTrackRef.current = null
     cameraTrackRef.current = null
     clearSessionState()
   }, [clearSessionState, localIdentity.email, localIdentity.userId])
 
-  const joinMeetingSession = useCallback(async (meeting) => {
+  const joinMeetingSession = useCallback(async (meeting, options = {}) => {
     if (!meeting?.id) {
       setError('Meeting metadata is missing.')
       return false
@@ -432,7 +467,9 @@ export function MeetingSessionProvider({ children }) {
     setError('')
     await initP2P()
 
-    let stream = localStreamRef.current
+    // Reuse a stream captured by the pre-join screen when provided, so we don't
+    // re-prompt for camera/mic permissions or restart the device (avoids flicker).
+    let stream = options.initialStream || localStreamRef.current
     if (!stream) {
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
@@ -445,6 +482,19 @@ export function MeetingSessionProvider({ children }) {
     localStreamRef.current = stream
     cameraTrackRef.current = stream.getVideoTracks()[0] ?? null
     setLocalStream(stream)
+
+    // Honour the device choices made on the pre-join screen.
+    const startMuted = Boolean(options.startMuted)
+    const startCameraOff = Boolean(options.startCameraOff)
+    stream.getAudioTracks().forEach((track) => {
+      track.enabled = !startMuted
+    })
+    stream.getVideoTracks().forEach((track) => {
+      track.enabled = !startCameraOff
+    })
+    setIsMuted(startMuted)
+    isMutedRef.current = startMuted
+    setIsCameraOff(startCameraOff)
 
     const nextMeeting = {
       meetingId: meeting.id,
@@ -489,6 +539,8 @@ export function MeetingSessionProvider({ children }) {
         username: localIdentity.username || '',
         email: localIdentity.email || '',
       },
+      muted: startMuted,
+      sharing: isSharingScreenRef.current,
       joinedAt: Date.now(),
     })
     return true
@@ -501,7 +553,18 @@ export function MeetingSessionProvider({ children }) {
       track.enabled = !nextMuted
     })
     setIsMuted(nextMuted)
-  }, [isMuted])
+    isMutedRef.current = nextMuted
+    const meeting = activeMeetingRef.current
+    if (meeting) {
+      sendToAllPeers({
+        type: 'room-mute',
+        roomId: meeting.roomId,
+        meetingId: meeting.meetingId,
+        senderUserKey: getUserKey(localIdentity, getPeerId()),
+        muted: nextMuted,
+      })
+    }
+  }, [isMuted, localIdentity])
 
   const toggleCamera = useCallback(() => {
     if (!localStreamRef.current) return
@@ -512,8 +575,21 @@ export function MeetingSessionProvider({ children }) {
     setIsCameraOff(nextCameraOff)
   }, [isCameraOff])
 
+  const broadcastScreenShare = useCallback((active) => {
+    const meeting = activeMeetingRef.current
+    if (!meeting) return
+    sendToAllPeers({
+      type: 'room-screen-share',
+      roomId: meeting.roomId,
+      meetingId: meeting.meetingId,
+      senderUserKey: getUserKey(localIdentity, getPeerId()),
+      active: Boolean(active),
+    })
+  }, [localIdentity])
+
   const toggleScreenShare = useCallback(async () => {
     if (!localStreamRef.current) return
+    const localKey = getUserKey(localIdentity, getPeerId())
     if (!isSharingScreen) {
       const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true })
       const screenTrack = screenStream.getVideoTracks()[0]
@@ -521,6 +597,11 @@ export function MeetingSessionProvider({ children }) {
       screenTrackRef.current = screenTrack
       replaceOutgoingVideoTrack(screenTrack)
       setIsSharingScreen(true)
+      isSharingScreenRef.current = true
+      setScreenShareStream(screenStream)
+      setScreenShareOwnerKey(localKey)
+      screenShareOwnerKeyRef.current = localKey
+      broadcastScreenShare(true)
       screenTrack.onended = () => {
         const cameraTrack = cameraTrackRef.current
         if (cameraTrack) {
@@ -528,6 +609,13 @@ export function MeetingSessionProvider({ children }) {
         }
         screenTrackRef.current = null
         setIsSharingScreen(false)
+        isSharingScreenRef.current = false
+        setScreenShareStream(null)
+        if (screenShareOwnerKeyRef.current === localKey) {
+          setScreenShareOwnerKey(null)
+          screenShareOwnerKeyRef.current = null
+        }
+        broadcastScreenShare(false)
       }
       return
     }
@@ -538,7 +626,14 @@ export function MeetingSessionProvider({ children }) {
       replaceOutgoingVideoTrack(cameraTrack)
     }
     setIsSharingScreen(false)
-  }, [isSharingScreen, replaceOutgoingVideoTrack])
+    isSharingScreenRef.current = false
+    setScreenShareStream(null)
+    if (screenShareOwnerKeyRef.current === localKey) {
+      setScreenShareOwnerKey(null)
+      screenShareOwnerKeyRef.current = null
+    }
+    broadcastScreenShare(false)
+  }, [broadcastScreenShare, isSharingScreen, localIdentity, replaceOutgoingVideoTrack])
 
   const sendRoomChatMessage = useCallback((text) => {
     const messageText = String(text || '').trim()
@@ -633,15 +728,28 @@ export function MeetingSessionProvider({ children }) {
         // Ensure we have a direct data connection to the joiner, then gossip peer list
         if (from) void connectToPeer(from)
         const senderProfile = data.senderProfile || {}
-        upsertParticipant(
-          {
-            userId: data.userId || '',
-            email: senderProfile.email || '',
-            username: senderProfile.username || usernameFromEmail(senderProfile.email),
-            displayName: senderProfile.displayName || '',
-          },
-          { peerId: from, activeInRoom: true, joinedAt: data.joinedAt || Date.now() },
-        )
+        const joinIdentity = {
+          userId: data.userId || '',
+          email: senderProfile.email || '',
+          username: senderProfile.username || usernameFromEmail(senderProfile.email),
+          displayName: senderProfile.displayName || '',
+        }
+        upsertParticipant(joinIdentity, {
+          peerId: from,
+          activeInRoom: true,
+          joinedAt: data.joinedAt || Date.now(),
+        })
+        const joinKey = getStableUserKey(joinIdentity)
+        if (joinKey) {
+          setMutedRegistry((prev) => ({ ...prev, [joinKey]: Boolean(data.muted) }))
+          if (data.sharing) {
+            setScreenShareOwnerKey(joinKey)
+            screenShareOwnerKeyRef.current = joinKey
+          } else if (screenShareOwnerKeyRef.current === joinKey) {
+            setScreenShareOwnerKey(null)
+            screenShareOwnerKeyRef.current = null
+          }
+        }
         if (inSessionRef.current) {
           placeRoomCall(from)
         }
@@ -657,6 +765,8 @@ export function MeetingSessionProvider({ children }) {
             username: localIdentity.username || '',
             email: localIdentity.email || '',
           },
+          muted: isMutedRef.current,
+          sharing: isSharingScreenRef.current,
           joinedAt: Date.now(),
         })
         if (roomMessagesRef.current.length > 0) {
@@ -670,16 +780,42 @@ export function MeetingSessionProvider({ children }) {
       } else if (data.type === 'room-presence') {
         if (from) void connectToPeer(from)
         const senderProfile = data.senderProfile || {}
-        upsertParticipant(
-          {
-            userId: data.userId || '',
-            email: senderProfile.email || '',
-            username: senderProfile.username || usernameFromEmail(senderProfile.email),
-            displayName: senderProfile.displayName || '',
-          },
-          { peerId: from, activeInRoom: true, joinedAt: data.joinedAt || Date.now() },
-        )
+        const presenceIdentity = {
+          userId: data.userId || '',
+          email: senderProfile.email || '',
+          username: senderProfile.username || usernameFromEmail(senderProfile.email),
+          displayName: senderProfile.displayName || '',
+        }
+        upsertParticipant(presenceIdentity, {
+          peerId: from,
+          activeInRoom: true,
+          joinedAt: data.joinedAt || Date.now(),
+        })
+        const presenceKey = getStableUserKey(presenceIdentity)
+        if (presenceKey) {
+          setMutedRegistry((prev) => ({ ...prev, [presenceKey]: Boolean(data.muted) }))
+          if (data.sharing) {
+            setScreenShareOwnerKey(presenceKey)
+            screenShareOwnerKeyRef.current = presenceKey
+          }
+        }
         publishRoomPeerList(meeting)
+      } else if (data.type === 'room-mute') {
+        const key = data.senderUserKey || participantByPeerRef.current.get(from) || ''
+        if (key) {
+          setMutedRegistry((prev) => ({ ...prev, [key]: Boolean(data.muted) }))
+        }
+      } else if (data.type === 'room-screen-share') {
+        const key = data.senderUserKey || participantByPeerRef.current.get(from) || ''
+        if (key) {
+          if (data.active) {
+            setScreenShareOwnerKey(key)
+            screenShareOwnerKeyRef.current = key
+          } else if (screenShareOwnerKeyRef.current === key) {
+            setScreenShareOwnerKey(null)
+            screenShareOwnerKeyRef.current = null
+          }
+        }
       } else if (data.type === 'room-peer-list' && Array.isArray(data.peers)) {
         // Converge everyone to the same room peer set.
         for (const peerId of data.peers) {
@@ -812,9 +948,15 @@ export function MeetingSessionProvider({ children }) {
       .map((entry) => ({
         ...entry,
         stream: entry.peerId ? remoteStreams.get(entry.peerId) ?? null : null,
+        audioMuted: Boolean(mutedRegistry[entry.userKey]),
       }))
       .filter((entry) => Boolean(entry.stream))
-  }, [participants, remoteStreams])
+  }, [participants, remoteStreams, mutedRegistry])
+
+  const localUserKey = useMemo(
+    () => getUserKey(localIdentity, getPeerId()),
+    [localIdentity],
+  )
 
   const value = useMemo(
     () => ({
@@ -829,6 +971,10 @@ export function MeetingSessionProvider({ children }) {
       isMuted,
       isCameraOff,
       isSharingScreen,
+      mutedRegistry,
+      screenShareOwnerKey,
+      screenShareStream,
+      localUserKey,
       roomMessages,
       participants,
       participantCount: participants.length,
@@ -847,6 +993,10 @@ export function MeetingSessionProvider({ children }) {
       isMeetingPageOpen,
       isMuted,
       isSharingScreen,
+      mutedRegistry,
+      screenShareOwnerKey,
+      screenShareStream,
+      localUserKey,
       joinMeetingSession,
       leaveMeeting,
       localStream,
