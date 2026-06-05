@@ -706,7 +706,7 @@ export function ProductRoadmapPage() {
     return (
       <section className={`rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.35)] ${bucketKey === 'now' ? 'border-t-2 border-t-emerald-500' : bucketKey === 'next' ? 'border-t-2 border-t-blue-500' : 'border-t-2 border-t-violet-500'}`}>
         <div className="border-b border-[rgb(var(--zc-border))] px-4 py-3">
-          <h2 className={`text-sm font-semibold ${bucketKey === 'now' ? 'text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-green-600' : bucketKey === 'next' ? 'text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-indigo-600' : 'text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-purple-600'}`}>
+          <h2 className={`text-sm font-semibold ${bucketKey === 'now' ? 'text-transparent bg-clip-text bg-gradient-to-r from-green-500 to-emerald-600' : bucketKey === 'next' ? 'text-transparent bg-clip-text bg-gradient-to-r from-blue-500 to-indigo-600' : 'text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-purple-600'}`}>
             {bucketKey === 'now' ? '🟢' : bucketKey === 'next' ? '🔵' : '🟣'} {title}
           </h2>
           <p className="text-xs text-[rgb(var(--zc-subtle))]">{list.length} items</p>
@@ -935,7 +935,7 @@ export function ProductRoadmapPage() {
       {/* Product Roadmap is derived from prioritized Product Backlog items and is used to plan future sprint goals. */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-600">🗺️ Product Roadmap</span>
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">🗺️ Product Roadmap</span>
         </h1>
         <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
           Prioritize backlog items, track delivery timelines, and visualize which features ship first across sprints.
@@ -990,7 +990,7 @@ export function ProductRoadmapPage() {
       <div className="mt-6 rounded-xl border border-t-2 border-[rgb(var(--zc-border))] border-t-rose-500 bg-[rgb(var(--zc-bg)/0.35)] overflow-hidden">
         <div className="flex items-center justify-between border-b border-[rgb(var(--zc-border))] px-4 py-3">
           <div>
-            <h2 className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-rose-500 to-pink-600">📦 Release Packages</h2>
+            <h2 className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-500 to-purple-600">📦 Release Packages</h2>
             <p className="text-[11px] text-[rgb(var(--zc-subtle))]">Group epics into release packages with deploy dates.</p>
           </div>
           <button

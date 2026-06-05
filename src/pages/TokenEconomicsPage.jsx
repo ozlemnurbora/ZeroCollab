@@ -59,21 +59,21 @@ function parseHederaPrivateKey(PrivateKey, raw) {
 const TIER_UI = {
   FREE: {
     label: 'Free',
-    columnHead: 'border-slate-500/35 bg-gradient-to-b from-slate-500/15 to-blue-500/5 text-slate-200',
+    columnHead: 'border-slate-500/35 bg-gradient-to-b from-slate-500/15 to-blue-500/5 text-[rgb(var(--zc-text))]',
     cardRing: 'ring-1 ring-slate-500/35',
-    badge: 'bg-slate-500/15 text-slate-200 ring-1 ring-slate-500/40',
+    badge: 'bg-slate-500/15 text-[rgb(var(--zc-text))] ring-1 ring-slate-500/40',
     accentBar: 'from-slate-400/50 to-blue-500/40',
   },
   PLUS: {
     label: 'Plus',
-    columnHead: 'border-violet-500/40 bg-gradient-to-b from-violet-500/20 to-violet-950/30 text-violet-100',
+    columnHead: 'border-violet-500/40 bg-gradient-to-b from-violet-500/20 to-violet-950/30 text-[rgb(var(--zc-text))]',
     cardRing: 'ring-1 ring-violet-500/45',
     badge: 'bg-violet-500/15 text-violet-200 ring-1 ring-violet-500/40',
     accentBar: 'from-violet-500/60 to-fuchsia-500/40',
   },
   PREMIUM: {
     label: 'Premium',
-    columnHead: 'border-amber-500/45 bg-gradient-to-b from-amber-500/25 to-amber-950/20 text-amber-100',
+    columnHead: 'border-amber-500/45 bg-gradient-to-b from-amber-500/25 to-amber-950/20 text-[rgb(var(--zc-text))]',
     cardRing: 'ring-1 ring-amber-400/50',
     badge: 'bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/45',
     accentBar: 'from-amber-400/70 to-yellow-600/40',
@@ -721,7 +721,7 @@ export function TokenEconomicsPage() {
               <button
                 type="button"
                 onClick={clear}
-                className="rounded-md bg-rose-500/15 px-4 py-2 text-sm font-medium text-rose-300 transition hover:bg-rose-500/25"
+                className="rounded-md bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-700"
               >
                 Clear Profile
               </button>

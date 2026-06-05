@@ -420,7 +420,7 @@ export function ProjectOverviewPage() {
         </section>
 
         <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-emerald-500 bg-[rgb(var(--zc-bg)/0.3)] p-5">
-          <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-cyan-600">📊 Project Status</h2>
+          <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">📊 Project Status</h2>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">Lifecycle and schedule</p>
 
           <div className="mt-4 flex flex-wrap gap-2">
@@ -530,7 +530,7 @@ export function ProjectOverviewPage() {
 
               {sprintReadiness ? (
                 <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.3)] p-4">
-                  <h3 className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-cyan-600">
+                  <h3 className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">
                     ✅ Sprint Readiness Checklist
                   </h3>
                   <p className="mt-1 text-[11px] text-[rgb(var(--zc-subtle))]">

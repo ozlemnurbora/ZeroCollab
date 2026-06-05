@@ -208,3 +208,68 @@ body[data-theme='light'] .bg-indigo-600 { background-color: #4338ca !important; 
 body[data-theme='light'] .bg-rose-600 { background-color: #be123c !important; }
 body[data-theme='light'] .bg-violet-500 { background-color: #6d28d9 !important; }
 body[data-theme='light'] .bg-emerald-500 { background-color: #047857 !important; }
+
+/* ──────────────────────────────────────────────────────────────────────────
+   Light mode contrast fixes (these are UNLAYERED so they win over the layered
+   @layer base overrides above, which were too aggressive).
+
+   Problem: translucent pills/chips (bg-*-500/10../35) are nearly white in light
+   mode, but earlier rules force their text/child <span>s to white -> invisible.
+   Fix: give translucent pills and their child spans dark, readable text.
+   These intentionally do NOT touch solid colored badges/buttons (no "/opacity"
+   in the class), which keep their white text.
+   ────────────────────────────────────────────────────────────────────────── */
+
+/* Translucent pills: child <span> labels (e.g. project-name badge, type chips) */
+body[data-theme='light'] [class*="bg-indigo-500/1"] span,
+body[data-theme='light'] [class*="bg-indigo-500/2"] span,
+body[data-theme='light'] [class*="bg-indigo-500/3"] span { color: #4338ca !important; }
+body[data-theme='light'] [class*="bg-emerald-500/1"] span,
+body[data-theme='light'] [class*="bg-emerald-500/2"] span,
+body[data-theme='light'] [class*="bg-emerald-500/3"] span { color: #047857 !important; }
+body[data-theme='light'] [class*="bg-violet-500/1"] span,
+body[data-theme='light'] [class*="bg-violet-500/2"] span,
+body[data-theme='light'] [class*="bg-violet-500/3"] span { color: #6d28d9 !important; }
+body[data-theme='light'] [class*="bg-purple-500/1"] span,
+body[data-theme='light'] [class*="bg-purple-500/2"] span,
+body[data-theme='light'] [class*="bg-purple-500/3"] span { color: #7c3aed !important; }
+body[data-theme='light'] [class*="bg-rose-500/1"] span,
+body[data-theme='light'] [class*="bg-rose-500/2"] span,
+body[data-theme='light'] [class*="bg-rose-500/3"] span { color: #be123c !important; }
+body[data-theme='light'] [class*="bg-amber-500/1"] span,
+body[data-theme='light'] [class*="bg-amber-500/2"] span,
+body[data-theme='light'] [class*="bg-amber-500/3"] span { color: #b45309 !important; }
+
+/* Translucent buttons (e.g. bg-indigo-500/25 ghost buttons): dark text, not white */
+body[data-theme='light'] button[class*="bg-indigo-500/1"],
+body[data-theme='light'] button[class*="bg-indigo-500/2"],
+body[data-theme='light'] button[class*="bg-indigo-500/3"] { color: #4338ca !important; }
+body[data-theme='light'] button[class*="bg-emerald-500/1"],
+body[data-theme='light'] button[class*="bg-emerald-500/2"],
+body[data-theme='light'] button[class*="bg-emerald-500/3"] { color: #047857 !important; }
+body[data-theme='light'] button[class*="bg-violet-500/1"],
+body[data-theme='light'] button[class*="bg-violet-500/2"],
+body[data-theme='light'] button[class*="bg-violet-500/3"] { color: #6d28d9 !important; }
+body[data-theme='light'] button[class*="bg-purple-500/1"],
+body[data-theme='light'] button[class*="bg-purple-500/2"],
+body[data-theme='light'] button[class*="bg-purple-500/3"] { color: #7c3aed !important; }
+body[data-theme='light'] button[class*="bg-rose-500/1"],
+body[data-theme='light'] button[class*="bg-rose-500/2"],
+body[data-theme='light'] button[class*="bg-rose-500/3"] { color: #be123c !important; }
+body[data-theme='light'] button[class*="bg-amber-500/1"],
+body[data-theme='light'] button[class*="bg-amber-500/2"],
+body[data-theme='light'] button[class*="bg-amber-500/3"] { color: #b45309 !important; }
+
+/* Near-white accent shades (…-200, incl. opacity variants like text-indigo-200/90)
+   used for small labels — darken so they are legible on light backgrounds. */
+body[data-theme='light'] [class*="text-indigo-200"] { color: #4338ca !important; }
+body[data-theme='light'] [class*="text-emerald-200"] { color: #047857 !important; }
+body[data-theme='light'] [class*="text-violet-200"] { color: #6d28d9 !important; }
+body[data-theme='light'] [class*="text-purple-200"] { color: #7c3aed !important; }
+body[data-theme='light'] [class*="text-rose-200"] { color: #be123c !important; }
+body[data-theme='light'] [class*="text-amber-200"] { color: #b45309 !important; }
+body[data-theme='light'] [class*="text-cyan-200"] { color: #0e7490 !important; }
+body[data-theme='light'] [class*="text-blue-200"] { color: #2563eb !important; }
+body[data-theme='light'] [class*="text-sky-200"] { color: #0369a1 !important; }
+body[data-theme='light'] [class*="text-green-200"] { color: #15803d !important; }
+body[data-theme='light'] [class*="text-pink-200"] { color: #be185d !important; }

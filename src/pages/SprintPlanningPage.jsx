@@ -872,7 +872,7 @@ export function SprintPlanningPage() {
         </section>
 
         <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-emerald-500 bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
-          <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-green-600">
+          <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-green-500 to-emerald-600">
             📦 Ready Backlog
           </h3>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
@@ -1156,7 +1156,7 @@ export function SprintPlanningPage() {
                                 type="button"
                                 disabled={!canPlan}
                                 onClick={() => updateSprintCommitment(story.id, false)}
-                                className="shrink-0 rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-300 hover:bg-rose-500/25 disabled:opacity-50"
+                                className="shrink-0 rounded-md bg-rose-600 px-2 py-1 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
                               >
                                 Remove
                               </button>
@@ -1334,7 +1334,7 @@ export function SprintPlanningPage() {
                             type="button"
                             disabled={!canPlan}
                             onClick={() => updateSprintCommitment(task.id, false)}
-                            className="shrink-0 rounded-md bg-rose-500/15 px-2 py-1 text-xs font-medium text-rose-300 hover:bg-rose-500/25 disabled:opacity-50"
+                            className="shrink-0 rounded-md bg-rose-600 px-2 py-1 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
                           >
                             Remove
                           </button>

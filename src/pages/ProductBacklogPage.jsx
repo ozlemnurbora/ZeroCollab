@@ -1380,14 +1380,14 @@ export function ProductBacklogPage() {
             <button
               type="button"
               onClick={() => setViewMode('flat')}
-              className={`px-3 py-1.5 text-xs font-medium transition ${viewMode === 'flat' ? 'bg-indigo-500 text-white' : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.4)]'}`}
+              className={`px-3 py-1.5 text-xs font-medium transition ${viewMode === 'flat' ? 'bg-indigo-600 text-white' : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.4)]'}`}
             >
               List
             </button>
             <button
               type="button"
               onClick={() => setViewMode('hierarchy')}
-              className={`px-3 py-1.5 text-xs font-medium transition ${viewMode === 'hierarchy' ? 'bg-indigo-500 text-white' : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.4)]'}`}
+              className={`px-3 py-1.5 text-xs font-medium transition ${viewMode === 'hierarchy' ? 'bg-indigo-600 text-white' : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.4)]'}`}
             >
               Hierarchy
             </button>
