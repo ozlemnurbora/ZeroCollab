@@ -8,7 +8,7 @@ export function SprintBoardPage() {
   if (!activeProject) {
     return (
       <section>
-        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">
+        <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">
           Sprint Board
         </h2>
         <p className="mt-3 text-sm text-[rgb(var(--zc-muted2))]">
@@ -22,7 +22,7 @@ export function SprintBoardPage() {
     return (
       <section className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4 text-center">
         <div className="max-w-md space-y-2">
-          <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">
+          <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">
             Sprint Board
           </h2>
           <p className="text-sm text-[rgb(var(--zc-text))]">No active sprint.</p>
@@ -44,7 +44,7 @@ export function SprintBoardPage() {
     <section className="space-y-4">
       <div>
         <h2 className="text-2xl font-bold">
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-500">📌 Sprint Board</span>
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">📌 Sprint Board</span>
         </h2>
         <p className="mt-1 text-sm text-[rgb(var(--zc-muted2))]">
           <span className="inline-flex items-center gap-2">

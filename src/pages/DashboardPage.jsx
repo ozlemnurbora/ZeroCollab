@@ -179,7 +179,7 @@ export function DashboardPage() {
 
   return (
     <section>
-      <h1 className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 sm:text-3xl">
+      <h1 className="text-2xl font-bold tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-600 sm:text-3xl">
         {t('page_dashboard_title')}
       </h1>
 

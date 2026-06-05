@@ -1047,8 +1047,81 @@ export function ProductBacklogPage() {
     }
   }, [createType])
 
+  // Reorder an item within its display group (sprint group or backlog group) by
+  // swapping it with its neighbor. Persists order via sequential `orderIndex`
+  // values for the whole group, which avoids the duplicate-number bug the old
+  // free-text priority input allowed.
+  const moveItemInGroup = (groupList, index, direction) => {
+    const list = Array.isArray(groupList) ? groupList : []
+    const targetIndex = direction === 'up' ? index - 1 : index + 1
+    if (targetIndex < 0 || targetIndex >= list.length) return
+
+    const reordered = [...list]
+    const tmp = reordered[index]
+    reordered[index] = reordered[targetIndex]
+    reordered[targetIndex] = tmp
+
+    const orderMap = new Map()
+    reordered.forEach((it, i) => {
+      if (it?.id) orderMap.set(it.id, i + 1)
+    })
+
+    setItems((prev) => {
+      const uid = ownerUserIdRef.current
+      const now = Date.now()
+      const changed = []
+      const next = (Array.isArray(prev) ? prev : []).map((it) => {
+        if (!it?.id || !orderMap.has(it.id)) return it
+        const newOrder = orderMap.get(it.id)
+        if (Number(it.orderIndex ?? it.order_index ?? 0) === newOrder) return it
+        const updated = { ...it, orderIndex: newOrder, updatedAt: now }
+        changed.push(updated)
+        return updated
+      })
+      if (uid) void saveTasks(next, uid, { reason: 'ProductBacklog reorder' })
+      if (changed.length > 0) void syncAgileItems(changed, next)
+      return next
+    })
+  }
+
   const renderItemRows = (itemList) => {
-    return itemList.map((it) => {
+    return itemList.map((it, rowIndex) => {
+      const isFirstInGroup = rowIndex === 0
+      const isLastInGroup = rowIndex === itemList.length - 1
+      const moveArrows = (
+        <div className="flex flex-col items-center justify-center gap-0.5">
+          {!isFirstInGroup && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="Move up"
+              title="Move up"
+              onClick={(e) => {
+                e.stopPropagation()
+                moveItemInGroup(itemList, rowIndex, 'up')
+              }}
+              className="flex h-3.5 w-5 cursor-pointer items-center justify-center rounded text-[9px] leading-none text-[rgb(var(--zc-muted))] transition hover:bg-[rgb(var(--zc-border)/0.5)] hover:text-indigo-300"
+            >
+              ▲
+            </span>
+          )}
+          {!isLastInGroup && (
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="Move down"
+              title="Move down"
+              onClick={(e) => {
+                e.stopPropagation()
+                moveItemInGroup(itemList, rowIndex, 'down')
+              }}
+              className="flex h-3.5 w-5 cursor-pointer items-center justify-center rounded text-[9px] leading-none text-[rgb(var(--zc-muted))] transition hover:bg-[rgb(var(--zc-border)/0.5)] hover:text-indigo-300"
+            >
+              ▼
+            </span>
+          )}
+        </div>
+      )
       const itType = normalizeItemType(it)
       const state = normalizeBacklogState(it.backlogState)
       const typeDepthFallback = { epic: 0, feature: 1, user_story: 2, task: 3 }
@@ -1110,6 +1183,7 @@ export function ProductBacklogPage() {
         >
           <div className="sm:hidden">
             <div className="flex items-start gap-2">
+              <div className="mt-0.5 shrink-0">{moveArrows}</div>
               <span className={`mt-0.5 inline-flex shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${typeBadge(itType)}`}>
                 {itemTypeLabel(itType)}
               </span>
@@ -1166,16 +1240,7 @@ export function ProductBacklogPage() {
           </div>
 
           <div className="hidden sm:grid sm:grid-cols-[40px_1fr_90px_80px_80px_50px_36px_70px] gap-2 items-center">
-            <input
-              type="number"
-              min="1"
-              className="h-7 w-10 rounded border border-[rgb(var(--zc-border))] bg-transparent px-1 text-center text-xs text-[rgb(var(--zc-muted))] focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
-              value={orderIndex}
-              onChange={(e) => { e.stopPropagation(); updateItem(it.id, { orderIndex: Number(e.target.value) || 0 }) }}
-              onClick={(e) => e.stopPropagation()}
-              placeholder="#"
-              title="Priority order"
-            />
+            {moveArrows}
             <div className="min-w-0 flex items-center" style={{ paddingLeft: `${indentPx}px` }}>
               {viewMode === 'hierarchy' && depth > 0 && (
                 <span className="text-[rgb(var(--zc-subtle))] text-xs select-none shrink-0 mr-1.5">└</span>
@@ -1250,7 +1315,7 @@ export function ProductBacklogPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-400 to-indigo-400">Product Backlog</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">Product Backlog</span>
           </h1>
           <p className="mt-1 text-sm text-[rgb(var(--zc-muted))]">
             A prioritized list of all work items. Refine items here, then commit to sprints.

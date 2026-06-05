@@ -617,7 +617,7 @@ export function SprintPlanningPage() {
     return (
       <section>
         <h2 className="text-2xl font-bold">
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">
             Sprint Planning
           </span>
         </h2>
@@ -632,7 +632,7 @@ export function SprintPlanningPage() {
     return (
       <section>
         <h2 className="text-2xl font-bold">
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">
             Sprint Planning
           </span>
         </h2>
@@ -646,7 +646,7 @@ export function SprintPlanningPage() {
   return (
     <section className="space-y-6">
       <h2 className="text-2xl font-bold">
-        <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-500">
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">
           Sprint Planning
         </span>
       </h2>
@@ -666,7 +666,7 @@ export function SprintPlanningPage() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-indigo-500 bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
-          <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">
+          <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-cyan-600">
             🏃 Active Sprint
           </h3>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
@@ -872,7 +872,7 @@ export function SprintPlanningPage() {
         </section>
 
         <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-emerald-500 bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
-          <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-green-400">
+          <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-emerald-500 to-green-600">
             📦 Ready Backlog
           </h3>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
@@ -1100,7 +1100,7 @@ export function SprintPlanningPage() {
         </section>
 
         <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-amber-500 bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
-          <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-amber-400 to-orange-400">
+          <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">
             📌 Sprint Backlog
           </h3>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
