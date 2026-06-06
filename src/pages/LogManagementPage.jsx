@@ -47,12 +47,80 @@ function downloadJson(filename, data) {
   URL.revokeObjectURL(url)
 }
 
-function humanizeAction(action) {
-  if (!action) return 'Activity'
+const LOG_VERB_KEYS = {
+  created: 'logs_verb_created',
+  updated: 'logs_verb_updated',
+  deleted: 'logs_verb_deleted',
+  completed: 'logs_verb_completed',
+  added: 'logs_verb_added',
+  removed: 'logs_verb_removed',
+  scheduled: 'logs_verb_scheduled',
+  joined: 'logs_verb_joined',
+  left: 'logs_verb_left',
+}
+
+const LOG_MSG_KEYS = {
+  'task.created': 'logs_msg_task_created',
+  'task.deleted': 'logs_msg_task_deleted',
+  'task.updated': 'logs_msg_task_updated',
+  'story.created': 'logs_msg_story_created',
+  'story.deleted': 'logs_msg_story_deleted',
+  'epic.created': 'logs_msg_epic_created',
+  'epic.deleted': 'logs_msg_epic_deleted',
+  'feature.created': 'logs_msg_feature_created',
+  'feature.deleted': 'logs_msg_feature_deleted',
+  'meeting.created': 'logs_msg_meeting_created',
+  'meeting.deleted': 'logs_msg_meeting_deleted',
+  'calendar.created': 'logs_msg_calendar_created',
+  'calendar.deleted': 'logs_msg_calendar_deleted',
+  'project.created': 'logs_msg_project_created',
+  'project.deleted': 'logs_msg_project_deleted',
+  'team.created': 'logs_msg_team_created',
+  'team.deleted': 'logs_msg_team_deleted',
+}
+
+// Logs are stored with English messages at creation time. Re-localize at display
+// time from the action + the quoted entity name so the panel follows the active
+// language. Unknown actions fall back to the stored message verbatim.
+function localizeMessage(log, t) {
+  const stored = log?.message || '—'
+  const action = log?.action
+  const message = String(log?.message || '')
+
+  if (action === 'auth.login') {
+    const email = message.replace(/^Signed in as\s*/i, '').trim()
+    return email ? t('logs_msg_login', { email }) : stored
+  }
+  if (action === 'auth.logout') {
+    const email = message.replace(/^Signed out\s*/i, '').trim()
+    return email ? t('logs_msg_logout', { email }) : t('logs_action_logout')
+  }
+  if (action === 'evaluation.created') {
+    const scoreMatch = message.match(/(\d+)\s*\/\s*100/)
+    const score = scoreMatch ? scoreMatch[1] : ''
+    return score ? t('logs_msg_eval_completed', { score }) : stored
+  }
+
+  const key = LOG_MSG_KEYS[action]
+  if (!key) return stored
+  const match = message.match(/["']([^"']+)["']/)
+  const title = match ? match[1] : ''
+  if (!title) return stored
+  return t(key, { title })
+}
+
+function humanizeAction(action, t) {
+  if (!action) return t('logs_activity')
+  if (action === 'auth.login') return t('logs_action_login')
+  if (action === 'auth.logout') return t('logs_action_logout')
   const parts = String(action).split('.')
   const noun = parts[0] || 'item'
-  const verb = parts.slice(1).join(' ') || 'updated'
-  return `${noun[0].toUpperCase()}${noun.slice(1)} ${verb}`
+  const verb = parts.slice(1).join('.') || 'updated'
+  const nounLabel = LOG_CATEGORY_META[noun]
+    ? t(`logs_cat_${noun}`)
+    : `${noun[0].toUpperCase()}${noun.slice(1)}`
+  const verbLabel = LOG_VERB_KEYS[verb] ? t(LOG_VERB_KEYS[verb]) : verb
+  return `${nounLabel} ${verbLabel}`
 }
 
 export function LogManagementPage() {
@@ -202,7 +270,7 @@ export function LogManagementPage() {
             <option value="all">{t('logs_filter_all_categories')}</option>
             {categoryOptions.map(([key, meta]) => (
               <option key={key} value={key}>
-                {meta.icon} {meta.label}
+                {meta.icon} {t(`logs_cat_${key}`)}
               </option>
             ))}
           </select>
@@ -213,9 +281,9 @@ export function LogManagementPage() {
             className="h-9 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))] focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
           >
             <option value="all">{t('logs_filter_all_severities')}</option>
-            {severityOptions.map(([key, meta]) => (
+            {severityOptions.map(([key]) => (
               <option key={key} value={key}>
-                {meta.label}
+                {t(`logs_sev_${key}`)}
               </option>
             ))}
           </select>
@@ -262,7 +330,7 @@ export function LogManagementPage() {
               const catMeta =
                 LOG_CATEGORY_META[log.category] || LOG_CATEGORY_META.system
               const sevMeta = LOG_SEVERITY_META[log.severity]
-              const time = formatLogTime(log.timestamp)
+              const time = formatLogTime(log.timestamp, t)
               return (
                 <li
                   key={log.id}
@@ -277,22 +345,22 @@ export function LogManagementPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-                        {humanizeAction(log.action)}
+                        {humanizeAction(log.action, t)}
                       </span>
                       {sevMeta && log.severity !== 'info' ? (
                         <span
                           className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${sevMeta.badgeClass}`}
                         >
-                          {sevMeta.label}
+                          {t(`logs_sev_${log.severity}`)}
                         </span>
                       ) : null}
                     </div>
                     <p className="mt-0.5 truncate text-xs text-[rgb(var(--zc-muted))]">
-                      {log.message || '—'}
+                      {localizeMessage(log, t)}
                       {log.projectName ? (
                         <span className="text-[rgb(var(--zc-subtle))]">
                           {' '}
-                          · in {log.projectName}
+                          · {t('logs_in_project', { name: log.projectName })}
                         </span>
                       ) : null}
                     </p>
@@ -325,7 +393,7 @@ export function LogManagementPage() {
               variant="secondary"
               onClick={() => setConfirmClearOpen(false)}
             >
-              Cancel
+              {t('btn_cancel')}
             </Button>
             <Button
               variant="danger"

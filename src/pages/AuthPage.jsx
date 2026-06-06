@@ -88,7 +88,7 @@ function SignUpFormFields({
       <input type="password" style={{ display: 'none' }} />
       <div>
         <label htmlFor="auth-email-up" className="mb-1 block text-xs font-medium text-[rgb(var(--zc-muted2))]">
-          Email
+          {t('auth_email')}
         </label>
         <input
           key="signup-email"
@@ -97,7 +97,7 @@ function SignUpFormFields({
           data-lpignore="true"
           data-form-type="other"
           name="signup-email-field"
-          placeholder="Email"
+          placeholder={t('auth_email')}
           value={signUpEmail}
           onChange={(e) => setSignUpEmail(e.target.value)}
           id="auth-email-up"
@@ -108,7 +108,7 @@ function SignUpFormFields({
       </div>
       <div>
         <label htmlFor="auth-password-up" className="mb-1 block text-xs font-medium text-[rgb(var(--zc-muted2))]">
-          Password
+          {t('auth_password')}
         </label>
         <div className="relative">
           <input
@@ -129,7 +129,7 @@ function SignUpFormFields({
           />
           <button
             type="button"
-            aria-label={showPassword ? 'Hide password' : 'Show password'}
+            aria-label={showPassword ? t('auth_hide_password') : t('auth_show_password')}
             className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center justify-center text-[rgb(var(--zc-muted2))] hover:text-[rgb(var(--zc-text))]"
             onClick={() => setShowPassword((v) => !v)}
             disabled={loading}
@@ -157,7 +157,7 @@ function SignUpFormFields({
       </div>
       <div>
         <label htmlFor="auth-password-confirm" className="mb-1 block text-xs font-medium text-[rgb(var(--zc-muted2))]">
-          Confirm password
+          {t('auth_confirm_password')}
         </label>
         <div className="relative">
           <input
@@ -178,7 +178,7 @@ function SignUpFormFields({
           />
           <button
             type="button"
-            aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+            aria-label={showConfirmPassword ? t('auth_hide_password') : t('auth_show_password')}
             className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center justify-center text-[rgb(var(--zc-muted2))] hover:text-[rgb(var(--zc-text))]"
             onClick={() => setShowConfirmPassword((v) => !v)}
             disabled={loading}
@@ -200,7 +200,7 @@ function SignUpFormFields({
         disabled={signUpSubmitDisabled}
         className="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
       >
-        {loading ? 'Creating account…' : 'Sign Up'}
+        {loading ? t('auth_creating_account') : t('auth_sign_up')}
       </button>
     </form>
   )
@@ -250,7 +250,7 @@ export function AuthPage() {
       await signIn(email.trim(), password)
       navigate('/', { replace: true })
     } catch (err) {
-      setError(err?.message ?? 'Sign in failed')
+      setError(err?.message ?? t('auth_signin_failed'))
     } finally {
       setLoading(false)
     }
@@ -278,10 +278,10 @@ export function AuthPage() {
       if (session) {
         navigate('/', { replace: true })
       } else {
-        setInfo('Check your email to confirm your account, then sign in.')
+        setInfo(t('auth_check_email'))
       }
     } catch (err) {
-      setError(err?.message ?? 'Sign up failed')
+      setError(err?.message ?? t('auth_signup_failed'))
     } finally {
       setLoading(false)
     }
@@ -300,7 +300,7 @@ export function AuthPage() {
       setForgotSuccess(t('auth_reset_sent'))
       setResetEmail('')
     } catch (err) {
-      setError(err?.message ?? 'Request failed')
+      setError(err?.message ?? t('auth_request_failed'))
     } finally {
       setLoading(false)
     }
@@ -340,8 +340,8 @@ export function AuthPage() {
         <div className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel))] p-6 shadow-lg">
           {view !== 'forgot' ? (
             <div className="mb-6 flex gap-1 rounded-lg bg-[rgb(var(--zc-bg))] p-1">
-              {tabBtn('signin', 'Sign In')}
-              {tabBtn('signup', 'Sign Up')}
+              {tabBtn('signin', t('auth_sign_in'))}
+              {tabBtn('signup', t('auth_sign_up'))}
             </div>
           ) : null}
 
@@ -369,7 +369,7 @@ export function AuthPage() {
               </div>
               <div>
                 <label htmlFor="auth-reset-email" className="mb-1 block text-xs font-medium text-[rgb(var(--zc-muted2))]">
-                  Email
+                  {t('auth_email')}
                 </label>
                 <input
                   id="auth-reset-email"
@@ -407,7 +407,7 @@ export function AuthPage() {
             <form key="signin-form" onSubmit={handleSignIn} className="space-y-4">
               <div>
                 <label htmlFor="auth-email-in" className="mb-1 block text-xs font-medium text-[rgb(var(--zc-muted2))]">
-                  Email
+                  {t('auth_email')}
                 </label>
                 <input
                   id="auth-email-in"
@@ -422,7 +422,7 @@ export function AuthPage() {
               </div>
               <div>
                 <label htmlFor="auth-password-in" className="mb-1 block text-xs font-medium text-[rgb(var(--zc-muted2))]">
-                  Password
+                  {t('auth_password')}
                 </label>
                 <input
                   id="auth-password-in"
@@ -440,7 +440,7 @@ export function AuthPage() {
                 disabled={loading}
                 className="w-full rounded-md bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {loading ? 'Signing in…' : 'Sign In'}
+                {loading ? t('auth_signing_in') : t('auth_sign_in')}
               </button>
               <p className="text-center text-sm">
                 <button

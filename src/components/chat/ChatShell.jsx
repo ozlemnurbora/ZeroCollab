@@ -84,7 +84,7 @@ export function ChatShell() {
   const memberNameFromAny = (member) =>
     typeof member === 'string'
       ? member
-      : member?.name || member?.email || 'Unknown'
+      : member?.name || member?.email || t('chat_unknown')
 
   const dynamicChannels = useMemo(() => {
     const channels = [...DEFAULT_CHANNELS]
@@ -568,7 +568,7 @@ export function ChatShell() {
       const outgoing = outgoingCallRef.current
       if (!isInCallRef.current || !outgoing.targetPeerId || outgoing.responded) return
       if (Date.now() - outgoing.inviteSentAt < 20000) return
-      alert('Call timed out. Please try again.')
+      alert(t('chat_call_timeout'))
       setCallPhase('failed')
       teardownCallRef.current({ broadcast: true })
     }, 1000)
@@ -586,7 +586,7 @@ export function ChatShell() {
       }
       if (Date.now() - started < 30000) return
       window.clearInterval(timer)
-      alert('Could not receive remote video. The call will end.')
+      alert(t('chat_call_no_video'))
       setCallPhase('failed')
       teardownCallRef.current({ broadcast: true })
     }, 1000)
@@ -1048,7 +1048,7 @@ export function ChatShell() {
         responded: true,
       }
       if (!accepted) {
-        alert('Call was declined.')
+        alert(t('chat_call_declined'))
         teardownCallRef.current({ broadcast: false })
         return
       }
@@ -1072,7 +1072,7 @@ export function ChatShell() {
         })
       } catch (err) {
         console.error('[Call] outbound to joiner failed:', responderPeerId, err)
-        alert('Could not start the call. Check your connection and try again.')
+        alert(t('chat_call_start_failed'))
         teardownCallRef.current({ broadcast: true })
         return
       }
@@ -1349,20 +1349,20 @@ export function ChatShell() {
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
               <span className="rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.6)] px-2 py-0.5 text-[rgb(var(--zc-muted2))]">
-                {uniqueOnlineUsers.length} online
+                {t('chat_online', { count: uniqueOnlineUsers.length })}
               </span>
               {isDirectConversation ? (
                 <span className="text-[rgb(var(--zc-muted2))]">
-                  Select a direct message to start a one-to-one call.
+                  {t('chat_dm_call_hint')}
                 </span>
               ) : (
                 <span className="text-[rgb(var(--zc-muted2))]">
-                  Direct calling is only available in private conversations. Use meetings for group calls.
+                  {t('chat_group_call_hint')}
                 </span>
               )}
               {callPhase !== 'idle' ? (
                 <span className="rounded border border-indigo-500/40 bg-indigo-500/10 px-2 py-0.5 text-[rgb(var(--zc-muted2))]">
-                  Call status: {callPhase}
+                  {t('chat_call_status')} {callPhase}
                 </span>
               ) : null}
             </div>
@@ -1377,7 +1377,7 @@ export function ChatShell() {
                 onClick={() => navigate('/tasks')}
                 className="h-9 rounded-md bg-indigo-500/90 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-400"
               >
-                Create Meeting
+                {t('chat_create_meeting')}
               </button>
             )}
           </div>
@@ -1411,7 +1411,7 @@ export function ChatShell() {
       {incomingGroupCall && (
         <div className="fixed bottom-4 right-4 z-50 rounded-xl border border-indigo-500/40 bg-[rgb(var(--zc-panel))] p-4 shadow-xl">
           <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-            📞 {incomingGroupCall.callerEmail || incomingGroupCall.callerPeerId} is calling...
+            📞 {t('chat_is_calling', { name: incomingGroupCall.callerEmail || incomingGroupCall.callerPeerId })}
           </p>
           <div className="mt-3 flex gap-2">
             <button
@@ -1419,7 +1419,7 @@ export function ChatShell() {
               onClick={() => void handleAcceptCall()}
               className="flex-1 rounded-lg bg-emerald-500 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-400"
             >
-              Accept
+              {t('chat_accept')}
             </button>
             <button
               type="button"
@@ -1438,7 +1438,7 @@ export function ChatShell() {
               }}
               className="flex-1 rounded-lg bg-rose-500 px-3 py-2 text-sm font-medium text-white hover:bg-rose-400"
             >
-              Decline
+              {t('chat_decline')}
             </button>
           </div>
         </div>

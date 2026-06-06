@@ -1315,10 +1315,10 @@ export function ProductBacklogPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">Product Backlog</span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">{t('pb_title')}</span>
           </h1>
           <p className="mt-1 text-sm text-[rgb(var(--zc-muted))]">
-            A prioritized list of all work items. Refine items here, then commit to sprints.
+            {t('pb_subtitle')}
           </p>
           {activeProject ? (
             <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
@@ -1329,7 +1329,7 @@ export function ProductBacklogPage() {
             </div>
           ) : null}
         </div>
-        <button onClick={() => openCreate('task')} className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-600 hover:to-purple-700 transition">+ New Backlog Item</button>
+        <button onClick={() => openCreate('task')} className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-600 hover:to-purple-700 transition">+ {t('pb_new_item')}</button>
       </div>
 
       {/* ── Toolbar: Search + Filters + View Toggle ── */}
@@ -1340,7 +1340,7 @@ export function ProductBacklogPage() {
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[rgb(var(--zc-subtle))]">🔍</span>
             <input
               type="text"
-              placeholder="Search backlog items..."
+              placeholder={t('pb_search')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] py-2 pl-9 pr-3 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
@@ -1353,7 +1353,7 @@ export function ProductBacklogPage() {
             onChange={(e) => setFilterType(e.target.value)}
             className="h-9 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))] focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
           >
-            <option value="all">All Types</option>
+            <option value="all">{t('pb_all_types')}</option>
             <option value="epic">Epic</option>
             <option value="feature">Feature</option>
             <option value="user_story">User Story</option>
@@ -1365,7 +1365,7 @@ export function ProductBacklogPage() {
             onChange={(e) => setFilterState(e.target.value)}
             className="h-9 rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))] focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
           >
-            <option value="all">All States</option>
+            <option value="all">{t('pb_all_states')}</option>
             <option value="new">New</option>
             <option value="refined">Refined</option>
             <option value="ready">Ready</option>
@@ -1382,14 +1382,14 @@ export function ProductBacklogPage() {
               onClick={() => setViewMode('flat')}
               className={`px-3 py-1.5 text-xs font-medium transition ${viewMode === 'flat' ? 'bg-indigo-600 text-white' : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.4)]'}`}
             >
-              List
+              {t('pb_view_list')}
             </button>
             <button
               type="button"
               onClick={() => setViewMode('hierarchy')}
               className={`px-3 py-1.5 text-xs font-medium transition ${viewMode === 'hierarchy' ? 'bg-indigo-600 text-white' : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.4)]'}`}
             >
-              Hierarchy
+              {t('pb_view_hierarchy')}
             </button>
           </div>
         </div>
@@ -1430,7 +1430,7 @@ export function ProductBacklogPage() {
           <div>
             <div className="flex items-center justify-between rounded-t-lg border border-b-0 border-[rgb(var(--zc-border))] bg-gradient-to-r from-slate-500/10 via-gray-500/5 to-transparent px-4 py-2">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-[rgb(var(--zc-text))]">Backlog</span>
+                <span className="text-sm font-semibold text-[rgb(var(--zc-text))]">{t('pb_group_backlog')}</span>
                 <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] font-medium text-[rgb(var(--zc-muted))]">{sprintGroupedItems.backlogItems.length} items</span>
               </div>
             </div>

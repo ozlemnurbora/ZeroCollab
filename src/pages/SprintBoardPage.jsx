@@ -1,18 +1,20 @@
 import { Link } from 'react-router-dom'
 import { KanbanBoard } from '../components/kanban/KanbanBoard.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
+import { useLanguage } from '../utils/LanguageContext.jsx'
 
 export function SprintBoardPage() {
+  const { t } = useLanguage()
   const { activeProject, activeSprint } = useWorkspace()
 
   if (!activeProject) {
     return (
       <section>
         <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">
-          Sprint Board
+          {t('sb_title')}
         </h2>
         <p className="mt-3 text-sm text-[rgb(var(--zc-muted2))]">
-          Select an active project to view the sprint board.
+          {t('sb_no_project')}
         </p>
       </section>
     )
@@ -23,18 +25,18 @@ export function SprintBoardPage() {
       <section className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4 text-center">
         <div className="max-w-md space-y-2">
           <h2 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">
-            Sprint Board
+            {t('sb_title')}
           </h2>
-          <p className="text-sm text-[rgb(var(--zc-text))]">No active sprint.</p>
+          <p className="text-sm text-[rgb(var(--zc-text))]">{t('po_no_active_sprint')}</p>
           <p className="text-sm text-[rgb(var(--zc-muted2))]">
-            Create a sprint from Sprint Planning.
+            {t('sb_create_hint')}
           </p>
         </div>
         <Link
           to="/sprint-planning"
           className="rounded-md bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2 text-sm font-medium text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-600 hover:to-purple-700 transition"
         >
-          Go to Sprint Planning
+          {t('sb_go_planning')}
         </Link>
       </section>
     )
@@ -44,7 +46,7 @@ export function SprintBoardPage() {
     <section className="space-y-4">
       <div>
         <h2 className="text-2xl font-bold">
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">📌 Sprint Board</span>
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">📌 {t('sb_title')}</span>
         </h2>
         <p className="mt-1 text-sm text-[rgb(var(--zc-muted2))]">
           <span className="inline-flex items-center gap-2">

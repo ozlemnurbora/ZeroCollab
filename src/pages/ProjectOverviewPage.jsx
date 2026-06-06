@@ -14,6 +14,7 @@ import { SprintCreationModal } from '../components/workspace/SprintCreationModal
 import { getSprintRemainingDays } from '../utils/sprintDateUtils.js'
 import { fetchRemoteProjectTasks } from '../utils/taskRemoteStorage.js'
 import { calculateSprintProgress, getTasksForActiveSprint } from '../utils/sprint/sprintProgressUtils.js'
+import { useLanguage } from '../utils/LanguageContext.jsx'
 
 function normalizeItemType(item) {
   if (!item) return 'task'
@@ -80,6 +81,7 @@ function fmtDate(value) {
 }
 
 export function ProjectOverviewPage() {
+  const { t } = useLanguage()
   const { user } = useAuth()
   const {
     activeProject,
@@ -284,7 +286,7 @@ export function ProjectOverviewPage() {
       await completeProjectSprint(activeSprint.id)
       setCompleteWarningOpen(false)
     } catch (err) {
-      setSprintActionError(err?.message || 'Failed to complete sprint.')
+      setSprintActionError(err?.message || t('po_err_complete'))
     } finally {
       setCompletingSprint(false)
     }
@@ -294,10 +296,10 @@ export function ProjectOverviewPage() {
     return (
       <section>
         <h1 className="text-2xl font-bold">
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-pink-500 to-violet-600">🎯 Project Overview</span>
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-pink-500 to-violet-600">🎯 {t('po_title')}</span>
         </h1>
         <p className="mt-3 text-sm text-[rgb(var(--zc-muted2))]">
-          Select an active project to view overview.
+          {t('po_no_project')}
         </p>
       </section>
     )
@@ -306,15 +308,15 @@ export function ProjectOverviewPage() {
   return (
     <section className="space-y-6">
       <h1 className="text-2xl font-bold">
-        <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-pink-500 to-violet-600">🎯 Project Overview</span>
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-pink-500 to-violet-600">🎯 {t('po_title')}</span>
       </h1>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-indigo-500 bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-2">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-blue-600">📁 Project Identity</h2>
-              <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">High-level project context</p>
+              <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-blue-600">📁 {t('po_project_identity')}</h2>
+              <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">{t('po_project_identity_sub')}</p>
             </div>
             {canEditProjectOverview ? (
               isEditingOverview ? (
@@ -330,7 +332,7 @@ export function ProjectOverviewPage() {
                       setTargetEndDraft(projectForOverview.targetEndDate || projectForOverview.target_end_date || '')
                     }}
                   >
-                    Cancel
+                    {t('btn_cancel')}
                   </Button>
                   <Button
                     disabled={overviewSaving}
@@ -344,7 +346,7 @@ export function ProjectOverviewPage() {
                         const s = Date.parse(start)
                         const e = Date.parse(end)
                         if (Number.isFinite(s) && Number.isFinite(e) && s > e) {
-                          setOverviewError('Start Date cannot be after Target End Date.')
+                          setOverviewError(t('po_err_date_order'))
                           return
                         }
                       }
@@ -356,14 +358,14 @@ export function ProjectOverviewPage() {
                           target_end_date: end || null,
                         })
                         if (!ok) {
-                          setOverviewError('Failed to save project overview.')
+                          setOverviewError(t('po_err_save'))
                           return
                         }
                         setIsEditingOverview(false)
                       })().finally(() => setOverviewSaving(false))
                     }}
                   >
-                    {overviewSaving ? 'Saving…' : 'Save'}
+                    {overviewSaving ? t('po_saving') : t('btn_save')}
                   </Button>
                 </div>
               ) : (
@@ -374,20 +376,20 @@ export function ProjectOverviewPage() {
                     setIsEditingOverview(true)
                   }}
                 >
-                  Edit
+                  {t('task_edit')}
                 </Button>
               )
             ) : null}
           </div>
 
           <div className="mt-4">
-            <p className="text-sm text-[rgb(var(--zc-muted))]">Project Name</p>
+            <p className="text-sm text-[rgb(var(--zc-muted))]">{t('po_project_name')}</p>
             <p className="text-lg font-semibold text-[rgb(var(--zc-text))]">{activeProject.name}</p>
           </div>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
-              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Project Goal</p>
+              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">{t('po_project_goal')}</p>
               {isEditingOverview && canEditProjectOverview ? (
                 <textarea
                   value={goalDraft}
@@ -400,18 +402,18 @@ export function ProjectOverviewPage() {
               )}
             </div>
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
-              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Description</p>
+              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">{t('label_description')}</p>
               <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">{activeProject.description || '—'}</p>
             </div>
           </div>
 
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
-              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Project Admin</p>
+              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">{t('po_project_admin')}</p>
               <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">{projectAdmin}</p>
             </div>
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
-              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Project Managers</p>
+              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">{t('po_project_managers')}</p>
               <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
                 {projectManagers.length ? projectManagers.join(', ') : '—'}
               </p>
@@ -420,21 +422,21 @@ export function ProjectOverviewPage() {
         </section>
 
         <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-emerald-500 bg-[rgb(var(--zc-bg)/0.3)] p-5">
-          <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">📊 Project Status</h2>
-          <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">Lifecycle and schedule</p>
+          <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">📊 {t('po_project_status')}</h2>
+          <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">{t('po_status_sub')}</p>
 
           <div className="mt-4 flex flex-wrap gap-2">
             <span className="rounded-full bg-indigo-500/15 px-2.5 py-1 text-xs font-medium text-indigo-300">
-              Phase: {activeProject.phase || 'planning'}
+              {t('po_phase')} {activeProject.phase || 'planning'}
             </span>
             <span className="rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300">
-              Status: {activeProject.status || 'active'}
+              {t('po_status_badge')} {activeProject.status || 'active'}
             </span>
           </div>
 
           <div className="mt-4 space-y-2 text-sm">
             <div className="flex items-center justify-between rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
-              <span className="text-[rgb(var(--zc-muted))]">Start Date</span>
+              <span className="text-[rgb(var(--zc-muted))]">{t('po_start_date')}</span>
               {isEditingOverview && canEditProjectOverview ? (
                 <input
                   type="date"
@@ -447,7 +449,7 @@ export function ProjectOverviewPage() {
               )}
             </div>
             <div className="flex items-center justify-between rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
-              <span className="text-[rgb(var(--zc-muted))]">Target End Date</span>
+              <span className="text-[rgb(var(--zc-muted))]">{t('po_target_end_date')}</span>
               {isEditingOverview && canEditProjectOverview ? (
                 <input
                   type="date"
@@ -460,7 +462,7 @@ export function ProjectOverviewPage() {
               )}
             </div>
             <div className="flex items-center justify-between rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
-              <span className="text-[rgb(var(--zc-muted))]">Created At</span>
+              <span className="text-[rgb(var(--zc-muted))]">{t('po_created_at')}</span>
               <span className="text-[rgb(var(--zc-text))]">{fmtDate(activeProject.created_at)}</span>
             </div>
           </div>
@@ -472,22 +474,22 @@ export function ProjectOverviewPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-cyan-500 bg-[rgb(var(--zc-bg)/0.3)] p-5">
-          <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">🏃 Sprint Summary</h2>
-          <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">Current delivery cycle</p>
+          <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">🏃 {t('po_sprint_summary')}</h2>
+          <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">{t('po_sprint_summary_sub')}</p>
           {activeSprint ? (
             <div className="mt-4 space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
                   <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    Active Sprint
+                    {t('sp_active_sprint')}
                   </p>
                   <p className="mt-1 text-sm font-medium text-[rgb(var(--zc-text))]">
-                    Sprint {activeSprint.sprint_number}
+                    {t('po_sprint_label')} {activeSprint.sprint_number}
                   </p>
                 </div>
                 <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
                   <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    Status
+                    {t('po_status_field')}
                   </p>
                   <p className="mt-1 text-sm font-medium text-[rgb(var(--zc-text))]">
                     {activeSprint.status}
@@ -495,16 +497,16 @@ export function ProjectOverviewPage() {
                 </div>
                 <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
                   <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    Duration
+                    {t('po_duration')}
                   </p>
                   <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
-                    {activeSprint.duration_weeks} week
-                    {activeSprint.duration_weeks > 1 ? 's' : ''}
+                    {activeSprint.duration_weeks}{' '}
+                    {activeSprint.duration_weeks > 1 ? t('po_weeks') : t('po_week')}
                   </p>
                 </div>
                 <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
                   <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    Remaining Days
+                    {t('po_remaining_days')}
                   </p>
                   <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
                     {remainingDays ?? '—'}
@@ -512,7 +514,7 @@ export function ProjectOverviewPage() {
                 </div>
                 <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3 sm:col-span-2">
                   <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    Dates
+                    {t('po_dates')}
                   </p>
                   <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
                     {fmtDate(activeSprint.start_date)} → {fmtDate(activeSprint.end_date)}
@@ -520,7 +522,7 @@ export function ProjectOverviewPage() {
                 </div>
                 <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3 sm:col-span-2">
                   <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    Sprint Goal
+                    {t('sp_sprint_goal')}
                   </p>
                   <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
                     {activeSprint.sprint_goal || '—'}
@@ -531,11 +533,10 @@ export function ProjectOverviewPage() {
               {sprintReadiness ? (
                 <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.3)] p-4">
                   <h3 className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">
-                    ✅ Sprint Readiness Checklist
+                    ✅ {t('po_sprint_readiness')}
                   </h3>
                   <p className="mt-1 text-[11px] text-[rgb(var(--zc-subtle))]">
-                    Read-only view of active sprint backlog completion. Does not
-                    block completing the sprint.
+                    {t('po_readiness_sub')}
                   </p>
                   <ul className="mt-3 space-y-2 text-sm text-[rgb(var(--zc-muted))]">
                     <li className="flex gap-2">
@@ -551,8 +552,8 @@ export function ProjectOverviewPage() {
                       </span>
                       <span>
                         {sprintReadiness.goalDefined
-                          ? 'Sprint goal is defined'
-                          : 'Sprint goal is not defined yet'}
+                          ? t('po_chk_goal_yes')
+                          : t('po_chk_goal_no')}
                       </span>
                     </li>
                     <li className="flex gap-2">
@@ -568,8 +569,8 @@ export function ProjectOverviewPage() {
                       </span>
                       <span>
                         {sprintReadiness.allStoriesDone
-                          ? 'All committed user stories completed'
-                          : 'Some committed user stories are not done'}
+                          ? t('po_chk_stories_yes')
+                          : t('po_chk_stories_no')}
                         <span className="ml-1 text-[11px] text-[rgb(var(--zc-subtle))]">
                           ({sprintReadiness.storiesDone} /{' '}
                           {sprintReadiness.storiesTotal})
@@ -589,8 +590,8 @@ export function ProjectOverviewPage() {
                       </span>
                       <span>
                         {sprintReadiness.allLinkedDone
-                          ? 'Linked tasks completed'
-                          : 'Some linked tasks are not done'}
+                          ? t('po_chk_linked_yes')
+                          : t('po_chk_linked_no')}
                         <span className="ml-1 text-[11px] text-[rgb(var(--zc-subtle))]">
                           ({sprintReadiness.linkedDone} /{' '}
                           {sprintReadiness.linkedTotal})
@@ -610,8 +611,8 @@ export function ProjectOverviewPage() {
                       </span>
                       <span>
                         {sprintReadiness.allIndepDone
-                          ? 'Independent sprint tasks completed'
-                          : 'Some independent sprint tasks are not done'}
+                          ? t('po_chk_indep_yes')
+                          : t('po_chk_indep_no')}
                         <span className="ml-1 text-[11px] text-[rgb(var(--zc-subtle))]">
                           ({sprintReadiness.indepDone} /{' '}
                           {sprintReadiness.indepTotal})
@@ -631,13 +632,11 @@ export function ProjectOverviewPage() {
                       </span>
                       <span>
                         {sprintReadiness.noUnfinishedWork
-                          ? 'No unfinished sprint work remains'
-                          : 'Unfinished sprint work remains'}
+                          ? t('po_chk_unfinished_yes')
+                          : t('po_chk_unfinished_no')}
                         {sprintReadiness.unfinishedCount > 0 ? (
                           <span className="ml-1 text-[11px] text-amber-300/90">
-                            ({sprintReadiness.unfinishedCount} item
-                            {sprintReadiness.unfinishedCount === 1 ? '' : 's'}{' '}
-                            not done)
+                            ({t('po_items_not_done', { count: sprintReadiness.unfinishedCount })})
                           </span>
                         ) : null}
                       </span>
@@ -645,15 +644,15 @@ export function ProjectOverviewPage() {
                   </ul>
                   <div className="mt-3 space-y-1 border-t border-[rgb(var(--zc-border))] pt-3 text-[11px] text-[rgb(var(--zc-subtle))]">
                     <p>
-                      Stories completed: {sprintReadiness.storiesDone} /{' '}
+                      {t('po_stories_completed')} {sprintReadiness.storiesDone} /{' '}
                       {sprintReadiness.storiesTotal}
                     </p>
                     <p>
-                      Linked tasks completed: {sprintReadiness.linkedDone} /{' '}
+                      {t('po_linked_completed')} {sprintReadiness.linkedDone} /{' '}
                       {sprintReadiness.linkedTotal}
                     </p>
                     <p>
-                      Independent tasks completed: {sprintReadiness.indepDone} /{' '}
+                      {t('po_indep_completed')} {sprintReadiness.indepDone} /{' '}
                       {sprintReadiness.indepTotal}
                     </p>
                   </div>
@@ -683,13 +682,13 @@ export function ProjectOverviewPage() {
                     void runCompleteSprint()
                   }}
                 >
-                  {completingSprint ? 'Completing…' : 'Complete Sprint'}
+                  {completingSprint ? t('po_completing') : t('po_complete_sprint')}
                 </Button>
               </div>
             </div>
           ) : (
             <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
-              <p className="mb-2">No active sprint.</p>
+              <p className="mb-2">{t('po_no_active_sprint')}</p>
               {sprintActionError ? (
                 <p className="mb-2 text-xs text-rose-400">{sprintActionError}</p>
               ) : null}
@@ -700,36 +699,36 @@ export function ProjectOverviewPage() {
                 }}
                 disabled={!activeProject}
               >
-                Create Sprint
+                {t('po_create_sprint')}
               </Button>
             </div>
           )}
         </section>
 
         <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-violet-500 bg-[rgb(var(--zc-bg)/0.3)] p-5">
-          <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-purple-600">📈 Project Progress</h2>
-          <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">Execution metrics</p>
+          <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-purple-600">📈 {t('po_project_progress')}</h2>
+          <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">{t('po_project_progress_sub')}</p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
-              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Total Tasks</p>
+              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">{t('dash_total_tasks')}</p>
               <p className="mt-1 text-lg font-bold text-blue-300">{progress.total}</p>
             </div>
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
-              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Completed</p>
+              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">{t('chart_completed')}</p>
               <p className="mt-1 text-lg font-semibold text-emerald-300">{progress.completed}</p>
             </div>
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
-              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">In Progress</p>
+              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">{t('status_in_progress')}</p>
               <p className="mt-1 text-lg font-semibold text-amber-300">{progress.inProgress}</p>
             </div>
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
-              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">Completion</p>
+              <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">{t('po_completion')}</p>
               <p className="mt-1 text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-600">{progress.completionPct}%</p>
             </div>
           </div>
           <div className="mt-4">
             <div className="mb-1 flex items-center justify-between text-xs text-[rgb(var(--zc-muted))]">
-              <span>Completion</span>
+              <span>{t('po_completion')}</span>
               <span>{progress.completionPct}%</span>
             </div>
             <div className="h-2 w-full overflow-hidden rounded-full bg-[rgb(var(--zc-border))]">
@@ -751,7 +750,7 @@ export function ProjectOverviewPage() {
             setSprintActionError('')
           } catch (err) {
             const message =
-              err?.message || 'Only one active sprint is allowed per project.'
+              err?.message || t('po_err_one_sprint')
             setSprintActionError(message)
             throw err
           }
@@ -764,7 +763,7 @@ export function ProjectOverviewPage() {
           if (completingSprint) return
           setCompleteWarningOpen(false)
         }}
-        title="Sprint still has unfinished work"
+        title={t('po_warn_title')}
         footer={
           <div className="flex items-center justify-end gap-2">
             <Button
@@ -772,7 +771,7 @@ export function ProjectOverviewPage() {
               disabled={completingSprint}
               onClick={() => setCompleteWarningOpen(false)}
             >
-              Cancel
+              {t('btn_cancel')}
             </Button>
             <Button
               variant="danger"
@@ -781,19 +780,18 @@ export function ProjectOverviewPage() {
                 void runCompleteSprint()
               }}
             >
-              {completingSprint ? 'Completing…' : 'Complete Anyway'}
+              {completingSprint ? t('po_completing') : t('po_complete_anyway')}
             </Button>
           </div>
         }
       >
         <p className="text-sm text-[rgb(var(--zc-muted))]">
-          Some sprint goals or work items are not fully complete. Review the
-          remaining items before closing the sprint.
+          {t('po_warn_body')}
         </p>
         {sprintReadiness ? (
           <ul className="mt-4 space-y-1.5 text-sm text-[rgb(var(--zc-text))]">
             <li>
-              Incomplete user stories:{' '}
+              {t('po_incomplete_stories')}{' '}
               <span className="font-semibold tabular-nums">
                 {Math.max(
                   0,
@@ -802,7 +800,7 @@ export function ProjectOverviewPage() {
               </span>
             </li>
             <li>
-              Incomplete linked tasks:{' '}
+              {t('po_incomplete_linked')}{' '}
               <span className="font-semibold tabular-nums">
                 {Math.max(
                   0,
@@ -811,7 +809,7 @@ export function ProjectOverviewPage() {
               </span>
             </li>
             <li>
-              Incomplete independent tasks:{' '}
+              {t('po_incomplete_indep')}{' '}
               <span className="font-semibold tabular-nums">
                 {Math.max(
                   0,
@@ -820,9 +818,9 @@ export function ProjectOverviewPage() {
               </span>
             </li>
             <li>
-              Sprint goal missing:{' '}
+              {t('po_goal_missing')}{' '}
               <span className="font-semibold">
-                {sprintReadiness.goalDefined ? 'No' : 'Yes'}
+                {sprintReadiness.goalDefined ? t('po_no') : t('po_yes')}
               </span>
             </li>
           </ul>
@@ -831,17 +829,16 @@ export function ProjectOverviewPage() {
           <p className="mt-3 text-xs text-rose-400">{sprintActionError}</p>
         ) : null}
         <p className="mt-4 text-[11px] text-[rgb(var(--zc-subtle))]">
-          Completing now will close the sprint without changing any task or
-          story statuses.
+          {t('po_warn_footer')}
         </p>
       </Modal>
 
       <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-amber-500 bg-[rgb(var(--zc-bg)/0.3)] p-5">
-        <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">👥 Team Summary</h2>
-        <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">Assigned teams and leadership</p>
+        <h2 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">👥 {t('po_team_summary')}</h2>
+        <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">{t('po_team_summary_sub')}</p>
         {assignedTeams.length === 0 ? (
           <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
-            No assigned teams
+            {t('po_no_teams')}
           </div>
         ) : (
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -859,9 +856,9 @@ export function ProjectOverviewPage() {
                     <span className={`h-2.5 w-2.5 rounded-full ${team.color}`} />
                     <p className="font-medium text-[rgb(var(--zc-text))]">{team.name}</p>
                   </div>
-                  <p className="mt-2 text-[rgb(var(--zc-muted))]">Members: {team.members?.length || 0}</p>
+                  <p className="mt-2 text-[rgb(var(--zc-muted))]">{t('po_members')} {team.members?.length || 0}</p>
                   <p className="mt-1 text-[rgb(var(--zc-muted))]">
-                    Managers: {managers.length ? managers.join(', ') : '—'}
+                    {t('po_managers')} {managers.length ? managers.join(', ') : '—'}
                   </p>
                 </div>
               )

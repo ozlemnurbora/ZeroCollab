@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../utils/AuthContext.jsx'
+import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import {
   loadTasks,
@@ -55,10 +56,10 @@ const PRIORITY_LABELS = {
 }
 
 const STATUS_LABELS = {
-  todo: 'To Do',
-  in_progress: 'In Progress',
-  in_review: 'In Review',
-  done: 'Done',
+  todo: 'status_todo',
+  in_progress: 'status_in_progress',
+  in_review: 'status_in_review',
+  done: 'status_done',
 }
 
 function normalizeItemType(item) {
@@ -81,6 +82,7 @@ function getStoryPoints(task) {
 }
 
 export function SprintPlanningPage() {
+  const { t } = useLanguage()
   const { user } = useAuth()
   const {
     activeProject,
@@ -455,8 +457,8 @@ export function SprintPlanningPage() {
 
   useEffect(() => {
     if (!planningCompleteOk) return
-    const t = setTimeout(() => setPlanningCompleteOk(false), 4000)
-    return () => clearTimeout(t)
+    const timer = setTimeout(() => setPlanningCompleteOk(false), 4000)
+    return () => clearTimeout(timer)
   }, [planningCompleteOk])
 
   useEffect(() => {
@@ -484,8 +486,8 @@ export function SprintPlanningPage() {
 
   useEffect(() => {
     if (!capacitySaveOk) return
-    const t = setTimeout(() => setCapacitySaveOk(false), 3500)
-    return () => clearTimeout(t)
+    const timer = setTimeout(() => setCapacitySaveOk(false), 3500)
+    return () => clearTimeout(timer)
   }, [capacitySaveOk])
 
   useEffect(() => {
@@ -618,11 +620,11 @@ export function SprintPlanningPage() {
       <section>
         <h2 className="text-2xl font-bold">
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">
-            Sprint Planning
+            {t('sp_title')}
           </span>
         </h2>
         <p className="mt-3 text-sm text-[rgb(var(--zc-muted2))]">
-          Select an active project to plan a sprint.
+          {t('sp_no_project')}
         </p>
       </section>
     )
@@ -633,11 +635,11 @@ export function SprintPlanningPage() {
       <section>
         <h2 className="text-2xl font-bold">
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">
-            Sprint Planning
+            {t('sp_title')}
           </span>
         </h2>
         <p className="mt-3 text-sm text-[rgb(var(--zc-muted2))]">
-          No active sprint. Create one from Project Overview before planning.
+          {t('sp_no_sprint')}
         </p>
       </section>
     )
@@ -647,47 +649,47 @@ export function SprintPlanningPage() {
     <section className="space-y-6">
       <h2 className="text-2xl font-bold">
         <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">
-          Sprint Planning
+          {t('sp_title')}
         </span>
       </h2>
       <p className="text-sm text-[rgb(var(--zc-muted2))]">
-        Sprint Planning commits User Stories and their linked Tasks, while Epics and Features remain in Product Backlog/Roadmap.
+        {t('sp_intro')}
       </p>
       {hasReadyNonSprintItems ? (
         <p className="text-xs text-[rgb(var(--zc-subtle))]">
-          Epics and Features are used for backlog organization and cannot be committed directly to a sprint.
+          {t('sp_epics_features_note')}
         </p>
       ) : null}
       {!canManageSprintPlanning ? (
         <p className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] px-3 py-2 text-sm text-[rgb(var(--zc-muted2))]">
-          Read-only sprint view. Only the project manager can change sprint planning.
+          {t('sp_readonly_note')}
         </p>
       ) : null}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-indigo-500 bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
           <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-cyan-600">
-            🏃 Active Sprint
+            🏃 {t('sp_active_sprint')}
           </h3>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-            Commit ready backlog items into this sprint.
+            {t('sp_active_sprint_sub')}
           </p>
           <div className="mt-4 space-y-2 text-sm">
             <div className="flex items-center justify-between rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
-              <span className="text-[rgb(var(--zc-muted))]">Sprint</span>
+              <span className="text-[rgb(var(--zc-muted))]">{t('sp_sprint_word')}</span>
               <span className="text-[rgb(var(--zc-text))]">
                 #{activeSprint.sprint_number}
               </span>
             </div>
             <div className="flex items-center justify-between rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
-              <span className="text-[rgb(var(--zc-muted))]">Dates</span>
+              <span className="text-[rgb(var(--zc-muted))]">{t('po_dates')}</span>
               <span className="text-[rgb(var(--zc-text))]">
                 {activeSprint.start_date} → {activeSprint.end_date}
               </span>
             </div>
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
               <p className="text-[rgb(var(--zc-muted))] text-xs uppercase tracking-wide">
-                Sprint Goal
+                {t('sp_sprint_goal')}
               </p>
               <p className="mt-1 text-sm text-[rgb(var(--zc-text))]">
                 {activeSprint.sprint_goal || activeSprint.sprintGoal || '—'}
@@ -696,16 +698,16 @@ export function SprintPlanningPage() {
 
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
               <p className="text-[rgb(var(--zc-muted))] text-xs uppercase tracking-wide">
-                Planning status
+                {t('sp_planning_status')}
               </p>
               <p className="mt-1 font-medium text-[rgb(var(--zc-text))]">
-                {isPlanningCompleted ? 'Planning: Completed' : 'Planning: Draft'}
+                {isPlanningCompleted ? t('sp_planning_completed') : t('sp_planning_draft')}
               </p>
               {isPlanningCompleted &&
               (activeSprint.planningCompletedAt ||
                 activeSprint.planning_completed_at) ? (
                 <p className="mt-1 text-xs text-[rgb(var(--zc-muted2))]">
-                  Completed at:{' '}
+                  {t('sp_completed_at')}{' '}
                   {formatPlanningCompletedAt(
                     activeSprint.planningCompletedAt ||
                       activeSprint.planning_completed_at,
@@ -716,7 +718,7 @@ export function SprintPlanningPage() {
 
             {isPlanningCompleted ? (
               <p className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-200/90">
-                Sprint planning is completed. Backlog changes are locked.
+                {t('sp_planning_locked')}
               </p>
             ) : null}
 
@@ -728,11 +730,11 @@ export function SprintPlanningPage() {
                   onClick={() => setCompletePlanningOpen(true)}
                   className="w-full rounded-md bg-emerald-500/25 px-3 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-500/35 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  Complete Planning
+                  {t('sp_complete_planning')}
                 </button>
                 {!canCompletePlanning ? (
                   <p className="text-xs text-[rgb(var(--zc-subtle))]">
-                    Add at least one item and define a sprint goal to complete planning.
+                    {t('sp_complete_hint')}
                   </p>
                 ) : null}
               </div>
@@ -744,18 +746,18 @@ export function SprintPlanningPage() {
                 onClick={() => setReopenPlanningOpen(true)}
                 className="w-full rounded-md border border-[rgb(var(--zc-border))] px-3 py-2 text-sm font-medium text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-panel)/0.4)]"
               >
-                Reopen Planning
+                {t('sp_reopen_planning')}
               </button>
             ) : null}
 
             {planningCompleteOk ? (
-              <p className="text-xs text-emerald-400">Sprint planning completed.</p>
+              <p className="text-xs text-emerald-400">{t('sp_planning_done_ok')}</p>
             ) : null}
 
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-3">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <p className="text-[rgb(var(--zc-muted))] text-xs uppercase tracking-wide">
-                  Capacity vs backlog
+                  {t('sp_capacity_vs_backlog')}
                 </p>
                 {canMutateSprintPlanning && !capacityEditing ? (
                   <button
@@ -767,7 +769,7 @@ export function SprintPlanningPage() {
                     }}
                     className="text-xs font-medium text-indigo-300 hover:text-indigo-200"
                   >
-                    Edit capacity
+                    {t('sp_edit_capacity')}
                   </button>
                 ) : null}
               </div>
@@ -775,7 +777,7 @@ export function SprintPlanningPage() {
               {capacityEditing && canMutateSprintPlanning ? (
                 <div className="mt-3 space-y-2">
                   <label className="block text-[10px] font-medium uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    Team capacity (SP)
+                    {t('sp_team_capacity_sp')}
                   </label>
                   <input
                     type="number"
@@ -813,7 +815,7 @@ export function SprintPlanningPage() {
                             setCapacitySaveOk(true)
                           } catch (err) {
                             setCapacitySaveError(
-                              err?.message || 'Could not update sprint capacity.',
+                              err?.message || t('sp_err_capacity'),
                             )
                           } finally {
                             setCapacitySaving(false)
@@ -822,7 +824,7 @@ export function SprintPlanningPage() {
                       }}
                       className="rounded-md bg-indigo-500/25 px-3 py-1 text-xs font-medium text-indigo-200 hover:bg-indigo-500/35 disabled:opacity-50"
                     >
-                      {capacitySaving ? 'Saving…' : 'Save'}
+                      {capacitySaving ? t('po_saving') : t('btn_save')}
                     </button>
                     <button
                       type="button"
@@ -834,36 +836,36 @@ export function SprintPlanningPage() {
                       }}
                       className="rounded-md border border-[rgb(var(--zc-border))] px-3 py-1 text-xs font-medium text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-panel)/0.4)] disabled:opacity-50"
                     >
-                      Cancel
+                      {t('btn_cancel')}
                     </button>
                   </div>
                 </div>
               ) : (
                 <div className="mt-3 space-y-2 text-sm text-[rgb(var(--zc-text))]">
                   {capacityPointsInt === 0 ? (
-                    <p className="text-[rgb(var(--zc-muted2))]">Capacity not set</p>
+                    <p className="text-[rgb(var(--zc-muted2))]">{t('sp_capacity_not_set')}</p>
                   ) : (
                     <p>
-                      <span className="text-indigo-300">Team Capacity:</span>{' '}
+                      <span className="text-indigo-300">{t('sp_team_capacity')}</span>{' '}
                       {capacityPointsInt} SP
                     </p>
                   )}
                   <p>
-                    <span className="text-amber-300">Selected:</span>{' '}
+                    <span className="text-amber-300">{t('sp_selected')}</span>{' '}
                     {selectedStoryPoints} SP
                   </p>
                   {isOverCapacity ? (
                     <p className="text-amber-300">
-                      ⚠ Sprint is overloaded by{' '}
+                      ⚠ {t('sp_overloaded_by')}{' '}
                       {Math.round(selectedStoryPoints - capacityPointsInt)} SP
                     </p>
                   ) : capacityPointsInt > 0 && remainingPoints >= 0 ? (
                     <p className="text-[rgb(var(--zc-muted2))]">
-                      <span className="text-emerald-300">Remaining:</span> {remainingPoints} SP
+                      <span className="text-emerald-300">{t('sp_remaining')}</span> {remainingPoints} SP
                     </p>
                   ) : null}
                   {capacitySaveOk ? (
-                    <p className="text-xs text-emerald-400">Capacity updated.</p>
+                    <p className="text-xs text-emerald-400">{t('sp_capacity_updated')}</p>
                   ) : null}
                 </div>
               )}
@@ -873,27 +875,27 @@ export function SprintPlanningPage() {
 
         <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-emerald-500 bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
           <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-green-500 to-emerald-600">
-            📦 Ready Backlog
+            📦 {t('sp_ready_backlog')}
           </h3>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-            Backlog items that are ready and not yet assigned to a sprint.
+            {t('sp_ready_backlog_sub')}
           </p>
           {isLoading ? (
             <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
-              Loading tasks…
+              {t('loading_tasks')}
             </div>
           ) : readyStories.length === 0 &&
             readyIndependentTasks.length === 0 &&
             readyLinkedTasksOrphan.length === 0 ? (
             <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
-              No ready backlog items. Mark items as Ready from task details.
+              {t('sp_no_ready')}
             </div>
           ) : (
             <div className="mt-4 space-y-4">
               {readyStories.length > 0 ? (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    Ready User Stories
+                    {t('sp_ready_user_stories')}
                   </p>
                   <ul className="mt-2 space-y-2 text-sm">
                     {readyStories.map((story) => {
@@ -914,7 +916,7 @@ export function SprintPlanningPage() {
                               </p>
                               <div className="mt-1 flex flex-wrap gap-1">
                                 <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
-                                  User Story
+                                  {t('sp_badge_user_story')}
                                 </span>
                                 <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
                                   {PRIORITY_LABELS[story.priority] || 'Must'}
@@ -925,21 +927,21 @@ export function SprintPlanningPage() {
                                   </span>
                                 ) : null}
                                 <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">
-                                  Tasks: {linked.length}
+                                  {t('sp_tasks_count')} {linked.length}
                                 </span>
                                 {linkedReady.length > 0 ? (
                                   <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
-                                    Ready Tasks: {linkedReady.length}
+                                    {t('sp_ready_tasks_count')} {linkedReady.length}
                                   </span>
                                 ) : null}
                               </div>
                               {featureTitle ? (
                                 <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                                  Feature: {featureTitle}
+                                  {t('sp_feature')} {featureTitle}
                                 </p>
                               ) : null}
                               <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                                State: ready
+                                {t('sp_state_ready')}
                               </p>
                             </div>
                             {canMutateSprintPlanning ? (
@@ -949,7 +951,7 @@ export function SprintPlanningPage() {
                                 onClick={() => updateSprintCommitment(story.id, true)}
                                 className="shrink-0 rounded-md bg-emerald-500/20 px-2 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
                               >
-                                Add to Sprint
+                                {t('sp_add_to_sprint')}
                               </button>
                             ) : null}
                           </div>
@@ -966,10 +968,10 @@ export function SprintPlanningPage() {
                                     </p>
                                     <div className="mt-1 flex flex-wrap gap-1">
                                       <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
-                                        Task
+                                        {t('sp_badge_task')}
                                       </span>
                                       <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
-                                        State: ready
+                                        {t('sp_state_ready')}
                                       </span>
                                       {Number(task.storyPoints || task.story_points || 0) > 0 ? (
                                         <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
@@ -992,10 +994,10 @@ export function SprintPlanningPage() {
               {readyLinkedTasksOrphan.length > 0 ? (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    Ready Linked Tasks
+                    {t('sp_ready_linked_tasks')}
                   </p>
                   <p className="mt-1 text-[11px] text-[rgb(var(--zc-subtle))]">
-                    Linked Tasks that are Ready, but their parent User Story is not in this Ready Backlog. They will be committed when their parent Story is added to the sprint.
+                    {t('sp_ready_linked_tasks_hint')}
                   </p>
                   <ul className="mt-2 space-y-2 text-sm">
                     {readyLinkedTasksOrphan.map((task) => {
@@ -1017,10 +1019,10 @@ export function SprintPlanningPage() {
                             </p>
                             <div className="mt-1 flex flex-wrap gap-1">
                               <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
-                                Task
+                                {t('sp_badge_task')}
                               </span>
                               <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">
-                                Linked Task
+                                {t('sp_badge_linked_task')}
                               </span>
                               <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
                                 {PRIORITY_LABELS[task.priority] || 'Must'}
@@ -1032,10 +1034,10 @@ export function SprintPlanningPage() {
                               ) : null}
                             </div>
                             <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                              Parent Story: {parentLabel} (state: {parentState})
+                              {t('sp_parent_story')} {parentLabel} ({t('sp_state_word')}: {parentState})
                             </p>
                             <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                              State: ready
+                              {t('sp_state_ready')}
                             </p>
                           </div>
                         </li>
@@ -1048,7 +1050,7 @@ export function SprintPlanningPage() {
               {readyIndependentTasks.length > 0 ? (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    Ready Independent Tasks
+                    {t('sp_ready_independent_tasks')}
                   </p>
                   <ul className="mt-2 space-y-2 text-sm">
                     {readyIndependentTasks.map((task) => (
@@ -1062,10 +1064,10 @@ export function SprintPlanningPage() {
                           </p>
                           <div className="mt-1 flex flex-wrap gap-1">
                             <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
-                              Task
+                              {t('sp_badge_task')}
                             </span>
                             <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">
-                              Independent Task
+                              {t('sp_badge_independent_task')}
                             </span>
                             <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
                               {PRIORITY_LABELS[task.priority] || 'Must'}
@@ -1077,7 +1079,7 @@ export function SprintPlanningPage() {
                             ) : null}
                           </div>
                           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                            State: ready
+                            {t('sp_state_ready')}
                           </p>
                         </div>
                         {canMutateSprintPlanning ? (
@@ -1087,7 +1089,7 @@ export function SprintPlanningPage() {
                             onClick={() => updateSprintCommitment(task.id, true)}
                             className="shrink-0 rounded-md bg-emerald-500/20 px-2 py-1 text-xs font-medium text-emerald-300 hover:bg-emerald-500/30 disabled:opacity-50"
                           >
-                            Add to Sprint
+                            {t('sp_add_to_sprint')}
                           </button>
                         ) : null}
                       </li>
@@ -1101,25 +1103,25 @@ export function SprintPlanningPage() {
 
         <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-amber-500 bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-1">
           <h3 className="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">
-            📌 Sprint Backlog
+            📌 {t('sp_sprint_backlog')}
           </h3>
           <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-            Items already committed to this sprint.
+            {t('sp_sprint_backlog_sub')}
           </p>
           {isLoading ? (
             <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
-              Loading tasks…
+              {t('loading_tasks')}
             </div>
           ) : sprintItems.length === 0 ? (
             <div className="mt-4 rounded-lg border border-dashed border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.25)] p-4 text-sm text-[rgb(var(--zc-muted2))]">
-              No items in this sprint yet.
+              {t('sp_no_sprint_items')}
             </div>
           ) : (
             <div className="mt-4 space-y-4 text-sm">
               {sprintStories.length > 0 ? (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    📋 COMMITTED USER STORIES
+                    📋 {t('sp_committed_user_stories')}
                   </p>
                   <ul className="mt-2 space-y-2">
                     {sprintStories.map((story) => {
@@ -1136,7 +1138,7 @@ export function SprintPlanningPage() {
                               </p>
                               <div className="mt-1 flex flex-wrap gap-1">
                                 <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
-                                  User Story
+                                  {t('sp_badge_user_story')}
                                 </span>
                                 <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
                                   {PRIORITY_LABELS[story.priority] || 'Must'}
@@ -1147,7 +1149,7 @@ export function SprintPlanningPage() {
                                   </span>
                                 ) : null}
                                 <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">
-                                  Tasks: {linked.length}
+                                  {t('sp_tasks_count')} {linked.length}
                                 </span>
                               </div>
                             </div>
@@ -1158,7 +1160,7 @@ export function SprintPlanningPage() {
                                 onClick={() => updateSprintCommitment(story.id, false)}
                                 className="shrink-0 rounded-md bg-rose-600 px-2 py-1 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
                               >
-                                Remove
+                                {t('pr_remove')}
                               </button>
                             ) : null}
                           </div>
@@ -1175,10 +1177,10 @@ export function SprintPlanningPage() {
                                     </p>
                                     <div className="mt-1 flex flex-wrap gap-1">
                                       <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
-                                        Task
+                                        {t('sp_badge_task')}
                                       </span>
                                       <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
-                                        {STATUS_LABELS[task.status] || 'To Do'}
+                                        {t(STATUS_LABELS[task.status] || 'status_todo')}
                                       </span>
                                       {Number(task.storyPoints || task.story_points || 0) > 0 ? (
                                         <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
@@ -1197,7 +1199,7 @@ export function SprintPlanningPage() {
                                           }}
                                           onClick={(e) => e.stopPropagation()}
                                         >
-                                          <option value="">Unassigned</option>
+                                          <option value="">{t('dash_unassigned')}</option>
                                           {teamMembers.map((m) => (
                                             <option key={m.userId} value={m.name}>{m.name}</option>
                                           ))}
@@ -1211,7 +1213,7 @@ export function SprintPlanningPage() {
                                             updateTaskField(task.id, { startDate: e.target.value })
                                           }}
                                           onClick={(e) => e.stopPropagation()}
-                                          title="Start date"
+                                          title={t('task_start_date')}
                                         />
                                         <span className="text-[10px] text-[rgb(var(--zc-subtle))]">→</span>
                                         <input
@@ -1223,15 +1225,15 @@ export function SprintPlanningPage() {
                                             updateTaskField(task.id, { dueDate: e.target.value, endDate: e.target.value })
                                           }}
                                           onClick={(e) => e.stopPropagation()}
-                                          title="End date"
+                                          title={t('sp_end_date')}
                                         />
                                       </div>
                                     )}
                                     {!canMutateSprintPlanning && (task.assignee || task.startDate || task.dueDate) && (
                                       <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-[rgb(var(--zc-subtle))]">
                                         {task.assignee && <span>👤 {task.assignee}</span>}
-                                        {task.startDate && <span>Start: {task.startDate}</span>}
-                                        {(task.dueDate || task.endDate) && <span>Due: {task.dueDate || task.endDate}</span>}
+                                        {task.startDate && <span>{t('task_start_prefix')} {task.startDate}</span>}
+                                        {(task.dueDate || task.endDate) && <span>{t('task_due')}: {task.dueDate || task.endDate}</span>}
                                       </div>
                                     )}
                                   </div>
@@ -1249,7 +1251,7 @@ export function SprintPlanningPage() {
               {sprintIndependentTasks.length > 0 ? (
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
-                    📎 COMMITTED INDEPENDENT TASKS
+                    📎 {t('sp_committed_independent_tasks')}
                   </p>
                   <ul className="mt-2 space-y-2">
                     {sprintIndependentTasks.map((task) => (
@@ -1263,16 +1265,16 @@ export function SprintPlanningPage() {
                           </p>
                           <div className="mt-1 flex flex-wrap gap-1">
                             <span className="rounded-full bg-indigo-500/15 px-2 py-0.5 text-[10px] text-indigo-300">
-                              Task
+                              {t('sp_badge_task')}
                             </span>
                             <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">
-                              Independent Task
+                              {t('sp_badge_independent_task')}
                             </span>
                             <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-300">
                               {PRIORITY_LABELS[task.priority] || 'Must'}
                             </span>
                             <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-300">
-                              {STATUS_LABELS[task.status] || 'To Do'}
+                              {t(STATUS_LABELS[task.status] || 'status_todo')}
                             </span>
                             {Number(task.storyPoints || task.story_points || 0) > 0 ? (
                               <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] text-violet-300">
@@ -1291,7 +1293,7 @@ export function SprintPlanningPage() {
                                 }}
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <option value="">Unassigned</option>
+                                <option value="">{t('dash_unassigned')}</option>
                                 {teamMembers.map((m) => (
                                   <option key={m.userId} value={m.name}>{m.name}</option>
                                 ))}
@@ -1305,7 +1307,7 @@ export function SprintPlanningPage() {
                                   updateTaskField(task.id, { startDate: e.target.value })
                                 }}
                                 onClick={(e) => e.stopPropagation()}
-                                title="Start date"
+                                title={t('task_start_date')}
                               />
                               <span className="text-[10px] text-[rgb(var(--zc-subtle))]">→</span>
                               <input
@@ -1317,15 +1319,15 @@ export function SprintPlanningPage() {
                                   updateTaskField(task.id, { dueDate: e.target.value, endDate: e.target.value })
                                 }}
                                 onClick={(e) => e.stopPropagation()}
-                                title="End date"
+                                title={t('sp_end_date')}
                               />
                             </div>
                           )}
                           {!canMutateSprintPlanning && (task.assignee || task.startDate || task.dueDate) && (
                             <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] text-[rgb(var(--zc-subtle))]">
                               {task.assignee && <span>👤 {task.assignee}</span>}
-                              {task.startDate && <span>Start: {task.startDate}</span>}
-                              {(task.dueDate || task.endDate) && <span>Due: {task.dueDate || task.endDate}</span>}
+                              {task.startDate && <span>{t('task_start_prefix')} {task.startDate}</span>}
+                              {(task.dueDate || task.endDate) && <span>{t('task_due')}: {task.dueDate || task.endDate}</span>}
                             </div>
                           )}
                         </div>
@@ -1336,7 +1338,7 @@ export function SprintPlanningPage() {
                             onClick={() => updateSprintCommitment(task.id, false)}
                             className="shrink-0 rounded-md bg-rose-600 px-2 py-1 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
                           >
-                            Remove
+                            {t('pr_remove')}
                           </button>
                         ) : null}
                       </li>
@@ -1351,10 +1353,10 @@ export function SprintPlanningPage() {
 
       <ConfirmDialog
         open={completePlanningOpen}
-        title="Complete sprint planning?"
-        message="After completing planning, sprint backlog changes will be locked unless planning is reopened."
-        confirmText="Complete Planning"
-        cancelText="Cancel"
+        title={t('sp_complete_dialog_title')}
+        message={t('sp_complete_dialog_msg')}
+        confirmText={t('sp_complete_planning')}
+        cancelText={t('btn_cancel')}
         loading={planningActionSaving}
         onCancel={() => !planningActionSaving && setCompletePlanningOpen(false)}
         onConfirm={() => {
@@ -1379,10 +1381,10 @@ export function SprintPlanningPage() {
       />
       <ConfirmDialog
         open={reopenPlanningOpen}
-        title="Reopen sprint planning?"
-        message="This will allow changes to the sprint backlog again."
-        confirmText="Reopen"
-        cancelText="Cancel"
+        title={t('sp_reopen_dialog_title')}
+        message={t('sp_reopen_dialog_msg')}
+        confirmText={t('sp_reopen')}
+        cancelText={t('btn_cancel')}
         loading={planningActionSaving}
         onCancel={() => !planningActionSaving && setReopenPlanningOpen(false)}
         onConfirm={() => {

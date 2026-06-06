@@ -3,23 +3,26 @@
  * Each row's `introTier` is the first tier that includes that capability; higher
  * tiers inherit (see tierIncludesFeature). Content matches behavior shipped in
  * ZeroCollab today — not future roadmap marketing.
+ *
+ * Labels are translation keys resolved at render time via t() so the comparison
+ * table follows the active language.
  */
 export const PROFESSIONAL_FEATURES = {
   FREE: [
-    'Starter project quota (enforced when creating projects)',
-    'Starter AI evaluation quota',
-    'Starter team member quota',
-    'Token balance → plan tier (local profile)',
-    'Product Roadmap (view items & details)',
-    'Core workspace (backlog, Kanban, sprints, chat, calendar)',
-    'Offline-first cache & P2P sync for shared work',
+    'te_feat_free_project_quota',
+    'te_feat_free_eval_quota',
+    'te_feat_free_team_quota',
+    'te_feat_free_token_tier',
+    'te_feat_free_roadmap_view',
+    'te_feat_free_core_workspace',
+    'te_feat_free_offline_sync',
   ],
   PLUS: [
-    'Higher project, evaluation, and team quotas',
+    'te_feat_plus_quotas',
   ],
   PREMIUM: [
-    'Premium (highest) project, evaluation, and team quotas',
-    'Product Roadmap full editing (save, reorder, inline changes)',
+    'te_feat_premium_quotas',
+    'te_feat_premium_roadmap_edit',
   ],
 }
 

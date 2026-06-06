@@ -191,7 +191,7 @@ export function SettingsShell() {
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-                  Logged in via Supabase Auth
+                  {t('settings_supabase_auth')}
                 </p>
               </div>
 

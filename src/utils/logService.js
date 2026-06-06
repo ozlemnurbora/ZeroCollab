@@ -180,22 +180,27 @@ export async function exportLogsAsJson() {
   }
 }
 
-export function formatLogTime(timestamp) {
+export function formatLogTime(timestamp, t) {
   const ts = Number(timestamp)
   if (!Number.isFinite(ts) || ts <= 0) {
     return { relative: '', absolute: '' }
   }
+  const tr = (key, vars, fallback) =>
+    typeof t === 'function' ? t(key, vars) : fallback
   const diff = Date.now() - ts
   const minutes = Math.floor(diff / 60000)
   let relative
-  if (minutes < 1) relative = 'just now'
-  else if (minutes < 60) relative = `${minutes}m ago`
+  if (minutes < 1) relative = tr('logs_time_just_now', undefined, 'just now')
+  else if (minutes < 60)
+    relative = tr('logs_time_min_ago', { n: minutes }, `${minutes}m ago`)
   else {
     const hours = Math.floor(minutes / 60)
-    if (hours < 24) relative = `${hours}h ago`
+    if (hours < 24)
+      relative = tr('logs_time_hour_ago', { n: hours }, `${hours}h ago`)
     else {
       const days = Math.floor(hours / 24)
-      if (days < 7) relative = `${days}d ago`
+      if (days < 7)
+        relative = tr('logs_time_day_ago', { n: days }, `${days}d ago`)
       else relative = new Date(ts).toLocaleDateString()
     }
   }

@@ -853,20 +853,20 @@ export function ProductRoadmapPage() {
                         disabled={roadmapLocked}
                         {...lockTooltipProps}
                       >
-                        <option value="now">Now</option>
-                        <option value="next">Next</option>
-                        <option value="later">Later</option>
+                        <option value="now">{t('pr_now')}</option>
+                        <option value="next">{t('pr_next')}</option>
+                        <option value="later">{t('pr_later')}</option>
                       </select>
 
                       <input
                         className="h-8 w-[120px] rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 text-xs text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] disabled:cursor-not-allowed"
                         value={String(sprint)}
-                        placeholder="Planned sprint"
+                        placeholder={t('pr_planned_sprint')}
                         onChange={(e) =>
                           updateItem(it.id, { plannedSprint: e.target.value })
                         }
                         onClick={(e) => e.stopPropagation()}
-                        aria-label="Planned sprint"
+                        aria-label={t('pr_planned_sprint')}
                         disabled={roadmapLocked}
                         {...lockTooltipProps}
                       />
@@ -900,7 +900,7 @@ export function ProductRoadmapPage() {
                           }}
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <option value="">No package</option>
+                          <option value="">{t('pr_no_package')}</option>
                           {packages.map((p) => (
                             <option key={p.id} value={p.id}>{p.name}</option>
                           ))}
@@ -935,13 +935,13 @@ export function ProductRoadmapPage() {
       {/* Product Roadmap is derived from prioritized Product Backlog items and is used to plan future sprint goals. */}
       <div>
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
-          <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">🗺️ Product Roadmap</span>
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">🗺️ {t('pr_title')}</span>
         </h1>
         <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
-          Prioritize backlog items, track delivery timelines, and visualize which features ship first across sprints.
+          {t('pr_subtitle')}
         </p>
         <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-          📌 New items default to Later. Drag to Now or Next to prioritize.
+          📌 {t('pr_hint')}
         </p>
         {activeProject ? (
           <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
@@ -979,9 +979,9 @@ export function ProductRoadmapPage() {
           </div>
         ) : (
           <>
-            <RoadmapBucket title="Now" bucketKey="now" items={byBucket.now} />
-            <RoadmapBucket title="Next" bucketKey="next" items={byBucket.next} />
-            <RoadmapBucket title="Later" bucketKey="later" items={byBucket.later} />
+            <RoadmapBucket title={t('pr_now')} bucketKey="now" items={byBucket.now} />
+            <RoadmapBucket title={t('pr_next')} bucketKey="next" items={byBucket.next} />
+            <RoadmapBucket title={t('pr_later')} bucketKey="later" items={byBucket.later} />
           </>
         )}
       </div>
@@ -990,15 +990,15 @@ export function ProductRoadmapPage() {
       <div className="mt-6 rounded-xl border border-t-2 border-[rgb(var(--zc-border))] border-t-rose-500 bg-[rgb(var(--zc-bg)/0.35)] overflow-hidden">
         <div className="flex items-center justify-between border-b border-[rgb(var(--zc-border))] px-4 py-3">
           <div>
-            <h2 className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-500 to-purple-600">📦 Release Packages</h2>
-            <p className="text-[11px] text-[rgb(var(--zc-subtle))]">Group epics into release packages with deploy dates.</p>
+            <h2 className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-fuchsia-500 to-purple-600">📦 {t('pr_release_packages')}</h2>
+            <p className="text-[11px] text-[rgb(var(--zc-subtle))]">{t('pr_packages_sub')}</p>
           </div>
           <button
             type="button"
             onClick={() => setShowPackageForm(!showPackageForm)}
             className="rounded-lg bg-gradient-to-r from-rose-500 to-pink-600 px-3 py-1.5 text-xs font-medium text-white shadow-md hover:from-rose-600 hover:to-pink-700 transition"
           >
-            + New Package
+            + {t('pr_new_package')}
           </button>
         </div>
 
@@ -1051,7 +1051,7 @@ export function ProductRoadmapPage() {
                       <span className="rounded-full bg-[rgb(var(--zc-border))] px-2 py-0.5 text-[10px] text-[rgb(var(--zc-muted))]">{pkgEpics.length} epic{pkgEpics.length !== 1 ? 's' : ''}</span>
                       {pkg.deployDate && (
                         <span className={`text-xs font-medium ${isOverdue ? 'text-rose-400' : 'text-emerald-400'}`}>
-                          Deploy: {pkg.deployDate} {isOverdue ? '(overdue)' : ''}
+                          {t('pr_deploy')} {pkg.deployDate} {isOverdue ? `(${t('pr_overdue')})` : ''}
                         </span>
                       )}
                     </div>
@@ -1084,7 +1084,7 @@ export function ProductRoadmapPage() {
                             onClick={() => removeEpicFromPackage(epic.id, pkg.id)}
                             className="text-[10px] text-[rgb(var(--zc-subtle))] hover:text-rose-400"
                           >
-                            Remove
+                            {t('pr_remove')}
                           </button>
                         </li>
                       ))}
@@ -1103,7 +1103,7 @@ export function ProductRoadmapPage() {
       {timelineData && timelineData.items.length > 0 && (
         <div className="mt-6 rounded-xl border border-t-2 border-[rgb(var(--zc-border))] border-t-amber-500 bg-[rgb(var(--zc-bg)/0.35)] overflow-hidden">
           <div className="border-b border-[rgb(var(--zc-border))] px-4 py-3">
-            <h2 className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">📅 Timeline</h2>
+            <h2 className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">📅 {t('pr_timeline')}</h2>
             <p className="text-[11px] text-[rgb(var(--zc-subtle))]">Items with target dates shown on a timeline. Set target dates above to see items here.</p>
           </div>
 

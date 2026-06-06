@@ -1074,20 +1074,20 @@ export function KanbanBoard({
               {activeSprint.start_date || activeSprint.startDate} → {activeSprint.end_date || activeSprint.endDate}
             </span>
             <span className="text-xs text-[rgb(var(--zc-muted))]">
-              Capacity: {sprintBoardHeaderMetrics.cap} SP
+              {t('sb_capacity')} {sprintBoardHeaderMetrics.cap} SP
             </span>
             <span className="text-xs text-amber-300">
-              Selected: {sprintBoardHeaderMetrics.selectedSP} SP
+              {t('sp_selected')} {sprintBoardHeaderMetrics.selectedSP} SP
             </span>
             <span className="text-xs text-emerald-300">
-              Remaining: {sprintBoardHeaderMetrics.remainingSP} SP
+              {t('sp_remaining')} {sprintBoardHeaderMetrics.remainingSP} SP
             </span>
             <span className="text-xs text-[rgb(var(--zc-muted))]">
-              {sprintBoardHeaderMetrics.completionPercentage}% done ({sprintBoardHeaderMetrics.doneSprintTasks}/{sprintBoardHeaderMetrics.totalSprintTasks} tasks)
+              {t('sb_done_summary', { pct: sprintBoardHeaderMetrics.completionPercentage, done: sprintBoardHeaderMetrics.doneSprintTasks, total: sprintBoardHeaderMetrics.totalSprintTasks })}
             </span>
             {sprintRemainingDays != null && (
               <span className={`text-xs font-medium ${sprintRemainingDays <= 2 ? 'text-rose-400' : 'text-[rgb(var(--zc-subtle))]'}`}>
-                {sprintRemainingDays}d left
+                {t('sb_days_left', { d: sprintRemainingDays })}
               </span>
             )}
           </div>
@@ -1103,7 +1103,7 @@ export function KanbanBoard({
       {isSprintBoard && activeSprint ? (
         <details className="mt-3 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
           <summary className="cursor-pointer px-4 py-2 text-sm font-semibold text-[rgb(var(--zc-text))] hover:bg-[rgb(var(--zc-border)/0.2)] rounded-lg select-none">
-            📊 Burndown Chart — {sprintBoardHeaderMetrics?.doneSprintTasks ?? 0}/{sprintBoardHeaderMetrics?.totalSprintTasks ?? 0} tasks, {sprintBoardHeaderMetrics?.completionPercentage ?? 0}% done
+            📊 {t('sb_burndown_chart_summary', { done: sprintBoardHeaderMetrics?.doneSprintTasks ?? 0, total: sprintBoardHeaderMetrics?.totalSprintTasks ?? 0, pct: sprintBoardHeaderMetrics?.completionPercentage ?? 0 })}
           </summary>
           <div className="px-4 pb-4">
             <BurndownChart
@@ -1126,7 +1126,7 @@ export function KanbanBoard({
         <div>
           {isSprintBoard ? (
             <p className="text-sm text-[rgb(var(--zc-muted2))]">
-              Only tasks committed to the active sprint. Drag cards to update workflow status.
+              {t('sb_board_hint')}
             </p>
           ) : (
             <>
@@ -1185,14 +1185,14 @@ export function KanbanBoard({
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <p className="text-xs uppercase tracking-wide text-indigo-200/80">
-                  Active Sprint #{activeSprint.sprint_number}
+                  {t('sp_active_sprint')} #{activeSprint.sprint_number}
                 </p>
                 <p className="mt-1 text-lg font-semibold text-[rgb(var(--zc-text))]">
                   {activeSprint.sprint_goal || '—'}
                 </p>
               </div>
               <div className="shrink-0 inline-flex items-center gap-2 rounded-full bg-[rgb(var(--zc-bg)/0.35)] px-3 py-1 text-xs">
-                <span className="text-[rgb(var(--zc-muted))]">Status</span>
+                <span className="text-[rgb(var(--zc-muted))]">{t('po_status_field')}</span>
                 <span className="font-medium text-[rgb(var(--zc-text))]">
                   {activeSprint.status || 'active'}
                 </span>
@@ -1200,23 +1200,23 @@ export function KanbanBoard({
             </div>
             <div className="mt-4 grid gap-2 sm:grid-cols-2">
               <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
-                <p className="text-xs text-[rgb(var(--zc-subtle))]">Dates</p>
+                <p className="text-xs text-[rgb(var(--zc-subtle))]">{t('po_dates')}</p>
                 <p className="text-[rgb(var(--zc-text))]">
                   {activeSprint.start_date} → {activeSprint.end_date}
                 </p>
               </div>
               <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
-                <p className="text-xs text-[rgb(var(--zc-subtle))]">Remaining days</p>
+                <p className="text-xs text-[rgb(var(--zc-subtle))]">{t('po_remaining_days')}</p>
                 <p className="text-[rgb(var(--zc-text))]">
                   {sprintRemainingDays == null ? '—' : sprintRemainingDays}
                 </p>
               </div>
               <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
-                <p className="text-xs text-[rgb(var(--zc-subtle))]">Sprint items</p>
+                <p className="text-xs text-[rgb(var(--zc-subtle))]">{t('sb_sprint_items')}</p>
                 <p className="text-[rgb(var(--zc-text))]">{sprintTasks.length}</p>
               </div>
               <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2 text-sm">
-                <p className="text-xs text-[rgb(var(--zc-subtle))]">Project</p>
+                <p className="text-xs text-[rgb(var(--zc-subtle))]">{t('sb_project')}</p>
                 <p className="truncate text-[rgb(var(--zc-text))]">
                   {activeProject?.name || '—'}
                 </p>
@@ -1225,9 +1225,9 @@ export function KanbanBoard({
           </section>
 
           <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5">
-            <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">Burndown</h3>
+            <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">{t('sb_burndown')}</h3>
             <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-              Completion based on Done items.
+              {t('sb_burndown_sub')}
             </p>
             {(() => {
               const totalItems = sprintTasks.length
@@ -1244,19 +1244,19 @@ export function KanbanBoard({
                     <>
                       <div className="grid grid-cols-2 gap-2 text-sm">
                         <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
-                          <p className="text-xs text-[rgb(var(--zc-subtle))]">Total</p>
+                          <p className="text-xs text-[rgb(var(--zc-subtle))]">{t('sb_total')}</p>
                           <p className="text-[rgb(var(--zc-text))]">{totalItems}</p>
                         </div>
                         <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
-                          <p className="text-xs text-[rgb(var(--zc-subtle))]">Remaining</p>
+                          <p className="text-xs text-[rgb(var(--zc-subtle))]">{t('chart_remaining')}</p>
                           <p className="text-[rgb(var(--zc-text))]">{remainingItems}</p>
                         </div>
                         <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
-                          <p className="text-xs text-[rgb(var(--zc-subtle))]">Done</p>
+                          <p className="text-xs text-[rgb(var(--zc-subtle))]">{t('status_done')}</p>
                           <p className="text-[rgb(var(--zc-text))]">{doneItems}</p>
                         </div>
                         <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] px-3 py-2">
-                          <p className="text-xs text-[rgb(var(--zc-subtle))]">Completion</p>
+                          <p className="text-xs text-[rgb(var(--zc-subtle))]">{t('po_completion')}</p>
                           <p className="text-[rgb(var(--zc-text))]">{pct}%</p>
                         </div>
                       </div>

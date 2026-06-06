@@ -101,16 +101,16 @@ export function SidebarLayout() {
   const navItems = useMemo(
     () => [
       { to: '/', label: t('nav_dashboard'), end: true, icon: '📊', color: 'text-blue-400' },
-      { to: '/product-backlog', label: 'Product Backlog', icon: '📋', color: 'text-violet-400' },
-      { to: '/product-roadmap', label: 'Product Roadmap', icon: '🗺️', color: 'text-emerald-400' },
-      { to: '/project-overview', label: 'Project Overview', icon: '🎯', color: 'text-rose-400' },
-      { to: '/sprint-planning', label: 'Sprint Planning', icon: '📐', color: 'text-cyan-400' },
-      { to: '/sprint-board', label: 'Sprint Board', icon: '📌', color: 'text-amber-400' },
+      { to: '/product-backlog', label: t('nav_product_backlog'), icon: '📋', color: 'text-violet-400' },
+      { to: '/product-roadmap', label: t('nav_product_roadmap'), icon: '🗺️', color: 'text-emerald-400' },
+      { to: '/project-overview', label: t('nav_project_overview'), icon: '🎯', color: 'text-rose-400' },
+      { to: '/sprint-planning', label: t('nav_sprint_planning'), icon: '📐', color: 'text-cyan-400' },
+      { to: '/sprint-board', label: t('nav_sprint_board'), icon: '📌', color: 'text-amber-400' },
       { to: '/tasks', label: t('nav_tasks'), icon: '✅', color: 'text-green-400' },
       { to: '/calendar', label: t('nav_calendar'), icon: '📅', color: 'text-orange-400' },
       { to: '/chat', label: t('nav_chat'), icon: '💬', color: 'text-sky-400' },
       { to: '/evaluation', label: t('nav_evaluation'), icon: '🤖', color: 'text-purple-400' },
-      { to: '/token-economics', label: 'Token Economics', icon: '🪙', color: 'text-yellow-400' },
+      { to: '/token-economics', label: t('nav_token_economics'), icon: '🪙', color: 'text-yellow-400' },
       { to: '/logs', label: t('nav_logs'), icon: '📜', color: 'text-fuchsia-400' },
       { to: '/settings', label: t('nav_settings'), icon: '⚙️', color: 'text-slate-400' },
     ],
@@ -470,7 +470,7 @@ export function SidebarLayout() {
                 onClick={() => signOut()}
                 className="w-full rounded-md bg-rose-500/15 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-500/25 transition"
               >
-                Sign Out
+                {t('sign_out')}
               </button>
             </div>
           )}

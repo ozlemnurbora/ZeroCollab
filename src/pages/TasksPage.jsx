@@ -103,17 +103,17 @@ export function TasksPage() {
         createOnlyTask
         headerActions={
           <Button variant="secondary" onClick={() => setIsAddMeetingOpen(true)}>
-            📅 Schedule Meeting
+            📅 {t('tasks_schedule_meeting')}
           </Button>
         }
       />
 
       <div className="mt-8">
         <h2 className="mb-3 text-base font-semibold text-[rgb(var(--zc-text))]">
-          📅 Scheduled Meetings
+          📅 {t('tasks_scheduled_meetings')}
         </h2>
         {meetings.length === 0 ? (
-          <p className="text-sm text-[rgb(var(--zc-muted2))]">No meetings scheduled.</p>
+          <p className="text-sm text-[rgb(var(--zc-muted2))]">{t('tasks_no_meetings')}</p>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {meetings
@@ -140,12 +140,12 @@ export function TasksPage() {
                         📅 {meeting.title}
                       </p>
                       <p className="mt-1 text-xs text-[rgb(var(--zc-muted))]">
-                        {meeting.date} at {meeting.time}
+                        {meeting.date} {t('tasks_at')} {meeting.time}
                       </p>
                       <p className="text-xs text-[rgb(var(--zc-muted2))]">
-                        {meeting.duration} min
+                        {meeting.duration} {t('tasks_min')}
                         {meeting.recurring !== 'none' &&
-                          ` • Repeats ${meeting.recurring}`}
+                          ` • ${t('tasks_repeats', { freq: t(`tasks_freq_${meeting.recurring}`) })}`}
                       </p>
                       {meeting.description && (
                         <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
@@ -187,7 +187,7 @@ export function TasksPage() {
                       }}
                       className="rounded-md bg-violet-500 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-violet-400"
                     >
-                      Join Meeting
+                      {t('tasks_join_meeting')}
                     </button>
                     <button
                       type="button"
@@ -197,7 +197,7 @@ export function TasksPage() {
                       }}
                       className="rounded-md border border-[rgb(var(--zc-border))] px-2.5 py-1 text-[11px] text-[rgb(var(--zc-muted2))] hover:bg-[rgb(var(--zc-border)/0.4)]"
                     >
-                      Details
+                      {t('tasks_details')}
                     </button>
                   </div>
                   <div className="mt-2">

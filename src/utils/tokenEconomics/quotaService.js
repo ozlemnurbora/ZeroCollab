@@ -1,6 +1,12 @@
 import { getTierByBalance, getTierLimits } from './tokenTiers.js'
 import { getQuotaUsage } from './quotaUsageStorage.js'
-import { QUOTA_LABELS } from './quotaRules.js'
+import { QUOTA_LABELS_EN } from './quotaRules.js'
+
+const QUOTA_MSG_KEYS = {
+  projects: 'te_quota_msg_projects',
+  evaluations: 'te_quota_msg_evaluations',
+  teamMembers: 'te_quota_msg_teamMembers',
+}
 
 function getQuotaLimitForKey(limits, quotaKey) {
   if (!limits) return 0
@@ -31,11 +37,15 @@ export function canUseQuota(profile, quotaKey) {
   return used < limit
 }
 
-export function getQuotaMessage(profile, quotaKey) {
+export function getQuotaMessage(profile, quotaKey, t) {
   const state = getCurrentQuotaState(profile)
   const limit = getQuotaLimitForKey(state.limits, quotaKey)
-  const label = QUOTA_LABELS[quotaKey] || quotaKey
   const tierLabel = state.tier?.label || state.tierKey
+  const msgKey = QUOTA_MSG_KEYS[quotaKey]
+  if (typeof t === 'function' && msgKey) {
+    return t(msgKey, { tier: tierLabel, limit })
+  }
+  const label = QUOTA_LABELS_EN[quotaKey] || quotaKey
   return `${tierLabel} tier allows up to ${limit} ${label.toLowerCase()}. Hold more ZC tokens to unlock higher limits.`
 }
 
