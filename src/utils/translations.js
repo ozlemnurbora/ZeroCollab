@@ -209,6 +209,9 @@ export const TRANSLATIONS = {
     p2p_connecting: 'Connecting',
     p2p_disconnected: 'Disconnected',
     btn_call: 'Call',
+    btn_call_tooltip: 'Start a call',
+    btn_call_offline_tooltip:
+      "This user is offline — calls are only available when they're online",
     conversation_fallback: 'Conversation',
 
     channel_general: 'General',
@@ -1042,6 +1045,9 @@ export const TRANSLATIONS = {
     p2p_connecting: 'Bağlanıyor',
     p2p_disconnected: 'Bağlı değil',
     btn_call: 'Ara',
+    btn_call_tooltip: 'Aramayı başlat',
+    btn_call_offline_tooltip:
+      'Bu kullanıcı çevrimdışı — aramalar yalnızca çevrimiçi olduklarında kullanılabilir',
     conversation_fallback: 'Sohbet',
 
     channel_general: 'Genel',

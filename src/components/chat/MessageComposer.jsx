@@ -118,7 +118,7 @@ export function MessageComposer({
       <div className="flex items-end gap-2">
         <button
           type="button"
-          className="flex h-9 w-9 items-center justify-center rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] text-[rgb(var(--zc-muted2))] hover:bg-[rgb(var(--zc-panel))]"
+          className="flex h-9 w-9 items-center justify-center rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel))] text-[rgb(var(--zc-muted))] shadow-sm transition hover:bg-[rgb(var(--zc-border)/0.6)] hover:text-[rgb(var(--zc-text))] disabled:cursor-not-allowed disabled:opacity-60"
           onClick={() => fileInputRef.current?.click()}
           disabled={disabled}
         >
@@ -146,9 +146,14 @@ export function MessageComposer({
           }}
           className="max-h-36 min-h-[42px] w-full resize-none rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50 disabled:opacity-50"
         />
-        <Button onClick={send} disabled={!canSend}>
+        <button
+          type="button"
+          onClick={send}
+          disabled={!canSend}
+          className="h-9 rounded-md px-4 text-sm font-medium text-white shadow-sm transition-colors bg-indigo-600 hover:bg-indigo-700 disabled:cursor-not-allowed disabled:bg-slate-400 disabled:text-white dark:bg-indigo-600 dark:hover:bg-indigo-700 dark:disabled:bg-[rgb(var(--zc-border))] dark:disabled:text-[rgb(var(--zc-muted))]"
+        >
           {t('composer_send')}
-        </Button>
+        </button>
       </div>
       <p className="mt-2 text-xs text-[rgb(var(--zc-subtle))]">{t('composer_hint')}</p>
       {fileError ? (

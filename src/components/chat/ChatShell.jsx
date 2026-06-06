@@ -11,6 +11,7 @@ import {
   saveMessages,
 } from './chatStorage.js'
 import { loadSettings } from '../settings/settingsStorage.js'
+import { putChatFile, getChatFile } from '../../utils/database.js'
 import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import { useAuth } from '../../utils/AuthContext.jsx'
 import {
@@ -251,6 +252,9 @@ export function ChatShell() {
   const callStreamsRef = useRef(new Map())
   const fileTransfersRef = useRef({})
   const objectUrlsRef = useRef(new Set())
+  // Tracks file-message ids we've already tried to rehydrate from IndexedDB so the
+  // regeneration effect never loops or refetches the same blob repeatedly.
+  const regenAttemptedRef = useRef(new Set())
   const localStreamRef = useRef(null)
   const mountedRef = useRef(false)
   const isInCallRef = useRef(false)
@@ -282,6 +286,16 @@ export function ChatShell() {
       const current = prev[id] ?? {}
       const next = { ...current, ...partial }
       return { ...prev, [id]: next }
+    })
+  }
+
+  const clearTransferState = (id) => {
+    if (!mountedRef.current) return
+    setFileTransfers((prev) => {
+      if (!(id in prev)) return prev
+      const next = { ...prev }
+      delete next[id]
+      return next
     })
   }
 
@@ -757,6 +771,9 @@ export function ChatShell() {
         ) {
           transferState.completed = true
           const blob = new Blob(chunks, { type: meta.type || 'application/octet-stream' })
+          // Persist received bytes so the file stays downloadable after the object
+          // URL is revoked (unmount / navigation / cleanup).
+          void putChatFile(transferId, blob)
           const url = URL.createObjectURL(blob)
           objectUrlsRef.current.add(url)
           setFileUrls((prev) => ({ ...prev, [transferId]: url }))
@@ -783,6 +800,8 @@ export function ChatShell() {
           updateTransferState(transferId, {
             percent: 100,
           })
+          // Clear the "Downloading 100%" bar shortly after completion.
+          window.setTimeout(() => clearTransferState(transferId), 1500)
           transferMetaRef.current.delete(transferId)
           incomingFileChunksRef.current.delete(transferId)
           incomingTransfersRef.current.delete(transferId)
@@ -1089,21 +1108,58 @@ export function ChatShell() {
     }
   }, [])
 
+  // Rehydrate download links for file messages whose object URL is gone (after
+  // reload/remount). Reads the persisted blob from IndexedDB and rebuilds an URL.
+  useEffect(() => {
+    let cancelled = false
+    const pending = messages.filter(
+      (m) =>
+        m?.kind === 'file' &&
+        m.id &&
+        !fileUrls[m.id] &&
+        !regenAttemptedRef.current.has(m.id),
+    )
+    if (pending.length === 0) return undefined
+    ;(async () => {
+      for (const m of pending) {
+        regenAttemptedRef.current.add(m.id)
+        try {
+          const record = await getChatFile(m.id)
+          if (cancelled) return
+          if (record?.blob) {
+            const url = URL.createObjectURL(record.blob)
+            objectUrlsRef.current.add(url)
+            setFileUrls((prev) => (prev[m.id] ? prev : { ...prev, [m.id]: url }))
+          }
+        } catch {
+          // ignore read errors; link simply stays unavailable
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [messages, fileUrls])
+
   const activeMessages = useMemo(
     () =>
-      messages.filter((m) => {
-        if (m.channelId !== activeId) return false
-        if (
-          activeId.startsWith('dm::') &&
-          ownerUserId &&
-          !userParticipatesInDmPair(activeId, ownerUserId, user?.email)
-        ) {
-          return false
-        }
-        return (
-          m.projectId === activeProject?.id || (!m.projectId && !activeProject)
-        )
-      }),
+      messages
+        .filter((m) => {
+          if (m.channelId !== activeId) return false
+          if (
+            activeId.startsWith('dm::') &&
+            ownerUserId &&
+            !userParticipatesInDmPair(activeId, ownerUserId, user?.email)
+          ) {
+            return false
+          }
+          return (
+            m.projectId === activeProject?.id || (!m.projectId && !activeProject)
+          )
+        })
+        // Stable chronological order so everyone sees the same sequence and the
+        // newest message is always at the bottom.
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)),
     [messages, activeId, activeProject, ownerUserId, user?.email],
   )
 
@@ -1189,6 +1245,8 @@ export function ChatShell() {
     }
 
     setMessages((prev) => [...prev, message])
+    // Persist the original file so the sender can re-download it later too.
+    void putChatFile(id, file)
     const localUrl = URL.createObjectURL(file)
     objectUrlsRef.current.add(localUrl)
     setFileUrls((prev) => ({ ...prev, [id]: localUrl }))
@@ -1269,6 +1327,8 @@ export function ChatShell() {
     updateTransferState(id, {
       percent: 100,
     })
+    // Clear the "Uploading 100%" bar shortly after completion.
+    window.setTimeout(() => clearTransferState(id), 1500)
     window.setTimeout(() => {
       outgoingTransfersRef.current.delete(id)
     }, 45000)
@@ -1338,17 +1398,21 @@ export function ChatShell() {
         />
       </div>
 
-      <section className="flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] lg:h-[calc(100vh-11rem)]">
+      <section className="flex min-h-[520px] flex-col overflow-hidden rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-indigo-500 bg-[rgb(var(--zc-panel)/0.45)] shadow-sm lg:h-[calc(100vh-11rem)]">
         <header className="flex flex-col gap-3 border-b border-[rgb(var(--zc-border))] px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
-            <p className="truncate text-sm font-semibold text-[rgb(var(--zc-text))]">
+            <p className="flex items-center gap-1.5 truncate text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-violet-600">
+              <span className="text-indigo-400" aria-hidden="true">
+                {isDirectConversation ? '•' : '#'}
+              </span>
               {channelLabel(activeId)}
             </p>
             <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
               {t('chat_messages_p2p')}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-              <span className="rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.6)] px-2 py-0.5 text-[rgb(var(--zc-muted2))]">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-medium text-emerald-600 dark:text-emerald-300">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" aria-hidden="true" />
                 {t('chat_online', { count: uniqueOnlineUsers.length })}
               </span>
               {isDirectConversation ? (
@@ -1375,7 +1439,7 @@ export function ChatShell() {
               <button
                 type="button"
                 onClick={() => navigate('/tasks')}
-                className="h-9 rounded-md bg-indigo-500/90 px-3 text-xs font-medium text-white shadow-sm transition hover:bg-indigo-400"
+                className="h-9 rounded-md bg-indigo-600 px-3 text-xs font-medium text-white shadow-sm shadow-indigo-500/20 transition hover:bg-indigo-500"
               >
                 {t('chat_create_meeting')}
               </button>

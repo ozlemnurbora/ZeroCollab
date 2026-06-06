@@ -6,7 +6,7 @@ export function Button({
   ...props
 }) {
   const base =
-    'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 disabled:opacity-50 disabled:pointer-events-none'
+    'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/60 disabled:cursor-not-allowed disabled:pointer-events-none disabled:shadow-none disabled:bg-slate-300 disabled:text-slate-600 dark:disabled:bg-[rgb(var(--zc-border))] dark:disabled:text-[rgb(var(--zc-muted2))]'
 
   const variants = {
     primary:

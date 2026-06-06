@@ -9,7 +9,7 @@ import {
 } from '../components/settings/settingsConstants.js'
 
 const DB_NAME = 'zerocollab-db'
-const DB_VERSION = 3
+const DB_VERSION = 4
 
 const STORES = {
   tasks: 'tasks',
@@ -17,6 +17,7 @@ const STORES = {
   evaluations: 'evaluations',
   settings: 'settings',
   meetings: 'meetings',
+  chatFiles: 'chatFiles',
 }
 
 // Keys stored inside the "settings" object store
@@ -129,6 +130,9 @@ export async function getDatabase() {
         }
         if (!db.objectStoreNames.contains(STORES.meetings)) {
           db.createObjectStore(STORES.meetings, { keyPath: 'id' })
+        }
+        if (!db.objectStoreNames.contains(STORES.chatFiles)) {
+          db.createObjectStore(STORES.chatFiles, { keyPath: 'id' })
         }
       },
     })
@@ -322,6 +326,33 @@ export async function replaceMessagesForOwner(ownerUserId, messages) {
   }
   await tx.done
   emitChange({ store: STORES.messages })
+}
+
+// -------- Chat files store (persisted file bytes for re-download) --------
+/** Persist a File/Blob under the message id so download links survive reloads/remounts. */
+export async function putChatFile(id, blob) {
+  if (!id || !blob) return
+  const db = await getDatabase()
+  await db.put(STORES.chatFiles, { id, blob })
+}
+
+/** Returns the stored record `{ id, blob }` or null if not present. */
+export async function getChatFile(id) {
+  if (!id) return null
+  const db = await getDatabase()
+  const record = await db.get(STORES.chatFiles, id)
+  return record ?? null
+}
+
+export async function getAllChatFiles() {
+  const db = await getDatabase()
+  return (await db.getAll(STORES.chatFiles)) ?? []
+}
+
+export async function deleteChatFile(id) {
+  if (!id) return
+  const db = await getDatabase()
+  await db.delete(STORES.chatFiles, id)
 }
 
 // -------- Evaluations store --------

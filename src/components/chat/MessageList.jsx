@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { formatTimestamp, formatTimestampLong } from './timeUtils.js'
+import { formatTimestampWithDate, formatTimestampLong } from './timeUtils.js'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
 
 function initials(name) {
@@ -83,7 +83,7 @@ export function MessageList({
                     title={formatTimestampLong(m.createdAt, locale)}
                     dateTime={new Date(m.createdAt).toISOString()}
                   >
-                    {formatTimestamp(m.createdAt, locale)}
+                    {formatTimestampWithDate(m.createdAt, locale)}
                   </time>
                   {mine ? (
                     <span className="rounded-md bg-indigo-500/10 px-1.5 py-0.5 text-[10px] font-medium text-indigo-200 ring-1 ring-inset ring-indigo-500/20">
@@ -93,7 +93,7 @@ export function MessageList({
                 </div>
 
                 {isFile ? (
-                  <div className="mt-1 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-3 text-sm text-[rgb(var(--zc-text))]">
+                  <div className="mt-1 rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.55)] px-3 py-3 text-sm text-[rgb(var(--zc-text))]">
                     <div className="flex items-center gap-3">
                       {m.file.type?.startsWith('image/') && fileUrls[m.id] ? (
                         <img
@@ -150,7 +150,14 @@ export function MessageList({
                     ) : null}
                   </div>
                 ) : (
-                  <div className="mt-1 rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.4)] px-3 py-2 text-sm text-[rgb(var(--zc-text))]">
+                  <div
+                    className={[
+                      'mt-1 rounded-xl border px-3 py-2 text-sm text-[rgb(var(--zc-text))]',
+                      mine
+                        ? 'border-indigo-500/30 bg-indigo-500/10'
+                        : 'border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.55)]',
+                    ].join(' ')}
+                  >
                     <p className="whitespace-pre-wrap break-words">{m.text}</p>
                   </div>
                 )}

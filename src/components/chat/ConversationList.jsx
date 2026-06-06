@@ -17,10 +17,10 @@ export function ConversationList({ conversations = [], activeId, onSelect }) {
   }
 
   return (
-    <aside className="h-full w-full overflow-hidden rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
+    <aside className="h-full w-full overflow-hidden rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-violet-500 bg-[rgb(var(--zc-panel)/0.45)] shadow-sm">
       <div className="border-b border-[rgb(var(--zc-border))] px-4 py-3">
-        <p className="text-sm font-semibold text-[rgb(var(--zc-text))]">
-          {t('chat_conversations')}
+        <p className="text-sm font-semibold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">
+          💬 {t('chat_conversations')}
         </p>
         <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
           {t('chat_conversations_sub')}
@@ -28,7 +28,7 @@ export function ConversationList({ conversations = [], activeId, onSelect }) {
       </div>
 
       <div className="h-[calc(100%-56px)] overflow-y-auto px-2 py-2">
-        <Section title={t('chat_section_channels')}>
+        <Section title={t('chat_section_channels')} icon="#" accent="text-indigo-400">
           {channels.length === 0 ? (
             <p className="px-3 py-2 text-xs text-[rgb(var(--zc-muted2))]">
               {t('chat_no_channels')}
@@ -46,7 +46,7 @@ export function ConversationList({ conversations = [], activeId, onSelect }) {
           )}
         </Section>
 
-        <Section title={t('chat_section_dms')}>
+        <Section title={t('chat_section_dms')} icon="•" accent="text-emerald-400">
           {dms.length === 0 ? (
             <p className="px-3 py-2 text-xs text-[rgb(var(--zc-muted2))]">
               {t('chat_no_dms')}
@@ -68,10 +68,15 @@ export function ConversationList({ conversations = [], activeId, onSelect }) {
   )
 }
 
-function Section({ title, children }) {
+function Section({ title, children, icon, accent }) {
   return (
     <div className="mb-3">
-      <p className="px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+      <p className="flex items-center gap-1.5 px-2 py-2 text-[11px] font-semibold uppercase tracking-wide text-[rgb(var(--zc-subtle))]">
+        {icon ? (
+          <span className={accent || 'text-[rgb(var(--zc-muted2))]'} aria-hidden="true">
+            {icon}
+          </span>
+        ) : null}
         {title}
       </p>
       <div className="space-y-1">{children}</div>
@@ -85,14 +90,17 @@ function Item({ label, active, onClick, icon }) {
       type="button"
       onClick={onClick}
       className={[
-        'flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors',
+        'flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors',
         active
-          ? 'bg-[rgb(var(--zc-border))] text-[rgb(var(--zc-text))]'
-          : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.7)] hover:text-[rgb(var(--zc-text))]',
+          ? 'bg-indigo-500/15 font-medium text-indigo-300 ring-1 ring-inset ring-indigo-500/30'
+          : 'text-[rgb(var(--zc-muted))] hover:bg-[rgb(var(--zc-border)/0.5)] hover:text-[rgb(var(--zc-text))]',
       ].join(' ')}
     >
       <span
-        className="w-4 text-center text-[rgb(var(--zc-muted2))]"
+        className={[
+          'w-4 text-center',
+          active ? 'text-indigo-300' : 'text-[rgb(var(--zc-muted2))]',
+        ].join(' ')}
         aria-hidden="true"
       >
         {icon}
