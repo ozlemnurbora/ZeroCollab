@@ -704,8 +704,10 @@ export function CalendarPage() {
 
   return (
     <section>
-      <h1 className="text-xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-2xl">
-        {t('page_calendar_title')}
+      <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+        <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-pink-500 to-violet-600">
+          {t('page_calendar_title')}
+        </span>
       </h1>
       {activeProject ? (
         <div className="mt-1 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
@@ -744,9 +746,10 @@ export function CalendarPage() {
         </p>
       </div>
 
-      <div className="mt-3 rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.25)] p-2">
+      <div className="mt-3 rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-violet-500/70 bg-[rgb(var(--zc-bg)/0.25)] p-2">
         <div className="mb-1.5 flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-wide text-[rgb(var(--zc-muted2))]">
+          <p className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-violet-600">
+            <span aria-hidden="true">🗂️</span>
             {t('cal_sidebar_calendars')}
           </p>
         </div>

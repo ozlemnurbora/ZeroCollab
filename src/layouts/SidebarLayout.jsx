@@ -150,7 +150,7 @@ export function SidebarLayout() {
         } md:w-64`}
       >
         {/* Logo */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-[rgb(var(--zc-border))]">
+        <div className="shrink-0 flex items-center justify-between px-4 py-4 border-b border-[rgb(var(--zc-border))]">
           <div className="flex items-center gap-2">
             <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-xs font-bold text-white shadow-lg shadow-indigo-500/25">
               ZC
@@ -460,7 +460,7 @@ export function SidebarLayout() {
           </div>
         </div>
 
-        <div className="border-t border-[rgb(var(--zc-border))] px-4 py-3 space-y-2">
+        <div className="shrink-0 border-t border-[rgb(var(--zc-border))] px-4 py-3 space-y-2">
           <p className="text-xs text-[rgb(var(--zc-subtle))]">{t('brand_tagline')}</p>
           {user && (
             <div className="space-y-1">

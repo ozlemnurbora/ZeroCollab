@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom'
 import { KanbanBoard } from '../components/kanban/KanbanBoard.jsx'
 import { AddMeetingModal } from '../components/meetings/AddMeetingModal.jsx'
 import { MeetingDetailModal } from '../components/meetings/MeetingDetailModal.jsx'
-import { Button } from '../components/ui/Button.jsx'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
@@ -79,8 +78,10 @@ export function TasksPage() {
     <section>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[rgb(var(--zc-text))] sm:text-3xl">
-            {t('page_tasks_title')}
+          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-pink-500 to-violet-600">
+              {t('page_tasks_title')}
+            </span>
           </h1>
           {activeProject ? (
             <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
@@ -102,9 +103,13 @@ export function TasksPage() {
         // Tasks page intentionally creates only Task items as part of Agile hierarchy separation.
         createOnlyTask
         headerActions={
-          <Button variant="secondary" onClick={() => setIsAddMeetingOpen(true)}>
+          <button
+            type="button"
+            onClick={() => setIsAddMeetingOpen(true)}
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-violet-600 px-3.5 text-sm font-medium text-white shadow-sm hover:bg-violet-700 transition-colors"
+          >
             📅 {t('tasks_schedule_meeting')}
-          </Button>
+          </button>
         }
       />
 
@@ -131,24 +136,24 @@ export function TasksPage() {
               .map((meeting) => (
                 <div
                   key={meeting.id}
-                  className="group cursor-pointer rounded-xl border border-violet-500/30 bg-violet-500/5 p-4 transition hover:border-violet-500/60 hover:bg-violet-500/10"
+                  className="group cursor-pointer rounded-xl border border-violet-700/40 bg-violet-600 p-4 shadow-sm transition hover:bg-violet-700"
                   onClick={() => navigate(`/meetings/${meeting.id}`)}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-violet-300">
+                      <p className="truncate text-sm font-semibold text-white">
                         📅 {meeting.title}
                       </p>
-                      <p className="mt-1 text-xs text-[rgb(var(--zc-muted))]">
+                      <p className="mt-1 text-xs text-white/90">
                         {meeting.date} {t('tasks_at')} {meeting.time}
                       </p>
-                      <p className="text-xs text-[rgb(var(--zc-muted2))]">
+                      <p className="text-xs text-white/80">
                         {meeting.duration} {t('tasks_min')}
                         {meeting.recurring !== 'none' &&
                           ` • ${t('tasks_repeats', { freq: t(`tasks_freq_${meeting.recurring}`) })}`}
                       </p>
                       {meeting.description && (
-                        <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
+                        <p className="mt-1 text-xs text-white/80">
                           {meeting.description}
                         </p>
                       )}
@@ -173,7 +178,7 @@ export function TasksPage() {
                           )
                         }
                       }}
-                      className="shrink-0 text-xs text-rose-400 opacity-0 group-hover:opacity-100 hover:text-rose-300"
+                      className="shrink-0 text-xs text-white/70 opacity-0 group-hover:opacity-100 hover:text-white"
                     >
                       ✕
                     </button>
@@ -185,7 +190,7 @@ export function TasksPage() {
                         e.stopPropagation()
                         navigate(`/meetings/${meeting.id}`)
                       }}
-                      className="rounded-md bg-violet-500 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-violet-400"
+                      className="rounded-md bg-white px-2.5 py-1 text-[11px] font-semibold text-violet-700 shadow-sm hover:bg-violet-100"
                     >
                       {t('tasks_join_meeting')}
                     </button>
@@ -195,19 +200,13 @@ export function TasksPage() {
                         e.stopPropagation()
                         setSelectedMeeting(meeting)
                       }}
-                      className="rounded-md border border-[rgb(var(--zc-border))] px-2.5 py-1 text-[11px] text-[rgb(var(--zc-muted2))] hover:bg-[rgb(var(--zc-border)/0.4)]"
+                      className="rounded-md border border-white/60 px-2.5 py-1 text-[11px] font-medium text-white hover:bg-white/15"
                     >
                       {t('tasks_details')}
                     </button>
                   </div>
                   <div className="mt-2">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] ${
-                        meeting.calendarType === 'general'
-                          ? 'bg-indigo-500/15 text-indigo-300'
-                          : 'bg-emerald-500/15 text-emerald-300'
-                      }`}
-                    >
+                    <span className="rounded-full bg-white/20 px-2 py-0.5 text-[10px] font-medium text-white">
                       {meeting.calendarType}
                     </span>
                   </div>

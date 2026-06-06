@@ -17,22 +17,22 @@ import { useLanguage } from '../../utils/LanguageContext.jsx'
 function CalendarTaskRow({ task, statusLabel, onJoin }) {
   if (task.isMeeting) {
     return (
-      <li className="rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-1.5">
-        <p className="truncate text-xs font-medium text-violet-300">📅 {task.title}</p>
-        <p className="mt-1 text-[10px] text-[rgb(var(--zc-muted2))]">
-          {task.time} • {task.duration} min
-        </p>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            onJoin?.()
-          }}
-          className="mt-1.5 w-full rounded-md bg-violet-500 px-2 py-1 text-[10px] font-medium text-white hover:bg-violet-400"
-        >
-          Join
-        </button>
+      <li className="rounded-md border-l-[3px] border-violet-500 bg-[rgb(var(--zc-bg)/0.4)] px-2 py-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="min-w-0 truncate text-xs font-semibold text-[rgb(var(--zc-text))]">📅 {task.title}</p>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onJoin?.()
+            }}
+            className="shrink-0 rounded bg-violet-600 px-2 py-0.5 text-[10px] font-medium text-white hover:bg-violet-700"
+          >
+            Join
+          </button>
+        </div>
+        <p className="mt-0.5 text-[10px] text-[rgb(var(--zc-muted2))]">{task.time} • {task.duration} min</p>
       </li>
     )
   }
@@ -128,10 +128,10 @@ export function MonthlyCalendar({
   const dayItems = [...dayMeetings, ...dayTasks]
 
   return (
-    <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)]">
+    <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-indigo-500/70 bg-[rgb(var(--zc-bg)/0.3)]">
       <header className="flex flex-col gap-2 border-b border-[rgb(var(--zc-border))] px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-sm font-semibold text-[rgb(var(--zc-text))] sm:text-base">
+          <h2 className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">
             {headerTitle}
           </h2>
           <p className="mt-0.5 text-[11px] text-[rgb(var(--zc-subtle))] sm:mt-1 sm:text-xs">
@@ -192,7 +192,7 @@ export function MonthlyCalendar({
       ) : null}
 
       {viewMode === 'week' ? (
-        <div className="grid grid-cols-7 gap-2 border-t border-[rgb(var(--zc-border)/0.5)] px-2 py-3 sm:px-3">
+        <div className="grid grid-cols-7 items-stretch gap-2 border-t border-[rgb(var(--zc-border)/0.5)] px-2 py-3 sm:px-3">
           {weekDays.map((date, i) => {
             const iso = toISODate(date)
             const tasks = tasksByISODate?.get(iso) ?? []
@@ -202,12 +202,12 @@ export function MonthlyCalendar({
             const wday = t(dayKeys[i])
 
             return (
-              <div key={iso} className="min-w-0">
+              <div key={iso} className="min-w-0 h-full">
                 <button
                   type="button"
                   onClick={() => onSelectISODate?.(iso)}
                   className={[
-                    'flex w-full flex-col rounded-lg border px-1.5 py-2 text-left transition',
+                    'flex h-full min-h-[150px] w-full flex-col rounded-lg border px-1.5 py-2 text-left transition',
                     'border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.25)] hover:bg-[rgb(var(--zc-bg)/0.45)]',
                     selected ? 'ring-2 ring-indigo-500/50' : '',
                   ].join(' ')}
