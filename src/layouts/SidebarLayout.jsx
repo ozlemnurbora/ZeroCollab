@@ -468,7 +468,7 @@ export function SidebarLayout() {
               <button
                 type="button"
                 onClick={() => signOut()}
-                className="w-full rounded-md bg-rose-500/15 px-3 py-1.5 text-xs font-medium text-rose-300 hover:bg-rose-500/25 transition"
+                className="w-full rounded-md bg-rose-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-rose-700 transition"
               >
                 {t('sign_out')}
               </button>

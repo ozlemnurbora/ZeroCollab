@@ -60,21 +60,21 @@ function parseHederaPrivateKey(PrivateKey, raw) {
 const TIER_UI = {
   FREE: {
     label: 'Free',
-    columnHead: 'border-slate-500/35 bg-gradient-to-b from-slate-500/15 to-blue-500/5 text-[rgb(var(--zc-text))]',
+    columnHead: 'border-slate-500/40 bg-gradient-to-b from-slate-500/35 to-blue-500/20 text-[rgb(var(--zc-text))]',
     cardRing: 'ring-1 ring-slate-500/35',
     badge: 'bg-slate-500/15 text-[rgb(var(--zc-text))] ring-1 ring-slate-500/40',
     accentBar: 'from-slate-400/50 to-blue-500/40',
   },
   PLUS: {
     label: 'Plus',
-    columnHead: 'border-violet-500/40 bg-gradient-to-b from-violet-500/20 to-violet-950/30 text-[rgb(var(--zc-text))]',
+    columnHead: 'border-violet-500/50 bg-gradient-to-b from-violet-500/45 to-violet-700/25 text-[rgb(var(--zc-text))]',
     cardRing: 'ring-1 ring-violet-500/45',
     badge: 'bg-violet-500/15 text-violet-200 ring-1 ring-violet-500/40',
     accentBar: 'from-violet-500/60 to-fuchsia-500/40',
   },
   PREMIUM: {
     label: 'Premium',
-    columnHead: 'border-amber-500/45 bg-gradient-to-b from-amber-500/25 to-amber-950/20 text-[rgb(var(--zc-text))]',
+    columnHead: 'border-amber-500/55 bg-gradient-to-b from-amber-500/50 to-amber-600/30 text-[rgb(var(--zc-text))]',
     cardRing: 'ring-1 ring-amber-400/50',
     badge: 'bg-amber-500/15 text-amber-200 ring-1 ring-amber-400/45',
     accentBar: 'from-amber-400/70 to-yellow-600/40',
@@ -943,8 +943,8 @@ export function TokenEconomicsPage() {
         <div className="overflow-x-auto rounded-lg border border-[rgb(var(--zc-border))]">
           <table className="w-full min-w-[640px] border-collapse text-left text-sm">
             <thead>
-              <tr className="border-b border-[rgb(var(--zc-border))]">
-                <th className="sticky left-0 z-10 bg-[rgb(var(--zc-panel))] px-3 py-3 text-xs font-semibold text-[rgb(var(--zc-muted2))]">
+              <tr className="border-b-2 border-[rgb(var(--zc-border))]">
+                <th className="sticky left-0 z-10 bg-[rgb(var(--zc-panel))] px-3 py-3 text-sm font-semibold text-[rgb(var(--zc-text))]">
                   {t('te_feature')}
                 </th>
                 {TIER_KEYS.map((tk) => {
@@ -954,7 +954,7 @@ export function TokenEconomicsPage() {
                     <th
                       key={tk}
                       className={[
-                        'px-3 py-3 text-center text-xs font-semibold',
+                        'border-l border-[rgb(var(--zc-border)/0.4)] px-3 py-3 text-center text-sm font-bold',
                         ui.columnHead,
                         active ? 'ring-2 ring-indigo-400/40' : '',
                       ].join(' ')}
@@ -969,9 +969,9 @@ export function TokenEconomicsPage() {
               {comparisonRows.map((row, idx) => (
                 <tr
                   key={`${row.label}-${idx}`}
-                  className="border-b border-[rgb(var(--zc-border)/0.85)] last:border-0"
+                  className="border-b border-[rgb(var(--zc-border)/0.5)] last:border-0"
                 >
-                  <td className="sticky left-0 z-10 bg-[rgb(var(--zc-bg)/0.82)] px-3 py-2.5 text-xs text-[rgb(var(--zc-text))] backdrop-blur-sm">
+                  <td className="sticky left-0 z-10 bg-[rgb(var(--zc-bg))] px-3 py-3 text-sm font-medium text-[rgb(var(--zc-text))]">
                     {t(row.label)}
                   </td>
                   {TIER_KEYS.map((tk) => {
@@ -981,18 +981,16 @@ export function TokenEconomicsPage() {
                       <td
                         key={tk}
                         className={[
-                          'px-2 py-2.5 text-center text-xs',
-                          isCurrentCol
-                            ? 'bg-indigo-500/5'
-                            : 'bg-[rgb(var(--zc-bg)/0.2)]',
+                          'border-l border-[rgb(var(--zc-border)/0.4)] px-2 py-3 text-center',
+                          isCurrentCol ? 'bg-indigo-500/15' : '',
                         ].join(' ')}
                       >
                         {included ? (
-                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/25">
+                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600 text-white font-bold ring-1 ring-emerald-700">
                             ✓
                           </span>
                         ) : (
-                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-[rgb(var(--zc-border)/0.6)] text-[rgb(var(--zc-subtle))] ring-1 ring-[rgb(var(--zc-border))]">
+                          <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-400 text-white ring-1 ring-slate-500">
                             —
                           </span>
                         )}
