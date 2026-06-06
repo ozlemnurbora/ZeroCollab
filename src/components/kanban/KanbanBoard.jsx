@@ -681,6 +681,26 @@ export function KanbanBoard({
 
       const newIndexInGroup = newTargetOrder.indexOf(taskId)
 
+      // Record history for a cross-column move BEFORE computing changedTasks,
+      // broadcasting, and upserting — otherwise the new history entry only lives
+      // in the mover's local state and never reaches other members via P2P/Supabase.
+      // Bumping updatedAt also makes remote merges prefer this history-bearing version.
+      if (crossColumn) {
+        const movedIdx = working.findIndex((t) => t.id === taskId)
+        if (movedIdx !== -1) {
+          const movedTask = working[movedIdx]
+          const prevHistory = Array.isArray(movedTask.history) ? [...movedTask.history] : []
+          prevHistory.push({
+            id: crypto.randomUUID(),
+            action: 'status_change',
+            details: `Moved from ${srcStatus} to ${columnId}`,
+            timestamp: Date.now(),
+            user: user?.email || user?.user_metadata?.name || 'Someone',
+          })
+          working[movedIdx] = { ...movedTask, history: prevHistory, updatedAt: Date.now() }
+        }
+      }
+
       const changedTasks = working.filter((t) => {
         const o = prevSnap.get(t.id)
         if (!o) return false
@@ -709,22 +729,6 @@ export function KanbanBoard({
       if (uid) {
         const shared = changedTasks.filter((t) => isSharedProjectTask(t))
         if (shared.length) void upsertRemoteTasks(shared, uid)
-      }
-
-      // Record history for cross-column move
-      if (crossColumn) {
-        const movedIdx = working.findIndex((t) => t.id === taskId)
-        if (movedIdx !== -1) {
-          const movedTask = working[movedIdx]
-          const prevHistory = Array.isArray(movedTask.history) ? [...movedTask.history] : []
-          prevHistory.push({
-            action: 'status_change',
-            details: `Moved from ${srcStatus} to ${columnId}`,
-            timestamp: Date.now(),
-            user: user?.email || user?.user_metadata?.name || 'Someone',
-          })
-          working[movedIdx] = { ...movedTask, history: prevHistory }
-        }
       }
 
       // Trigger notification for cross-column moves (with dedup guard)

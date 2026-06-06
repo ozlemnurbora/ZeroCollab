@@ -117,6 +117,7 @@ export function TaskDetailModal({
   const addHistoryEntry = (task, action, details) => {
     const history = Array.isArray(task.history) ? [...task.history] : []
     history.push({
+      id: crypto.randomUUID(),
       action,
       details,
       timestamp: Date.now(),

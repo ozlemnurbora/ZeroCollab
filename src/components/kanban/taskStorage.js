@@ -61,20 +61,52 @@ export function getTaskMergeTimestamp(task) {
 }
 
 /**
+ * Union two task history arrays so concurrent edits / reloads never drop entries.
+ * Dedupe by entry.id when present, otherwise by a composite key (backward
+ * compatibility with legacy entries that have no id). Result is sorted ascending
+ * by timestamp. Null/undefined inputs are treated as empty arrays.
+ */
+export function mergeTaskHistories(historyA, historyB) {
+  const a = Array.isArray(historyA) ? historyA : []
+  const b = Array.isArray(historyB) ? historyB : []
+  const merged = []
+  const seen = new Set()
+  for (const entry of [...a, ...b]) {
+    if (!entry || typeof entry !== 'object') continue
+    const key =
+      entry.id != null && entry.id !== ''
+        ? `id:${entry.id}`
+        : `${entry.timestamp ?? ''}|${entry.user ?? ''}|${entry.action ?? ''}|${entry.details ?? ''}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    merged.push(entry)
+  }
+  merged.sort((x, y) => (Number(x?.timestamp) || 0) - (Number(y?.timestamp) || 0))
+  return merged
+}
+
+/**
  * Merge two versions of the same task id. Tombstones win over non-deleted peers;
- * among tombstones or among active tasks, newer updatedAt wins.
+ * among tombstones or among active tasks, newer updatedAt wins. Regardless of
+ * which version wins for the other fields, the returned task's `history` is the
+ * UNION of both versions' histories so no entry is lost to last-write-wins.
  */
 export function mergeTaskVersionsPreferringTombstone(existing, incoming) {
   if (!existing) return incoming
   if (!incoming) return existing
+  const mergedHistory = mergeTaskHistories(existing.history, incoming.history)
   const exDel = isTaskDeleted(existing)
   const inDel = isTaskDeleted(incoming)
-  if (exDel && !inDel) return existing
-  if (!exDel && inDel) return incoming
-  const exTs = getTaskMergeTimestamp(existing)
-  const inTs = getTaskMergeTimestamp(incoming)
-  if (exDel && inDel) return inTs >= exTs ? incoming : existing
-  return inTs >= exTs ? incoming : existing
+  let winner
+  if (exDel && !inDel) winner = existing
+  else if (!exDel && inDel) winner = incoming
+  else {
+    const exTs = getTaskMergeTimestamp(existing)
+    const inTs = getTaskMergeTimestamp(incoming)
+    winner = inTs >= exTs ? incoming : existing
+  }
+  if (mergedHistory.length === 0) return winner
+  return { ...winner, history: mergedHistory }
 }
 
 /** Merge local + remote task arrays by id with tombstone-safe rules (Supabase / hydration). */
