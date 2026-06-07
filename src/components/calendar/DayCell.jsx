@@ -55,7 +55,7 @@ export function DayCell({
             className={[
               'block w-full overflow-hidden text-ellipsis whitespace-nowrap rounded px-1 py-px text-left text-[9px] font-medium leading-none',
               primary.isMeeting
-                ? 'bg-violet-500/20 text-violet-200 ring-1 ring-violet-500/40'
+                ? 'bg-violet-600 text-white ring-1 ring-violet-700'
                 : taskBadgeClasses(primary.status),
             ].join(' ')}
             title={primary.title}
