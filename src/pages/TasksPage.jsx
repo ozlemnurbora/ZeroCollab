@@ -167,6 +167,19 @@ export function TasksPage() {
                         setMeetings((prev) =>
                           prev.filter((entry) => entry.id !== meeting.id),
                         )
+                        void addLogEntry({
+                          action: 'meeting.deleted',
+                          category: 'meeting',
+                          severity: 'warning',
+                          message: `Cancelled meeting "${meeting.title || meeting.id}"`,
+                          userId: user?.id,
+                          userName: user?.email?.split('@')[0] || '',
+                          projectId: meeting.calendarType === 'general' ? (meeting.projectId || activeProject?.id || null) : null,
+                          projectName: activeProject?.name || '',
+                          entityType: 'meeting',
+                          entityId: meeting.id,
+                          entityName: meeting.title || '',
+                        })
                         if (
                           meeting.calendarType === 'general' &&
                           meeting.projectId &&
@@ -269,6 +282,19 @@ export function TasksPage() {
           }
           if (ownerUserId) await saveMeeting(normalized, ownerUserId)
           setMeetings((prev) => prev.map((m) => (m.id === normalized.id ? normalized : m)))
+          void addLogEntry({
+            action: 'meeting.updated',
+            category: 'meeting',
+            severity: 'info',
+            message: `Updated meeting "${normalized.title || 'Untitled'}"`,
+            userId: user?.id,
+            userName: user?.email?.split('@')[0] || '',
+            projectId: normalized.calendarType === 'general' ? (normalized.projectId || activeProject?.id || null) : null,
+            projectName: activeProject?.name || '',
+            entityType: 'meeting',
+            entityId: normalized.id,
+            entityName: normalized.title || '',
+          })
           setSelectedMeeting(null)
           if (
             normalized.calendarType === 'general' &&
@@ -282,6 +308,19 @@ export function TasksPage() {
           const prevMeeting = selectedMeeting
           if (ownerUserId) await deleteMeeting(id, ownerUserId)
           setMeetings((prev) => prev.filter((m) => m.id !== id))
+          void addLogEntry({
+            action: 'meeting.deleted',
+            category: 'meeting',
+            severity: 'warning',
+            message: `Cancelled meeting "${prevMeeting?.title || id}"`,
+            userId: user?.id,
+            userName: user?.email?.split('@')[0] || '',
+            projectId: prevMeeting?.calendarType === 'general' ? (prevMeeting?.projectId || activeProject?.id || null) : null,
+            projectName: activeProject?.name || '',
+            entityType: 'meeting',
+            entityId: id,
+            entityName: prevMeeting?.title || '',
+          })
           setSelectedMeeting(null)
           if (
             prevMeeting?.calendarType === 'general' &&

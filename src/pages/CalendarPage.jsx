@@ -277,25 +277,8 @@ export function CalendarPage() {
       } else if (meetingAction === 'delete' && meetingId) {
         if (projectId && !memberProjectIds.includes(projectId)) return
         if (activeProject?.id && projectId && projectId !== activeProject.id) return
-        const existing = (meetingsRef.current || []).find(
-          (m) => m.id === meetingId,
-        )
-        const removedTitle = existing?.title || ''
         if (ownerUserId) await deleteMeeting(meetingId, ownerUserId)
         setMeetings((prev) => prev.filter((m) => m.id !== meetingId))
-        void addLogEntry({
-          action: 'meeting.deleted',
-          category: 'meeting',
-          severity: 'warning',
-          message: `Cancelled meeting "${removedTitle || meetingId}"`,
-          userId: user?.id,
-          userName: user?.email?.split('@')[0] || '',
-          projectId: activeProject?.id,
-          projectName: activeProject?.name || '',
-          entityType: 'meeting',
-          entityId: meetingId,
-          entityName: removedTitle,
-        })
       }
     }
     window.addEventListener('hub:meeting-update', handleMeetingUpdate)
