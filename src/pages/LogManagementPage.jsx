@@ -12,7 +12,9 @@ import {
   exportLogsAsJson,
   formatLogTime,
   getLogs,
+  getProjectLogs,
 } from '../utils/logService.js'
+import { deleteRemoteLogsForProject } from '../utils/logRemoteStorage.js'
 
 // Hard ceiling matches MAX_LOG_ENTRIES in logService.js. We fetch everything,
 // scope/filter in JS, then slice for display so the "Showing X of Y" counter
@@ -161,14 +163,26 @@ export function LogManagementPage() {
   const refreshLogs = useCallback(async () => {
     setLoading(true)
     try {
-      const raw = await getLogs({ ...filters, limit: FETCH_LIMIT })
-      // Scope to active project. Workspace-level events (projectId == null)
-      // such as auth.login/logout always show through.
-      const scoped = activeProject?.id
-        ? raw.filter(
-            (log) => log.projectId === activeProject.id || log.projectId == null,
-          )
-        : raw
+      let scoped
+      if (activeProject?.id) {
+        // Merged local + remote logs for this project (so teammates' actions show).
+        const projectLogs = await getProjectLogs(activeProject.id, {
+          ...filters,
+          limit: FETCH_LIMIT,
+        })
+        // Plus local-only workspace events (auth.login/logout etc., projectId == null)
+        // which are not shared remotely — keep showing them as before.
+        const localAll = await getLogs({ ...filters, limit: FETCH_LIMIT })
+        const workspaceLogs = localAll.filter((log) => log.projectId == null)
+        const byId = new Map()
+        for (const log of projectLogs) if (log?.id) byId.set(log.id, log)
+        for (const log of workspaceLogs)
+          if (log?.id && !byId.has(log.id)) byId.set(log.id, log)
+        scoped = Array.from(byId.values())
+        scoped.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+      } else {
+        scoped = await getLogs({ ...filters, limit: FETCH_LIMIT })
+      }
       setLogs(scoped.slice(0, DISPLAY_LIMIT))
       setTotal(scoped.length)
     } finally {
@@ -203,6 +217,10 @@ export function LogManagementPage() {
 
   const handleConfirmClear = async () => {
     await clearLogs()
+    // Also clear the shared trail so it's wiped for every member, not just locally.
+    if (activeProject?.id) {
+      await deleteRemoteLogsForProject(activeProject.id)
+    }
     setConfirmClearOpen(false)
     void refreshLogs()
   }

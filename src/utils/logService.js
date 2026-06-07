@@ -19,6 +19,8 @@
  * in try/catch and returns a benign value on failure.
  */
 
+import { fetchRemoteLogs, insertRemoteLog } from './logRemoteStorage.js'
+
 const DB_NAME = 'zerocollab-logs'
 const STORE_NAME = 'logs'
 const DB_VERSION = 1
@@ -100,6 +102,10 @@ export async function addLogEntry(entry) {
       tx.onerror = reject
     })
     window.dispatchEvent(new CustomEvent('zc-log', { detail: log }))
+    // Fire-and-forget share to teammates. Project-scoped logs only; workspace
+    // events (projectId null) return early inside insertRemoteLog. Non-blocking
+    // and never throws, so it can't break local logging.
+    void insertRemoteLog(log)
     void enforceMaxEntries()
     return log
   } catch (err) {
@@ -124,6 +130,37 @@ export async function getLogs(filters = {}) {
     return filtered.slice(0, limit)
   } catch (err) {
     console.error('[LogService] getLogs error:', err)
+    return []
+  }
+}
+
+/**
+ * Merged local + remote logs for a single project. Gives each member the union
+ * of their own (instant, local) actions and teammates' (remote) actions, deduped
+ * by id, filtered, and sorted newest-first. Never throws.
+ */
+export async function getProjectLogs(projectId, filters = {}) {
+  try {
+    if (!projectId) return []
+    const limit = Number.isFinite(filters.limit) && filters.limit > 0 ? filters.limit : 500
+    const [remote, local] = await Promise.all([
+      fetchRemoteLogs(projectId, { limit }),
+      getLogs({ ...filters, projectId, limit: Math.max(limit, 5000) }),
+    ])
+    const byId = new Map()
+    // Local first so a local entry (which carries projectName and is already
+    // localized) wins over its remote twin when both exist.
+    for (const log of Array.isArray(local) ? local : []) {
+      if (log && log.id) byId.set(log.id, log)
+    }
+    for (const log of Array.isArray(remote) ? remote : []) {
+      if (log && log.id && !byId.has(log.id)) byId.set(log.id, log)
+    }
+    const merged = Array.from(byId.values()).filter((log) => matchesFilters(log, filters))
+    merged.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
+    return merged.slice(0, limit)
+  } catch (err) {
+    console.error('[LogService] getProjectLogs error:', err)
     return []
   }
 }
