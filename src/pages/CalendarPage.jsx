@@ -268,28 +268,12 @@ export function CalendarPage() {
           if (!ownerUserId || meeting.ownerUserId !== ownerUserId) return
           if (!meeting.projectId || !memberProjectIds.includes(meeting.projectId)) return
         }
-        const alreadyExists = (meetingsRef.current || []).some((m) => m.id === meeting.id)
         if (ownerUserId) await saveMeeting(meeting, ownerUserId)
         setMeetings((prev) => {
           const exists = prev.find((m) => m.id === meeting.id)
           if (exists) return prev.map((m) => (m.id === meeting.id ? meeting : m))
           return [...prev, meeting]
         })
-        if (!alreadyExists && meeting.ownerUserId === ownerUserId) {
-          void addLogEntry({
-            action: 'meeting.created',
-            category: 'meeting',
-            severity: 'success',
-            message: `Scheduled meeting "${meeting.title || 'Untitled'}"`,
-            userId: user?.id,
-            userName: user?.email?.split('@')[0] || '',
-            projectId: activeProject?.id,
-            projectName: activeProject?.name || '',
-            entityType: 'meeting',
-            entityId: meeting.id,
-            entityName: meeting.title || '',
-          })
-        }
       } else if (meetingAction === 'delete' && meetingId) {
         if (projectId && !memberProjectIds.includes(projectId)) return
         if (activeProject?.id && projectId && projectId !== activeProject.id) return

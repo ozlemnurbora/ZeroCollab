@@ -12,6 +12,7 @@ import {
   saveMeeting,
 } from '../utils/meetingStorage.js'
 import { broadcastMeetingUpdate } from '../utils/hubManager.js'
+import { addLogEntry } from '../utils/logService.js'
 
 function meetingStorageProjectId(_meeting, activeProject) {
   return activeProject?.id ?? null
@@ -233,6 +234,19 @@ export function TasksPage() {
           setMeetings((prev) => {
             console.log('[Meeting] prev meetings:', prev)
             return [...prev, newMeeting]
+          })
+          void addLogEntry({
+            action: 'meeting.created',
+            category: 'meeting',
+            severity: 'success',
+            message: `Scheduled meeting "${newMeeting.title || 'Untitled'}"`,
+            userId: user?.id,
+            userName: user?.email?.split('@')[0] || '',
+            projectId: newMeeting.calendarType === 'general' ? (newMeeting.projectId || activeProject?.id || null) : null,
+            projectName: activeProject?.name || '',
+            entityType: 'meeting',
+            entityId: newMeeting.id,
+            entityName: newMeeting.title || '',
           })
           if (
             newMeeting.calendarType === 'general' &&
