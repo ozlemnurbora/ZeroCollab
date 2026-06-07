@@ -30,14 +30,26 @@ export function AuthProvider({ children }) {
       entityType: 'auth',
     }
     const projectIds = await fetchUserMemberProjectIds(authUser.id)
+    const awaitRemote = action === 'auth.logout'
+    const logOptions = awaitRemote ? { awaitRemote: true } : undefined
     if (projectIds.length === 0) {
       // Not a member of any project — keep it local/personal only.
-      void addLogEntry({ ...base, projectId: null })
+      if (awaitRemote) {
+        await addLogEntry({ ...base, projectId: null }, logOptions)
+      } else {
+        void addLogEntry({ ...base, projectId: null })
+      }
       return
     }
     // One synced, project-scoped log per member project.
-    for (const pid of projectIds) {
-      void addLogEntry({ ...base, projectId: pid })
+    if (awaitRemote) {
+      await Promise.all(
+        projectIds.map((pid) => addLogEntry({ ...base, projectId: pid }, logOptions)),
+      )
+    } else {
+      for (const pid of projectIds) {
+        void addLogEntry({ ...base, projectId: pid })
+      }
     }
   }
 

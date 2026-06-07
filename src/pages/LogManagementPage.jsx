@@ -156,6 +156,7 @@ export function LogManagementPage() {
   const [confirmClearOpen, setConfirmClearOpen] = useState(false)
 
   const searchTimerRef = useRef(null)
+  const initialLoadRef = useRef(true)
 
   useEffect(() => {
     if (searchTimerRef.current) window.clearTimeout(searchTimerRef.current)
@@ -178,7 +179,9 @@ export function LogManagementPage() {
   }, [category, severity, debouncedSearch, range])
 
   const refreshLogs = useCallback(async () => {
-    setLoading(true)
+    if (initialLoadRef.current) {
+      setLoading(true)
+    }
     try {
       let scoped
       if (activeProject?.id) {
@@ -219,7 +222,10 @@ export function LogManagementPage() {
       setLogs(scoped.slice(0, DISPLAY_LIMIT))
       setTotal(scoped.length)
     } finally {
-      setLoading(false)
+      if (initialLoadRef.current) {
+        setLoading(false)
+        initialLoadRef.current = false
+      }
     }
   }, [filters, activeProject?.id, currentUserId])
 

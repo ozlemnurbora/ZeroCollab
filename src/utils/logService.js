@@ -73,7 +73,7 @@ function matchesFilters(log, filters) {
   return true
 }
 
-export async function addLogEntry(entry) {
+export async function addLogEntry(entry, options = {}) {
   try {
     const action = entry && typeof entry.action === 'string' ? entry.action.trim() : ''
     if (!action) return null
@@ -102,10 +102,14 @@ export async function addLogEntry(entry) {
       tx.onerror = reject
     })
     window.dispatchEvent(new CustomEvent('zc-log', { detail: log }))
-    // Fire-and-forget share to teammates. Project-scoped logs only; workspace
-    // events (projectId null) return early inside insertRemoteLog. Non-blocking
-    // and never throws, so it can't break local logging.
-    void insertRemoteLog(log)
+    // Fire-and-forget share to teammates by default. Project-scoped logs only;
+    // workspace events (projectId null) return early inside insertRemoteLog.
+    // awaitRemote: true waits for Supabase insert (e.g. logout before signOut).
+    if (options.awaitRemote === true && log.projectId) {
+      await insertRemoteLog(log)
+    } else {
+      void insertRemoteLog(log)
+    }
     void enforceMaxEntries()
     return log
   } catch (err) {
