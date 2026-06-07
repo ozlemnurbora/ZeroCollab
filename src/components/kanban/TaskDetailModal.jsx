@@ -21,6 +21,7 @@ import {
 import { broadcastMessage } from '../../utils/hubManager.js'
 import { on, P2P_EVENTS, sendToAllPeers } from '../../utils/p2pManager.js'
 import {
+  dedupeHistory,
   normalizeStoryPointsValue,
   storyPointOptionsForValue,
 } from './taskStorage.js'
@@ -874,8 +875,8 @@ export function TaskDetailModal({
           <div className="mt-4">
             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-[rgb(var(--zc-muted))]">📋 History</h3>
             <div className="max-h-40 overflow-y-auto rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.2)] divide-y divide-[rgb(var(--zc-border)/0.5)]">
-              {Array.isArray(task?.history) && task.history.length > 0 ? (
-                [...task.history].reverse().map((entry, i) => (
+              {dedupeHistory(task?.history).length > 0 ? (
+                dedupeHistory(task?.history).reverse().map((entry, i) => (
                 <div key={i} className="px-3 py-2 text-[11px]">
                   <div className="flex items-center justify-between">
                     <span className="font-medium text-[rgb(var(--zc-text))]">{entry.details || entry.action}</span>

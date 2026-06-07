@@ -9,7 +9,19 @@ function createId() {
 function normalizeItemType(item) {
   if (!item) return 'task'
   const it = String(item.itemType ?? '').toLowerCase().trim()
-  if (it) return it
+  if (it) {
+    if (it === 'epic') return 'epic'
+    if (it === 'feature') return 'feature'
+    if (
+      it === 'user_story' ||
+      it === 'user story' ||
+      it === 'userstory' ||
+      it === 'user-story'
+    ) {
+      return 'user_story'
+    }
+    if (it === 'task') return 'task'
+  }
   const t = String(item.type ?? '').trim()
   if (t === 'Epic') return 'epic'
   if (t === 'Feature') return 'feature'

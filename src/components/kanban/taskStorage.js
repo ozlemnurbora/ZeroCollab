@@ -61,28 +61,64 @@ export function getTaskMergeTimestamp(task) {
 }
 
 /**
- * Union two task history arrays so concurrent edits / reloads never drop entries.
- * Dedupe by entry.id when present, otherwise by a composite key (backward
- * compatibility with legacy entries that have no id). Result is sorted ascending
+ * CONTENT key for a history entry: same user + action + details within the same
+ * second is treated as the SAME logical event, even if the entries carry
+ * different random ids (recorded twice, or merged from two sync paths).
+ */
+function historyContentKey(entry) {
+  return `${entry?.user || ''}|${entry?.action || ''}|${entry?.details || ''}|${Math.floor((Number(entry?.timestamp) || 0) / 1000)}`
+}
+
+/** Pick the entry to keep when two share a content key: earliest timestamp, then prefer one with an id. */
+function preferHistoryEntry(a, b) {
+  const ta = Number(a?.timestamp) || 0
+  const tb = Number(b?.timestamp) || 0
+  if (ta !== tb) return ta < tb ? a : b
+  const aHasId = a?.id != null && a.id !== ''
+  const bHasId = b?.id != null && b.id !== ''
+  if (aHasId && !bHasId) return a
+  if (bHasId && !aHasId) return b
+  return a
+}
+
+/**
+ * Content-based dedup for history entries. Collapses exact id matches AND entries
+ * that represent the same logical event (same content key), then sorts ascending
  * by timestamp. Null/undefined inputs are treated as empty arrays.
+ */
+export function dedupeHistory(history) {
+  const list = Array.isArray(history) ? history : []
+  const byContent = new Map()
+  const seenIds = new Set()
+  const order = []
+  for (const entry of list) {
+    if (!entry || typeof entry !== 'object') continue
+    const id = entry.id != null && entry.id !== '' ? String(entry.id) : ''
+    if (id && seenIds.has(id)) continue
+    const key = historyContentKey(entry)
+    const existing = byContent.get(key)
+    if (!existing) {
+      byContent.set(key, entry)
+      order.push(key)
+    } else {
+      byContent.set(key, preferHistoryEntry(existing, entry))
+    }
+    if (id) seenIds.add(id)
+  }
+  const merged = order.map((k) => byContent.get(k))
+  merged.sort((x, y) => (Number(x?.timestamp) || 0) - (Number(y?.timestamp) || 0))
+  return merged
+}
+
+/**
+ * Union two task history arrays so concurrent edits / reloads never drop entries.
+ * Dedup is content-based (see dedupeHistory) so the same event recorded with
+ * different ids collapses to one. Result is sorted ascending by timestamp.
  */
 export function mergeTaskHistories(historyA, historyB) {
   const a = Array.isArray(historyA) ? historyA : []
   const b = Array.isArray(historyB) ? historyB : []
-  const merged = []
-  const seen = new Set()
-  for (const entry of [...a, ...b]) {
-    if (!entry || typeof entry !== 'object') continue
-    const key =
-      entry.id != null && entry.id !== ''
-        ? `id:${entry.id}`
-        : `${entry.timestamp ?? ''}|${entry.user ?? ''}|${entry.action ?? ''}|${entry.details ?? ''}`
-    if (seen.has(key)) continue
-    seen.add(key)
-    merged.push(entry)
-  }
-  merged.sort((x, y) => (Number(x?.timestamp) || 0) - (Number(y?.timestamp) || 0))
-  return merged
+  return dedupeHistory([...a, ...b])
 }
 
 /**

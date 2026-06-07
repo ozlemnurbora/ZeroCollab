@@ -16,6 +16,11 @@ import {
   taskVisibleInActiveProject,
 } from '../utils/taskP2PSync.js'
 import { broadcastTaskSync } from '../utils/hubManager.js'
+import {
+  fetchRemotePackages,
+  upsertRemotePackage,
+  deleteRemotePackage,
+} from '../utils/releasePackageStorage.js'
 import { on, P2P_EVENTS, sendToAllPeers } from '../utils/p2pManager.js'
 import {
   fetchRemoteProjectTasks,
@@ -101,64 +106,97 @@ export function ProductRoadmapPage() {
   const lastHydratedAtRef = useRef(0)
   const [selectedItemId, setSelectedItemId] = useState(null)
 
-  const [packages, setPackages] = useState(() => {
-    try {
-      const raw = localStorage.getItem('zc-release-packages')
-      return raw ? JSON.parse(raw) : []
-    } catch { return [] }
-  })
+  // Project-scoped release packages, loaded from Supabase (shared across members).
+  const [packages, setPackages] = useState([])
   const [showPackageForm, setShowPackageForm] = useState(false)
   const [newPackageName, setNewPackageName] = useState('')
   const [newPackageDate, setNewPackageDate] = useState('')
 
-  const savePackages = (updated) => {
-    setPackages(updated)
-    localStorage.setItem('zc-release-packages', JSON.stringify(updated))
-  }
+  // Load only the active project's packages whenever the active project changes.
+  // This alone fixes the cross-project leak (no global localStorage list).
+  useEffect(() => {
+    let cancelled = false
+    const pid = activeProject?.id ?? null
+    if (!pid) {
+      setPackages([])
+      return undefined
+    }
+    void (async () => {
+      const remote = await fetchRemotePackages(pid)
+      if (!cancelled) setPackages(remote)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeProject?.id])
 
   const createPackage = () => {
     if (!newPackageName.trim()) return
+    if (!activeProject?.id) return
     const pkg = {
       id: `pkg_${Date.now()}`,
+      projectId: activeProject.id,
       name: newPackageName.trim(),
       deployDate: newPackageDate || null,
       epicIds: [],
       createdAt: Date.now(),
     }
-    savePackages([...packages, pkg])
+    setPackages((prev) => [...prev, pkg])
+    void upsertRemotePackage(pkg)
     setNewPackageName('')
     setNewPackageDate('')
     setShowPackageForm(false)
   }
 
   const deletePackage = (pkgId) => {
-    savePackages(packages.filter((p) => p.id !== pkgId))
+    setPackages((prev) => prev.filter((p) => p.id !== pkgId))
+    void deleteRemotePackage(pkgId)
   }
 
   const assignEpicToPackage = (epicId, pkgId) => {
-    const updated = packages.map((p) => {
-      const ids = new Set(p.epicIds || [])
-      if (p.id === pkgId) {
-        ids.add(epicId)
-      } else {
-        ids.delete(epicId)
+    setPackages((prev) => {
+      const updated = prev.map((p) => {
+        const ids = new Set(p.epicIds || [])
+        if (p.id === pkgId) {
+          ids.add(epicId)
+        } else {
+          ids.delete(epicId)
+        }
+        return { ...p, epicIds: [...ids] }
+      })
+      // Persist every package whose epic list actually changed (the target gains
+      // the epic; any package that previously held it loses it).
+      for (const p of updated) {
+        const before = prev.find((x) => x.id === p.id)
+        if (!before || before.epicIds.join('|') !== p.epicIds.join('|')) {
+          void upsertRemotePackage(p)
+        }
       }
-      return { ...p, epicIds: [...ids] }
+      return updated
     })
-    savePackages(updated)
   }
 
   const removeEpicFromPackage = (epicId, pkgId) => {
-    const updated = packages.map((p) => {
-      if (p.id !== pkgId) return p
-      return { ...p, epicIds: (p.epicIds || []).filter((id) => id !== epicId) }
+    setPackages((prev) => {
+      const updated = prev.map((p) => {
+        if (p.id !== pkgId) return p
+        return { ...p, epicIds: (p.epicIds || []).filter((id) => id !== epicId) }
+      })
+      const changed = updated.find((p) => p.id === pkgId)
+      if (changed) void upsertRemotePackage(changed)
+      return updated
     })
-    savePackages(updated)
   }
 
   const updatePackageDate = (pkgId, date) => {
-    const updated = packages.map((p) => p.id === pkgId ? { ...p, deployDate: date } : p)
-    savePackages(updated)
+    setPackages((prev) => {
+      const updated = prev.map((p) =>
+        p.id === pkgId ? { ...p, deployDate: date } : p,
+      )
+      const changed = updated.find((p) => p.id === pkgId)
+      if (changed) void upsertRemotePackage(changed)
+      return updated
+    })
   }
 
   const activeProjectId = activeProject?.id ?? null

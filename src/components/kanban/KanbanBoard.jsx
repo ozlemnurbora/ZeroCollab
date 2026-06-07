@@ -690,14 +690,30 @@ export function KanbanBoard({
         if (movedIdx !== -1) {
           const movedTask = working[movedIdx]
           const prevHistory = Array.isArray(movedTask.history) ? [...movedTask.history] : []
-          prevHistory.push({
-            id: crypto.randomUUID(),
-            action: 'status_change',
-            details: `Moved from ${srcStatus} to ${columnId}`,
-            timestamp: Date.now(),
-            user: user?.email || user?.user_metadata?.name || 'Someone',
-          })
-          working[movedIdx] = { ...movedTask, history: prevHistory, updatedAt: Date.now() }
+          const details = `Moved from ${srcStatus} to ${columnId}`
+          const moveUser = user?.email || user?.user_metadata?.name || 'Someone'
+          const nowSec = Math.floor(Date.now() / 1000)
+          // Idempotency guard: skip if the same move (same content key, within the
+          // same second) is already recorded, so a double-fired handler / repeated
+          // updater can't push the entry twice.
+          const alreadyRecorded = prevHistory.some(
+            (e) =>
+              e &&
+              e.action === 'status_change' &&
+              e.details === details &&
+              (e.user || '') === moveUser &&
+              Math.floor((Number(e.timestamp) || 0) / 1000) === nowSec,
+          )
+          if (!alreadyRecorded) {
+            prevHistory.push({
+              id: crypto.randomUUID(),
+              action: 'status_change',
+              details,
+              timestamp: Date.now(),
+              user: moveUser,
+            })
+            working[movedIdx] = { ...movedTask, history: prevHistory, updatedAt: Date.now() }
+          }
         }
       }
 
