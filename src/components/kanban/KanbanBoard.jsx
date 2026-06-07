@@ -898,6 +898,16 @@ export function KanbanBoard({
             ? activeTeam?.id || normalizedPayload.teamId || null
             : null,
         ownerUserId: user?.id || null,
+        history: [
+          {
+            id: crypto.randomUUID(),
+            action: 'created',
+            details: 'Task created',
+            timestamp: now,
+            user: user?.email || user?.user_metadata?.name || 'Someone',
+          },
+          ...(Array.isArray(normalizedPayload?.history) ? normalizedPayload.history : []),
+        ],
       }
       const next = dedupeAndNormalizePositions([
         created,
