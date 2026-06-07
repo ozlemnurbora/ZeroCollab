@@ -10,9 +10,9 @@ import { getAgileItemType } from './agile/getAgileItemType.js'
 export function isSharedProjectTask(task) {
   if (!task || typeof task !== 'object') return false
   if (!task.projectId) return false
-  // Project work items must sync so sprint assignment and backlog are visible to all members.
+  if (task.calendarType === 'personal') return false // personal tasks are private — never synced
   if (task.calendarType === 'general' || !task.calendarType) return true
-  if (task.calendarType === 'personal' || task.calendarType === 'custom') return true
+  if (task.calendarType === 'custom') return true // team/custom calendars stay shared
   return false
 }
 
@@ -79,8 +79,8 @@ export function normalizeTaskForRemote(task, fallbackUserId) {
     sprintId: task.sprintId == null || task.sprintId === '' ? null : String(task.sprintId),
     sprintNumber,
     sprintCommittedAt: task.sprintCommittedAt ?? task.sprint_committed_at ?? null,
-    calendarType: 'general',
-    calendarId: 'general',
+    calendarType: (typeof task.calendarType === 'string' && task.calendarType.trim()) ? task.calendarType.trim() : 'general',
+    calendarId: (typeof task.calendarId === 'string' && task.calendarId.trim()) ? task.calendarId.trim() : 'general',
     ownerUserId: task.ownerUserId || fallbackUserId || null,
     updatedAt:
       typeof task.updatedAt === 'number' && Number.isFinite(task.updatedAt)
@@ -131,8 +131,8 @@ export function normalizeTaskForRemote(task, fallbackUserId) {
       sprintCommittedAt: normalized.sprintCommittedAt,
       backlogState: normalized.backlogState,
       storyPoints: normalized.storyPoints,
-      calendarType: 'general',
-      calendarId: 'general',
+      calendarType: normalized.calendarType,
+      calendarId: normalized.calendarId,
     },
     updated_at: toIso(normalized.updatedAt),
   }
