@@ -809,6 +809,11 @@ export function ProductBacklogPage() {
   }
 
   const upsertItem = (updatedItem) => {
+    // Determine create-vs-update from the pre-upsert snapshot; commit captured
+    // inside the updater so we only log when the save actually goes through.
+    const snapshotBefore = Array.isArray(itemsRef.current) ? itemsRef.current : []
+    const existedBefore = snapshotBefore.some((it) => it?.id === updatedItem?.id)
+    let committedItem = null
     setItems((prev) => {
       const uid = ownerUserIdRef.current
       const now = Date.now()
@@ -913,11 +918,29 @@ export function ProductBacklogPage() {
       ])
       if (uid) void saveTasks(next, uid, { reason: 'ProductBacklog upsert' })
       void syncAgileItems([normalized], next)
+      committedItem = normalized
       return next
     })
+    if (committedItem) {
+      const logCat = categoryFromItemType(committedItem.itemType)
+      void addLogEntry({
+        action: existedBefore ? `${logCat}.updated` : `${logCat}.created`,
+        category: logCat,
+        severity: existedBefore ? 'info' : 'success',
+        message: `${existedBefore ? 'Updated' : 'Created'} ${logCat} "${committedItem.title || 'Untitled'}"`,
+        userId: user?.id,
+        userName: user?.email?.split('@')[0] || '',
+        projectId: activeProject?.id,
+        projectName: activeProject?.name || '',
+        entityType: logCat,
+        entityId: committedItem.id,
+        entityName: committedItem.title || '',
+      })
+    }
   }
 
   const createItem = (payload) => {
+    let createdItem = null
     setItems((prev) => {
       const uid = ownerUserIdRef.current
       if (!uid) return prev
@@ -932,8 +955,25 @@ export function ProductBacklogPage() {
       ])
       void saveTasks(next, uid, { reason: 'ProductBacklog create' })
       void syncAgileItems([normalized], next)
+      createdItem = normalized
       return next
     })
+    if (createdItem) {
+      const logCat = categoryFromItemType(createdItem.itemType)
+      void addLogEntry({
+        action: `${logCat}.created`,
+        category: logCat,
+        severity: 'success',
+        message: `Created ${logCat} "${createdItem.title || 'Untitled'}"`,
+        userId: user?.id,
+        userName: user?.email?.split('@')[0] || '',
+        projectId: activeProject?.id,
+        projectName: activeProject?.name || '',
+        entityType: logCat,
+        entityId: createdItem.id,
+        entityName: createdItem.title || '',
+      })
+    }
   }
 
   const deleteItem = (itemId) => {

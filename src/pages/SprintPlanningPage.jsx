@@ -23,6 +23,7 @@ import {
   isSharedProjectTask,
 } from '../utils/taskRemoteStorage.js'
 import { normalizeCapacityPoints } from '../utils/workspaceDB.js'
+import { addLogEntry } from '../utils/logService.js'
 import { ConfirmDialog } from '../components/common/ConfirmDialog.jsx'
 import {
   calculateSprintCapacityLoad,
@@ -1369,6 +1370,20 @@ export function SprintPlanningPage() {
                 planning_completed_at: new Date().toISOString(),
                 planning_completed_by: user.id,
               })
+              const sprintLabel = `Sprint #${activeSprint.sprint_number ?? activeSprint.sprintNumber ?? ''}`.trim()
+              void addLogEntry({
+                action: 'sprint.updated',
+                category: 'sprint',
+                severity: 'info',
+                message: `Completed sprint planning for "${sprintLabel}"`,
+                userId: user?.id,
+                userName: user?.email?.split('@')[0] || '',
+                projectId: activeProject?.id,
+                projectName: activeProject?.name || '',
+                entityType: 'sprint',
+                entityId: activeSprint.id,
+                entityName: sprintLabel,
+              })
               setCompletePlanningOpen(false)
               setPlanningCompleteOk(true)
             } catch (err) {
@@ -1396,6 +1411,20 @@ export function SprintPlanningPage() {
                 planning_status: 'draft',
                 planning_completed_at: null,
                 planning_completed_by: null,
+              })
+              const sprintLabel = `Sprint #${activeSprint.sprint_number ?? activeSprint.sprintNumber ?? ''}`.trim()
+              void addLogEntry({
+                action: 'sprint.updated',
+                category: 'sprint',
+                severity: 'info',
+                message: `Reopened sprint planning for "${sprintLabel}"`,
+                userId: user?.id,
+                userName: user?.email?.split('@')[0] || '',
+                projectId: activeProject?.id,
+                projectName: activeProject?.name || '',
+                entityType: 'sprint',
+                entityId: activeSprint.id,
+                entityName: sprintLabel,
               })
               setReopenPlanningOpen(false)
             } catch (err) {

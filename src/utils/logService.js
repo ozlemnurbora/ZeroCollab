@@ -198,6 +198,34 @@ export async function clearLogs() {
   }
 }
 
+export async function clearLogsForProject(projectId) {
+  try {
+    if (!projectId) return
+    const db = await openDB()
+    const tx = db.transaction(STORE_NAME, 'readwrite')
+    const store = tx.objectStore(STORE_NAME)
+    const all = await new Promise((resolve, reject) => {
+      const req = store.getAll()
+      req.onsuccess = () => resolve(req.result)
+      req.onerror = () => reject(req.error)
+    })
+    // Delete only this project's entries — preserve other projects and
+    // null-project (auth/personal) logs.
+    for (const log of Array.isArray(all) ? all : []) {
+      if (log && log.id && log.projectId === projectId) {
+        store.delete(log.id)
+      }
+    }
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve
+      tx.onerror = reject
+    })
+    window.dispatchEvent(new CustomEvent('zc-log', { detail: { type: 'cleared', projectId } }))
+  } catch (err) {
+    console.error('[LogService] clearLogsForProject error:', err)
+  }
+}
+
 export async function exportLogsAsJson() {
   try {
     const db = await openDB()

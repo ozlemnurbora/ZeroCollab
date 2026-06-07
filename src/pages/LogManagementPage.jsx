@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
+import { useAuth } from '../utils/AuthContext.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { Modal } from '../components/ui/Modal.jsx'
 import {
@@ -8,13 +9,14 @@ import {
   LOG_SEVERITY_META,
 } from '../utils/logCategories.js'
 import {
-  clearLogs,
+  clearLogsForProject,
   exportLogsAsJson,
   formatLogTime,
   getLogs,
   getProjectLogs,
 } from '../utils/logService.js'
 import { deleteRemoteLogsForProject } from '../utils/logRemoteStorage.js'
+import { isAdminRole, normalizeProjectRole } from '../utils/roleOntology.js'
 
 // Hard ceiling matches MAX_LOG_ENTRIES in logService.js. We fetch everything,
 // scope/filter in JS, then slice for display so the "Showing X of Y" counter
@@ -128,6 +130,21 @@ function humanizeAction(action, t) {
 export function LogManagementPage() {
   const { t } = useLanguage()
   const { activeProject } = useWorkspace()
+  const { user } = useAuth()
+  const currentUserId = user?.id ?? null
+  // Only a project owner/admin may clear the project's shared audit trail.
+  const isProjectOwner =
+    !!activeProject &&
+    (activeProject.owner_id === user?.id || activeProject.ownerId === user?.id)
+  const currentMember =
+    (activeProject?.projectMembers || []).find((m) => m?.userId === user?.id) || null
+  const currentProjectRole = normalizeProjectRole(
+    currentMember?.role,
+    currentMember?.memberSource,
+    currentMember?.customRole,
+  )
+  const canClear =
+    !!activeProject?.id && (isProjectOwner || isAdminRole(currentProjectRole))
   const [logs, setLogs] = useState([])
   const [total, setTotal] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -166,14 +183,18 @@ export function LogManagementPage() {
       let scoped
       if (activeProject?.id) {
         // Merged local + remote logs for this project (so teammates' actions show).
+        // Project-scoped logs are the shared audit trail — shown for ALL users.
         const projectLogs = await getProjectLogs(activeProject.id, {
           ...filters,
           limit: FETCH_LIMIT,
         })
         // Plus local-only workspace events (auth.login/logout etc., projectId == null)
-        // which are not shared remotely — keep showing them as before.
+        // which are not shared remotely. Scope these to the current account so
+        // other accounts' auth events on this browser don't leak in.
         const localAll = await getLogs({ ...filters, limit: FETCH_LIMIT })
-        const workspaceLogs = localAll.filter((log) => log.projectId == null)
+        const workspaceLogs = localAll.filter(
+          (log) => log.projectId == null && log.userId === currentUserId,
+        )
         const byId = new Map()
         for (const log of projectLogs) if (log?.id) byId.set(log.id, log)
         for (const log of workspaceLogs)
@@ -181,14 +202,26 @@ export function LogManagementPage() {
         scoped = Array.from(byId.values())
         scoped.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
       } else {
-        scoped = await getLogs({ ...filters, limit: FETCH_LIMIT })
+        // No active project: show only the current user's own logs.
+        const localAll = await getLogs({ ...filters, limit: FETCH_LIMIT })
+        const own = localAll.filter((log) => log.userId === currentUserId)
+        // A single login/logout writes one auth log per member project, so
+        // collapse them to a single row per event (same action + second + user).
+        const seenAuth = new Set()
+        scoped = own.filter((log) => {
+          if (log.category !== 'auth') return true
+          const key = `${log.action}|${Math.round((log.timestamp || 0) / 1000)}|${log.userId}`
+          if (seenAuth.has(key)) return false
+          seenAuth.add(key)
+          return true
+        })
       }
       setLogs(scoped.slice(0, DISPLAY_LIMIT))
       setTotal(scoped.length)
     } finally {
       setLoading(false)
     }
-  }, [filters, activeProject?.id])
+  }, [filters, activeProject?.id, currentUserId])
 
   useEffect(() => {
     void refreshLogs()
@@ -209,18 +242,20 @@ export function LogManagementPage() {
     const all = await exportLogsAsJson()
     const scoped = activeProject?.id
       ? all.filter(
-          (log) => log.projectId === activeProject.id || log.projectId == null,
+          (log) =>
+            log.projectId === activeProject.id ||
+            (log.projectId == null && log.userId === currentUserId),
         )
-      : all
+      : all.filter((log) => log.userId === currentUserId)
     downloadJson(`zerocollab-logs-${new Date().toISOString()}.json`, scoped)
   }
 
   const handleConfirmClear = async () => {
-    await clearLogs()
-    // Also clear the shared trail so it's wiped for every member, not just locally.
-    if (activeProject?.id) {
-      await deleteRemoteLogsForProject(activeProject.id)
-    }
+    if (!canClear || !activeProject?.id) return
+    // Wipe the active project's shared trail (remote) and this project's local
+    // entries only — other projects' and personal/auth logs are preserved.
+    await deleteRemoteLogsForProject(activeProject.id)
+    await clearLogsForProject(activeProject.id)
     setConfirmClearOpen(false)
     void refreshLogs()
   }
@@ -254,13 +289,15 @@ export function LogManagementPage() {
           <Button variant="secondary" onClick={() => void handleExport()}>
             ⬇ {t('logs_export')}
           </Button>
-          <Button
-            variant="danger"
-            onClick={() => setConfirmClearOpen(true)}
-            disabled={total === 0}
-          >
-            🗑 {t('logs_clear_all')}
-          </Button>
+          {canClear ? (
+            <Button
+              variant="danger"
+              onClick={() => setConfirmClearOpen(true)}
+              disabled={total === 0}
+            >
+              🗑 {t('logs_clear_all')}
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -423,7 +460,7 @@ export function LogManagementPage() {
         }
       >
         <p className="text-sm text-[rgb(var(--zc-muted))]">
-          {t('logs_clear_confirm_body')}
+          {t('logs_clear_confirm_body', { project: activeProject?.name || '' })}
         </p>
       </Modal>
     </section>

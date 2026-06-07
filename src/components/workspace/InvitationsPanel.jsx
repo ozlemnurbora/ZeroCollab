@@ -12,6 +12,7 @@ import {
 } from '../../utils/invitationManager.js'
 import { supabase } from '../../utils/supabase.js'
 import { joinProjectAsMember } from '../../utils/workspaceDB.js'
+import { addLogEntry } from '../../utils/logService.js'
 import {
   canAddTeamMember,
   recordTeamMemberAdded,
@@ -69,6 +70,21 @@ export function InvitationsPanel() {
           user.email,
           'member',
         )
+        // Only log a newly-added member (the join above succeeded). If the user
+        // was already a member, joinProjectAsMember throws and we skip the log.
+        void addLogEntry({
+          action: 'project.member_added',
+          category: 'project',
+          severity: 'info',
+          message: `${user.email?.split('@')[0] || user.email} joined project "${invitation.project_name || invitation.project_id}"`,
+          userId: user?.id,
+          userName: user?.email?.split('@')[0] || '',
+          projectId: invitation.project_id,
+          projectName: invitation.project_name || '',
+          entityType: 'project',
+          entityId: invitation.project_id,
+          entityName: invitation.project_name || '',
+        })
       } catch (e) {
         console.warn('[Invite] join project (may already be a member):', e)
       }

@@ -79,6 +79,21 @@ export async function fetchRemoteLogs(projectId, { limit = 500 } = {}) {
   }
 }
 
+/** Project IDs the user is a member of. Used to fan auth logs out to each project. Never throws. */
+export async function fetchUserMemberProjectIds(userId) {
+  if (!userId) return []
+  try {
+    const { data, error } = await supabase
+      .from('project_members')
+      .select('project_id')
+      .eq('user_id', userId)
+    if (error) return []
+    return (data || []).map((r) => r.project_id).filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
 /** Delete every shared log row for a project (used by "Clear all"). Never throws. */
 export async function deleteRemoteLogsForProject(projectId) {
   try {

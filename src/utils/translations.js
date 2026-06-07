@@ -431,7 +431,7 @@ export const TRANSLATIONS = {
     logs_clear_all: 'Clear all',
     logs_clear_confirm_title: 'Clear all logs?',
     logs_clear_confirm_body:
-      'This will permanently delete the audit trail. This cannot be undone. All entries from every project will be cleared.',
+      'This will permanently delete the activity log for project "{project}" for all its members. This cannot be undone. Logs from other projects and personal sign-in/out records are not affected.',
     logs_clear_yes: 'Yes, clear all',
     logs_empty_title: 'No activity yet',
     logs_empty_sub: 'Actions across the workspace will appear here.',
@@ -1264,7 +1264,7 @@ export const TRANSLATIONS = {
     logs_clear_all: 'Tümünü temizle',
     logs_clear_confirm_title: 'Tüm günlükleri sil?',
     logs_clear_confirm_body:
-      'Bu işlem denetim kaydını kalıcı olarak siler. Geri alınamaz. Her projeden tüm kayıtlar silinecek.',
+      'Bu işlem "{project}" projesinin etkinlik kaydını tüm üyeleri için kalıcı olarak siler. Geri alınamaz. Diğer projelerin kayıtları ve kişisel giriş/çıkış kayıtları etkilenmez.',
     logs_clear_yes: 'Evet, tümünü sil',
     logs_empty_title: 'Henüz etkinlik yok',
     logs_empty_sub: 'Çalışma alanındaki işlemler burada görünür.',

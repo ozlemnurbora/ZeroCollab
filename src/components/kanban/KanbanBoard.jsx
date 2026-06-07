@@ -911,6 +911,9 @@ export function KanbanBoard({
   }
 
   const updateTask = (taskId, updates) => {
+    // Captured inside the updater, logged after it commits (matches the .moved
+    // pattern). Stays null for deletions and pure position-only updates.
+    let logAfterTask = null
     setTasks((prev) => {
       const now = Date.now()
       const prevById = new Map(prev.map((t) => [t.id, t]))
@@ -994,8 +997,42 @@ export function KanbanBoard({
         })
         if (toUpsert.length) void upsertRemoteTasks(toUpsert, uid)
       }
+      // Record an edit log for meaningful field changes (not deletions, not
+      // pure position/order changes — cross-column moves are logged as .moved).
+      if (beforeTask && afterTask && !isTaskDeleted(afterTask)) {
+        const meaningfulChanged =
+          (beforeTask.status || 'todo') !== (afterTask.status || 'todo') ||
+          (beforeTask.priority || 'must') !== (afterTask.priority || 'must') ||
+          (beforeTask.title || '') !== (afterTask.title || '') ||
+          (beforeTask.description || '') !== (afterTask.description || '') ||
+          (beforeTask.assignee || '') !== (afterTask.assignee || '') ||
+          (beforeTask.itemType || '') !== (afterTask.itemType || '') ||
+          (beforeTask.backlogState || 'new') !== (afterTask.backlogState || 'new') ||
+          (beforeTask.sprintId ?? null) !== (afterTask.sprintId ?? null) ||
+          normalizeStoryPointsValue(beforeTask.storyPoints ?? 0) !==
+            normalizeStoryPointsValue(afterTask.storyPoints ?? 0) ||
+          JSON.stringify(beforeTask.definitionOfReady ?? null) !==
+            JSON.stringify(afterTask.definitionOfReady ?? null)
+        if (meaningfulChanged) logAfterTask = afterTask
+      }
       return next
     })
+    if (logAfterTask) {
+      const logCat = categoryFromItemType(logAfterTask.itemType)
+      void addLogEntry({
+        action: `${logCat}.updated`,
+        category: logCat,
+        severity: 'info',
+        message: `Updated ${logCat} "${logAfterTask.title || 'Untitled'}"`,
+        userId: user?.id,
+        userName: user?.email?.split('@')[0] || '',
+        projectId: activeProject?.id,
+        projectName: activeProject?.name || '',
+        entityType: logCat,
+        entityId: taskId,
+        entityName: logAfterTask.title || '',
+      })
+    }
   }
 
   const deleteTask = (taskId) => {

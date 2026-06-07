@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from './supabase.js'
 import { addLogEntry } from './logService.js'
+import { fetchUserMemberProjectIds } from './logRemoteStorage.js'
 
 const AuthContext = createContext(null)
 
@@ -8,10 +9,56 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
 
+  // Write an auth event (login/logout) to the shared trail of EVERY project the
+  // user belongs to, so members see each other's sign-ins. Falls back to a
+  // personal/local-only log when the user is in no projects. Never throws.
+  const logAuthEvent = async (authUser, action, severity) => {
+    if (!authUser?.id) return
+    const email = authUser.email || ''
+    const base = {
+      action,
+      category: 'auth',
+      severity,
+      message:
+        action === 'auth.logout'
+          ? email
+            ? `Signed out ${email}`
+            : 'Signed out'
+          : `Signed in as ${email}`,
+      userName: email.split('@')[0] || '',
+      userId: authUser.id,
+      entityType: 'auth',
+    }
+    const projectIds = await fetchUserMemberProjectIds(authUser.id)
+    if (projectIds.length === 0) {
+      // Not a member of any project — keep it local/personal only.
+      void addLogEntry({ ...base, projectId: null })
+      return
+    }
+    // One synced, project-scoped log per member project.
+    for (const pid of projectIds) {
+      void addLogEntry({ ...base, projectId: pid })
+    }
+  }
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)
       setLoading(false)
+      // Log the login of a resumed session once per browser-tab session so it
+      // isn't re-logged on every refresh/HMR. The form-login path sets the same
+      // flag, preventing a duplicate on the next getSession.
+      if (session?.user) {
+        try {
+          const key = 'zc-auth-session-logged-' + session.user.id
+          if (!sessionStorage.getItem(key)) {
+            sessionStorage.setItem(key, '1')
+            void logAuthEvent(session.user, 'auth.login', 'info')
+          }
+        } catch {
+          // sessionStorage unavailable — skip resumed-session logging.
+        }
+      }
     })
 
     const {
@@ -24,16 +71,16 @@ export function AuthProvider({ children }) {
   }, [])
 
   const signIn = async (email, password) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) throw error
-    void addLogEntry({
-      action: 'auth.login',
-      category: 'auth',
-      severity: 'info',
-      message: `Signed in as ${email}`,
-      userName: email?.split('@')[0] || '',
-      entityType: 'auth',
-    })
+    // Mark this session as already-logged so the getSession on the next refresh
+    // doesn't log a duplicate login.
+    try {
+      sessionStorage.setItem('zc-auth-session-logged-' + (data?.user?.id ?? ''), '1')
+    } catch {
+      // ignore
+    }
+    await logAuthEvent(data?.user, 'auth.login', 'info')
   }
 
   const signUp = async (email, password) => {
@@ -42,16 +89,18 @@ export function AuthProvider({ children }) {
   }
 
   const signOut = async () => {
-    const currentEmail = user?.email || ''
+    const currentUser = user
+    const currentUserId = user?.id ?? null
+    // Log BEFORE signing out: the membership query and per-project inserts need
+    // the user to still be authenticated (RLS). Never log after signOut.
+    await logAuthEvent(currentUser, 'auth.logout', 'info')
     await supabase.auth.signOut()
-    void addLogEntry({
-      action: 'auth.logout',
-      category: 'auth',
-      severity: 'info',
-      message: currentEmail ? `Signed out ${currentEmail}` : 'Signed out',
-      userName: currentEmail?.split('@')[0] || '',
-      entityType: 'auth',
-    })
+    // Clear the session-logged flag so signing back in is logged again.
+    try {
+      sessionStorage.removeItem('zc-auth-session-logged-' + (currentUserId ?? ''))
+    } catch {
+      // ignore
+    }
   }
 
   return (

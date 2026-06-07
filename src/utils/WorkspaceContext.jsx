@@ -403,17 +403,6 @@ export function WorkspaceProvider({ children }) {
     if (!user) return
     const project = projects.find((p) => p.id === projectId)
     if (!project) return
-    void addLogEntry({
-      action: 'project.deleted',
-      category: 'project',
-      severity: 'warning',
-      message: `Deleted project "${project.name || projectId}"`,
-      userId: user?.id,
-      userName: user?.email?.split('@')[0] || '',
-      entityType: 'project',
-      entityId: project.id,
-      entityName: project.name || '',
-    })
 
     const isProjOwner =
       project.owner_id === user.id || project.ownerId === user.id
@@ -425,10 +414,37 @@ export function WorkspaceProvider({ children }) {
       await dbDeleteProject(projectId, user.id)
       await pruneSharedTasksByProjectIds([projectId], user.id)
       await pruneMeetingsByProjectIds([projectId], user.id)
+      // Real deletion. Kept as a local workspace event (no projectId) since the
+      // project — and its shared log trail — is being removed.
+      void addLogEntry({
+        action: 'project.deleted',
+        category: 'project',
+        severity: 'warning',
+        message: `Deleted project "${project.name || projectId}"`,
+        userId: user?.id,
+        userName: user?.email?.split('@')[0] || '',
+        entityType: 'project',
+        entityId: project.id,
+        entityName: project.name || '',
+      })
     } else if (memberSource === 'direct') {
       await dbLeaveProject(projectId, user.id)
       await pruneSharedTasksByProjectIds([projectId], user.id)
       await pruneMeetingsByProjectIds([projectId], user.id)
+      // Member leaving — include projectId so remaining members see it shared.
+      void addLogEntry({
+        action: 'project.member_left',
+        category: 'project',
+        severity: 'info',
+        message: `${user?.email?.split('@')[0] || 'A member'} left project "${project.name || projectId}"`,
+        userId: user?.id,
+        userName: user?.email?.split('@')[0] || '',
+        projectId: project.id,
+        projectName: project.name || '',
+        entityType: 'project',
+        entityId: project.id,
+        entityName: project.name || '',
+      })
     } else {
       console.warn(
         '[WorkspaceContext] removeProject blocked: only direct-invite members may leave',
@@ -478,9 +494,33 @@ export function WorkspaceProvider({ children }) {
     }
     if (targetUserId === user.id) return false
 
+    // Resolve project + member name BEFORE removal; after loadProjects the
+    // member is gone from the list and can't be resolved.
+    const proj = projectsRef.current.find((p) => p.id === projectId)
+    const removedMember = (proj?.projectMembers || []).find(
+      (m) => m?.userId === targetUserId,
+    )
+    const removedMemberName =
+      (removedMember && (removedMember.name || removedMember.email)) || targetUserId
+
     try {
       await dbRemoveDirectProjectMember(projectId, targetUserId)
       await loadProjects()
+      // Shared audit trail entry (carries projectId so all members see it).
+      void addLogEntry({
+        action: 'project.member_removed',
+        category: 'project',
+        severity: 'warning',
+        message: `${removedMemberName} was removed from project "${proj?.name || projectId}"`,
+        userId: user?.id,
+        userName: user?.email?.split('@')[0] || '',
+        projectId: projectId,
+        projectName: proj?.name || '',
+        entityType: 'project',
+        entityId: projectId,
+        entityName: proj?.name || '',
+        metadata: { removedUserId: targetUserId, removedBy: 'admin' },
+      })
       return true
     } catch (err) {
       console.error('[WorkspaceContext] removeDirectProjectMember error:', err)
@@ -507,9 +547,42 @@ export function WorkspaceProvider({ children }) {
         const currentTeamIds = await fetchProjectTeams(project.id)
         const toAdd = project.teamIds.filter((id) => !currentTeamIds.includes(id))
         const toRemove = currentTeamIds.filter((id) => !project.teamIds.includes(id))
-        for (const teamId of toAdd) await assignTeamToProject(project.id, teamId)
-        for (const teamId of toRemove)
+        for (const teamId of toAdd) {
+          await assignTeamToProject(project.id, teamId)
+          // Log only newly-assigned teams (not on every save).
+          const team = teamsRef.current.find((tm) => tm.id === teamId)
+          void addLogEntry({
+            action: 'team.assigned',
+            category: 'team',
+            severity: 'info',
+            message: `Assigned team "${team?.name || teamId}" to project "${project.name || project.id}"`,
+            userId: user?.id,
+            userName: user?.email?.split('@')[0] || '',
+            projectId: project.id,
+            projectName: project.name || '',
+            entityType: 'team',
+            entityId: teamId,
+            entityName: team?.name || '',
+          })
+        }
+        for (const teamId of toRemove) {
           await removeTeamFromProject(project.id, teamId)
+          const team = teamsRef.current.find((tm) => tm.id === teamId)
+          const teamName = team?.name || teamId
+          void addLogEntry({
+            action: 'team.unassigned',
+            category: 'team',
+            severity: 'warning',
+            message: `Removed team "${teamName}" from project "${project.name || project.id}"`,
+            userId: user?.id,
+            userName: user?.email?.split('@')[0] || '',
+            projectId: project.id,
+            projectName: project.name || '',
+            entityType: 'team',
+            entityId: teamId,
+            entityName: teamName,
+          })
+        }
       }
     }
     await loadProjects()
@@ -611,9 +684,46 @@ export function WorkspaceProvider({ children }) {
 
   const kickTeamMember = async (teamId, targetUserId) => {
     if (!user) return
+    // Resolve a display name BEFORE removal — the member is gone afterward.
+    const team = teamsRef.current.find((tm) => tm.id === teamId)
+    const removedMember = (team?.members || []).find(
+      (m) =>
+        m &&
+        typeof m === 'object' &&
+        (m.userId === targetUserId || m.id === targetUserId),
+    )
+    const removedMemberName =
+      (removedMember && (removedMember.name || removedMember.email)) || targetUserId
     await removeMemberFromTeam(teamId, targetUserId, user.id)
     await loadTeams()
     await loadProjects()
+    // Log once per project this team is assigned to so each project's audit
+    // trail records the removal. Fall back to the active project if none resolve.
+    const affectedProjects = projectsRef.current.filter(
+      (p) => Array.isArray(p.teamIds) && p.teamIds.includes(teamId),
+    )
+    const targets =
+      affectedProjects.length > 0
+        ? affectedProjects
+        : activeProject?.id
+          ? [activeProject]
+          : []
+    for (const proj of targets) {
+      void addLogEntry({
+        action: 'project.member_removed',
+        category: 'project',
+        severity: 'warning',
+        message: `${removedMemberName} was removed from project "${proj.name}"`,
+        userId: user?.id,
+        userName: user?.email?.split('@')[0] || '',
+        projectId: proj.id,
+        projectName: proj.name || '',
+        entityType: 'project',
+        entityId: proj.id,
+        entityName: proj.name || '',
+        metadata: { removedUserId: targetUserId, teamId },
+      })
+    }
   }
 
   const updateTeamMemberRole = async (teamId, userId, customRole) => {
@@ -638,6 +748,22 @@ export function WorkspaceProvider({ children }) {
       cap,
     )
     await loadProjectSprints(activeProject.id)
+    if (created) {
+      const sprintLabel = `Sprint #${created.sprint_number ?? created.sprintNumber ?? ''}`.trim()
+      void addLogEntry({
+        action: 'sprint.created',
+        category: 'sprint',
+        severity: 'success',
+        message: `Created sprint "${sprintLabel}"`,
+        userId: user?.id,
+        userName: user?.email?.split('@')[0] || '',
+        projectId: activeProject.id,
+        projectName: activeProject.name || '',
+        entityType: 'sprint',
+        entityId: created.id,
+        entityName: sprintLabel,
+      })
+    }
     return created
   }
 
@@ -645,6 +771,22 @@ export function WorkspaceProvider({ children }) {
     if (!user || !activeProject?.id || !sprintId) return null
     const updated = await dbCompleteSprint(sprintId)
     await loadProjectSprints(activeProject.id)
+    if (updated) {
+      const sprintLabel = `Sprint #${updated.sprint_number ?? updated.sprintNumber ?? ''}`.trim()
+      void addLogEntry({
+        action: 'sprint.completed',
+        category: 'sprint',
+        severity: 'info',
+        message: `Completed sprint "${sprintLabel}"`,
+        userId: user?.id,
+        userName: user?.email?.split('@')[0] || '',
+        projectId: activeProject.id,
+        projectName: activeProject.name || '',
+        entityType: 'sprint',
+        entityId: sprintId,
+        entityName: sprintLabel,
+      })
+    }
     return updated
   }
 
