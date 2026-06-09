@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom'
 import { KanbanBoard } from '../components/kanban/KanbanBoard.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useLanguage } from '../utils/LanguageContext.jsx'
+import { ActiveProjectBadge } from '../components/common/ActiveProjectBadge.jsx'
 
 export function SprintBoardPage() {
   const { t } = useLanguage()
@@ -48,12 +49,10 @@ export function SprintBoardPage() {
         <h2 className="text-2xl font-bold">
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-amber-500 to-orange-600">📌 {t('sb_title')}</span>
         </h2>
-        <p className="mt-1 text-sm text-[rgb(var(--zc-muted2))]">
-          <span className="inline-flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
-            {activeProject.name} · Sprint #{activeSprint.sprint_number}
-          </span>
-        </p>
+        <div className="flex items-center gap-2">
+          <ActiveProjectBadge />
+          <span className="mt-2 text-sm text-[rgb(var(--zc-muted2))]">Sprint #{activeSprint.sprint_number}</span>
+        </div>
       </div>
       {/* Burndown chart is rendered inside KanbanBoard directly under the sprint summary (same task state as the board). */}
       <KanbanBoard variant="sprint_board" />

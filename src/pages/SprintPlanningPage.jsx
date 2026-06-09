@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useAuth } from '../utils/AuthContext.jsx'
 import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
+import { ActiveProjectBadge } from '../components/common/ActiveProjectBadge.jsx'
 import {
   loadTasks,
   saveTasks,
@@ -648,11 +649,14 @@ export function SprintPlanningPage() {
 
   return (
     <section className="space-y-6">
-      <h2 className="text-2xl font-bold">
-        <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">
-          {t('sp_title')}
-        </span>
-      </h2>
+      <div>
+        <h2 className="text-2xl font-bold">
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-500 to-blue-600">
+            {t('sp_title')}
+          </span>
+        </h2>
+        <ActiveProjectBadge />
+      </div>
       <p className="text-sm text-[rgb(var(--zc-muted2))]">
         {t('sp_intro')}
       </p>

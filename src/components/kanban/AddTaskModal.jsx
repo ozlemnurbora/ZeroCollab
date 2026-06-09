@@ -32,7 +32,7 @@ const initialForm = {
   storyPoints: 0,
   startDate: '',
   dueDate: '',
-  calendarId: 'personal',
+  calendarId: 'general',
   projectId: '',
   teamId: '',
 }
@@ -64,6 +64,8 @@ export function AddTaskModal({
   customCalendars,
   activeProject,
   activeTeam,
+  titleText,
+  submitText,
 }) {
   const { t } = useLanguage()
   const [form, setForm] = useState(() =>
@@ -107,8 +109,8 @@ export function AddTaskModal({
 
   const calendarOptions = useMemo(() => {
     const base = [
-      { id: 'personal', name: t('cal_calendar_personal') },
       { id: 'general', name: t('cal_calendar_general') },
+      { id: 'personal', name: t('cal_calendar_personal') },
     ]
     const customs = Array.isArray(customCalendars)
       ? customCalendars.map((c) => ({ id: c.id, name: c.name }))
@@ -187,7 +189,7 @@ export function AddTaskModal({
     <Modal
       open={open}
       onClose={onClose}
-      title={t('modal_add_task')}
+      title={titleText || t('modal_add_task')}
       footer={
         <div className="flex items-center justify-end gap-2">
           <Button variant="secondary" onClick={onClose}>
@@ -198,7 +200,7 @@ export function AddTaskModal({
               setTouched(true)
               if (!canSubmit) return
               const effectiveItemType = forceItemType || form.itemType || 'task'
-              const calendarId = form.calendarId || 'personal'
+              const calendarId = form.calendarId || 'general'
               const calendarType = calendarId === 'general' ? 'general' : 'personal'
               const isGeneral = calendarType === 'general'
               if (isGeneral && activeTeam) {
@@ -246,7 +248,7 @@ export function AddTaskModal({
               onClose?.()
             }}
           >
-            {t('btn_create_task')}
+            {submitText || t('btn_create_task')}
           </Button>
         </div>
       }
@@ -495,7 +497,7 @@ export function AddTaskModal({
           </label>
           <select
             className="mt-1 w-full rounded-md border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-3 py-2 text-sm text-[rgb(var(--zc-text))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-            value={form.calendarId || 'personal'}
+            value={form.calendarId || 'general'}
             onChange={(e) => setForm((s) => ({ ...s, calendarId: e.target.value }))}
           >
             {calendarOptions.map((c) => (

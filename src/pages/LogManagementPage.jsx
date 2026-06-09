@@ -4,6 +4,7 @@ import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { Modal } from '../components/ui/Modal.jsx'
+import { ActiveProjectBadge } from '../components/common/ActiveProjectBadge.jsx'
 import {
   LOG_CATEGORY_META,
   LOG_SEVERITY_META,
@@ -279,14 +280,7 @@ export function LogManagementPage() {
               📜 {t('logs_page_title')}
             </span>
           </h1>
-          {activeProject ? (
-            <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
-              <span className={`h-2 w-2 rounded-full ${activeProject.color}`} />
-              <span className="text-xs font-medium text-indigo-300">
-                {activeProject.name}
-              </span>
-            </div>
-          ) : null}
+          <ActiveProjectBadge />
           <p className="mt-1 text-sm text-[rgb(var(--zc-muted))]">
             {t('logs_page_sub')}
           </p>

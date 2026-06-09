@@ -3,6 +3,7 @@ import { useLanguage } from '../utils/LanguageContext.jsx'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
 import { BacklogItemDetailModal } from '../components/backlog/BacklogItemDetailModal.jsx'
+import { ActiveProjectBadge } from '../components/common/ActiveProjectBadge.jsx'
 import {
   dedupeAndNormalizePositions,
   loadTasks,
@@ -975,20 +976,13 @@ export function ProductRoadmapPage() {
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
           <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">🗺️ {t('pr_title')}</span>
         </h1>
+        <ActiveProjectBadge />
         <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
           {t('pr_subtitle')}
         </p>
         <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
           📌 {t('pr_hint')}
         </p>
-        {activeProject ? (
-          <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
-            <span className={`h-2 w-2 rounded-full ${activeProject.color}`} />
-            <span className="text-xs font-medium text-indigo-300">
-              {activeProject.name}
-            </span>
-          </div>
-        ) : null}
 
         {roadmapLocked ? (
           <div

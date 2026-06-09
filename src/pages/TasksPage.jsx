@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { KanbanBoard } from '../components/kanban/KanbanBoard.jsx'
+import { ActiveProjectBadge } from '../components/common/ActiveProjectBadge.jsx'
 import { AddMeetingModal } from '../components/meetings/AddMeetingModal.jsx'
 import { MeetingDetailModal } from '../components/meetings/MeetingDetailModal.jsx'
 import { useLanguage } from '../utils/LanguageContext.jsx'
@@ -84,16 +85,7 @@ export function TasksPage() {
               {t('page_tasks_title')}
             </span>
           </h1>
-          {activeProject ? (
-            <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
-              <span
-                className={`h-2 w-2 rounded-full ${activeProject.color}`}
-              />
-              <span className="text-xs font-medium text-indigo-300">
-                {activeProject.name}
-              </span>
-            </div>
-          ) : null}
+          <ActiveProjectBadge />
           <p className="mt-2 text-sm text-[rgb(var(--zc-muted))] sm:text-base">
             {t('page_tasks_subtitle')}
           </p>

@@ -178,6 +178,7 @@ export function SettingsShell() {
         <SectionCard
           title={t('settings_profile_title')}
           subtitle={t('settings_profile_sub')}
+          accent="indigo"
         >
           <div className="grid gap-4">
             <div className="grid gap-4 sm:grid-cols-2">
@@ -224,6 +225,7 @@ export function SettingsShell() {
         <SectionCard
           title={t('settings_app_title')}
           subtitle={t('settings_app_sub')}
+          accent="violet"
         >
           <div className="grid gap-4">
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
@@ -379,6 +381,7 @@ export function SettingsShell() {
         <SectionCard
           title={t('settings_p2p_title')}
           subtitle={t('settings_p2p_sub')}
+          accent="emerald"
         >
           <div className="grid gap-4">
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.4)] px-3 py-3">
@@ -499,6 +502,7 @@ export function SettingsShell() {
         <SectionCard
           title={t('settings_install_title')}
           subtitle={t('settings_install_sub')}
+          accent="amber"
         >
           <div className="grid gap-3">
             {isInstalled ? (
@@ -534,6 +538,7 @@ export function SettingsShell() {
         <SectionCard
           title={t('settings_data_title')}
           subtitle={t('settings_data_sub')}
+          accent="rose"
         >
           <DataManagement
             onAfterImportOrClear={() => {

@@ -4,6 +4,7 @@ import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
 import { AddTaskModal } from '../components/kanban/AddTaskModal.jsx'
 import { BacklogItemDetailModal } from '../components/backlog/BacklogItemDetailModal.jsx'
+import { ActiveProjectBadge } from '../components/common/ActiveProjectBadge.jsx'
 import {
   dedupeAndNormalizePositions,
   loadTasks,
@@ -1365,17 +1366,10 @@ export function ProductBacklogPage() {
           <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-violet-500 to-indigo-600">{t('pb_title')}</span>
           </h1>
+          <ActiveProjectBadge />
           <p className="mt-1 text-sm text-[rgb(var(--zc-muted))]">
             {t('pb_subtitle')}
           </p>
-          {activeProject ? (
-            <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
-              <span className={`h-2 w-2 rounded-full ${activeProject.color}`} />
-              <span className="text-xs font-medium text-indigo-300">
-                {activeProject.name}
-              </span>
-            </div>
-          ) : null}
         </div>
         <button onClick={() => openCreate('task')} className="rounded-lg bg-gradient-to-r from-indigo-500 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:from-indigo-600 hover:to-purple-700 transition">+ {t('pb_new_item')}</button>
       </div>
@@ -1509,6 +1503,8 @@ export function ProductBacklogPage() {
       <AddTaskModal
         key={`product-backlog-create-${isCreateOpen ? 'open' : 'closed'}-${createType ?? 'none'}-${activeProject?.id ?? 'none'}`}
         open={isCreateOpen}
+        titleText={t('modal_add_backlog_item')}
+        submitText={t('btn_create_backlog_item')}
         onClose={() => setIsCreateOpen(false)}
         onCreate={(payload) => {
           const typeKey = createType || 'task'

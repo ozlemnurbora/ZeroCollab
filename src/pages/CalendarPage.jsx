@@ -39,6 +39,7 @@ import {
 } from '../utils/customCalendarStorage.js'
 import { addLogEntry } from '../utils/logService.js'
 import { categoryFromItemType } from '../utils/logCategories.js'
+import { ActiveProjectBadge } from '../components/common/ActiveProjectBadge.jsx'
 
 function createId() {
   if (typeof crypto !== 'undefined' && crypto.randomUUID)
@@ -679,16 +680,7 @@ export function CalendarPage() {
           {t('page_calendar_title')}
         </span>
       </h1>
-      {activeProject ? (
-        <div className="mt-1 inline-flex items-center gap-2 rounded-full bg-indigo-500/15 px-3 py-1">
-          <span
-            className={`h-2 w-2 rounded-full ${activeProject.color}`}
-          />
-          <span className="text-xs font-medium text-indigo-300">
-            {activeProject.name}
-          </span>
-        </div>
-      ) : null}
+      <ActiveProjectBadge />
       {syncNotice ? (
         <p
           className="mt-3 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200"

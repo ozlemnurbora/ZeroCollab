@@ -113,8 +113,10 @@ export const TRANSLATIONS = {
 
     // Add task modal
     modal_add_task: 'Add task',
+    modal_add_backlog_item: 'Add backlog item',
     btn_cancel: 'Cancel',
     btn_create_task: 'Create task',
+    btn_create_backlog_item: 'Create item',
     label_title: 'Title',
     label_description: 'Description',
     label_assignee: 'Assignee',
@@ -950,8 +952,10 @@ export const TRANSLATIONS = {
     badge_in_sprint: 'Sprintte',
 
     modal_add_task: 'Görev ekle',
+    modal_add_backlog_item: 'Backlog öğesi ekle',
     btn_cancel: 'İptal',
     btn_create_task: 'Görev oluştur',
+    btn_create_backlog_item: 'Öğe oluştur',
     label_title: 'Başlık',
     label_description: 'Açıklama',
     label_assignee: 'Atanan',

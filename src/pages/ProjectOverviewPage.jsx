@@ -8,6 +8,7 @@ import {
 } from '../components/kanban/taskStorage.js'
 import { useWorkspace } from '../utils/WorkspaceContext.jsx'
 import { useAuth } from '../utils/AuthContext.jsx'
+import { ActiveProjectBadge } from '../components/common/ActiveProjectBadge.jsx'
 import { Button } from '../components/ui/Button.jsx'
 import { Modal } from '../components/ui/Modal.jsx'
 import { SprintCreationModal } from '../components/workspace/SprintCreationModal.jsx'
@@ -307,9 +308,12 @@ export function ProjectOverviewPage() {
 
   return (
     <section className="space-y-6">
-      <h1 className="text-2xl font-bold">
-        <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-pink-500 to-violet-600">🎯 {t('po_title')}</span>
-      </h1>
+      <div>
+        <h1 className="text-2xl font-bold">
+          <span className="text-transparent bg-clip-text bg-gradient-to-r from-rose-500 via-pink-500 to-violet-600">🎯 {t('po_title')}</span>
+        </h1>
+        <ActiveProjectBadge />
+      </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
         <section className="rounded-xl border border-l-4 border-[rgb(var(--zc-border))] border-l-indigo-500 bg-[rgb(var(--zc-bg)/0.3)] p-5 lg:col-span-2">
