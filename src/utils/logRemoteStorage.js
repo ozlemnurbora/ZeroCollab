@@ -79,6 +79,23 @@ export async function fetchRemoteLogs(projectId, { limit = 500 } = {}) {
   }
 }
 
+/** Resolve project ids -> names authoritatively from the `projects` table. Never throws. */
+export async function fetchProjectNamesByIds(ids) {
+  const map = new Map()
+  if (!Array.isArray(ids) || ids.length === 0) return map
+  try {
+    const { data, error } = await supabase
+      .from('projects')
+      .select('id, name')
+      .in('id', ids)
+    if (error) return map
+    for (const row of data || []) map.set(String(row.id), row.name || '')
+    return map
+  } catch {
+    return map
+  }
+}
+
 /** Project IDs the user is a member of. Used to fan auth logs out to each project. Never throws. */
 export async function fetchUserMemberProjectIds(userId) {
   if (!userId) return []

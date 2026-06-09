@@ -4,7 +4,6 @@ import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 import {
   getMyInvitations,
   getMyTeamInvitations,
-  joinTeamWithCode,
   respondToInvitation,
   respondToTeamInvitation,
   subscribeToInvitations,
@@ -24,9 +23,6 @@ export function InvitationsPanel() {
   const [invitations, setInvitations] = useState([])
   const [teamInvitations, setTeamInvitations] = useState([])
   const [loading, setLoading] = useState(true)
-  const [joinCode, setJoinCode] = useState('')
-  const [joinStatus, setJoinStatus] = useState('')
-  const [joinError, setJoinError] = useState('')
 
   useEffect(() => {
     if (!user) return
@@ -182,46 +178,17 @@ export function InvitationsPanel() {
     }
   }
 
-  const handleJoinWithCode = async () => {
-    if (!joinCode.trim()) return
-
-    try {
-      if (!canAddTeamMember()) {
-        if (typeof window !== 'undefined') {
-          window.alert(
-            'Your current tier has reached the team member limit. Hold more ZC tokens to add more members.',
-          )
-        }
-        return
-      }
-
-      setJoinStatus('joining')
-      setJoinError('')
-      await joinTeamWithCode(joinCode)
-      recordTeamMemberAdded()
-      setJoinCode('')
-      setJoinStatus('success')
-      await Promise.all([reloadTeams(), reloadProjects()])
-      window.setTimeout(() => setJoinStatus(''), 3000)
-    } catch (err) {
-      console.error('[InvitationsPanel] joinTeamWithCode error:', err)
-      setJoinStatus('')
-      setJoinError(err?.message || 'Failed to join with code.')
-    }
-  }
-
   const totalPending = invitations.length + teamInvitations.length
   if (loading) return null
+  if (totalPending === 0) return null
 
   return (
     <div className="mx-3 mb-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
-      {totalPending > 0 ? (
-        <>
-          <p className="text-xs font-semibold text-amber-300 mb-2">
-            📬 {totalPending} pending invitation{totalPending > 1 ? 's' : ''}
-          </p>
-          <div className="space-y-2">
-            {invitations.map(inv => (
+      <p className="text-xs font-semibold text-amber-300 mb-2">
+        📬 {totalPending} pending invitation{totalPending > 1 ? 's' : ''}
+      </p>
+      <div className="space-y-2">
+        {invitations.map(inv => (
               <div key={inv.id} className="rounded-md bg-[rgb(var(--zc-border)/0.3)] p-2">
                 <p className="text-xs text-[rgb(var(--zc-text))] font-medium">{inv.project_name}</p>
                 <p className="text-[10px] text-[rgb(var(--zc-muted))] mt-0.5">
@@ -276,34 +243,6 @@ export function InvitationsPanel() {
                 </div>
               </div>
             ))}
-          </div>
-        </>
-      ) : null}
-      <div className={`${totalPending > 0 ? 'mt-3 border-t border-amber-500/20 pt-3' : ''}`}>
-        <p className="text-xs font-medium text-amber-200 mb-2">Join Team with Code</p>
-        <div className="flex gap-1">
-          <input
-            type="text"
-            value={joinCode}
-            onChange={(e) => setJoinCode(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleJoinWithCode()}
-            placeholder="ZC-123456"
-            className="flex-1 rounded border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.6)] px-2 py-1 text-xs text-[rgb(var(--zc-text))] placeholder:text-[rgb(var(--zc-subtle))] focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-          />
-          <button
-            onClick={() => void handleJoinWithCode()}
-            disabled={!joinCode.trim() || joinStatus === 'joining'}
-            className="rounded bg-indigo-500/20 px-2 py-1 text-[10px] font-medium text-indigo-300 hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {joinStatus === 'joining' ? 'Joining...' : 'Join'}
-          </button>
-        </div>
-        {joinStatus === 'success' ? (
-          <p className="mt-1 text-xs text-emerald-400">✓ Joined team successfully.</p>
-        ) : null}
-        {joinError ? (
-          <p className="mt-1 text-xs text-rose-400">{joinError}</p>
-        ) : null}
       </div>
     </div>
   )

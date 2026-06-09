@@ -923,6 +923,7 @@ export function ProductBacklogPage() {
     })
     if (committedItem) {
       const logCat = categoryFromItemType(committedItem.itemType)
+      const prevItem = snapshotBefore.find((it) => it?.id === updatedItem?.id) ?? null
       void addLogEntry({
         action: existedBefore ? `${logCat}.updated` : `${logCat}.created`,
         category: logCat,
@@ -935,6 +936,12 @@ export function ProductBacklogPage() {
         entityType: logCat,
         entityId: committedItem.id,
         entityName: committedItem.title || '',
+        metadata: {
+          assignee: committedItem.assignee || null,
+          assigneeChanged: existedBefore
+            ? (prevItem?.assignee || '') !== (committedItem.assignee || '')
+            : false,
+        },
       })
     }
   }
@@ -972,6 +979,7 @@ export function ProductBacklogPage() {
         entityType: logCat,
         entityId: createdItem.id,
         entityName: createdItem.title || '',
+        metadata: { assignee: createdItem.assignee || null },
       })
     }
   }

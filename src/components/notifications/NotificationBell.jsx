@@ -7,19 +7,25 @@ import {
   clearAllNotifications,
   formatNotificationTime,
 } from '../../utils/notificationService.js'
+import { useAuth } from '../../utils/AuthContext.jsx'
+import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
+import { generateNotificationsForUser } from '../../utils/notificationGenerator.js'
 
 export function NotificationBell() {
+  const { user } = useAuth()
+  const { projects } = useWorkspace()
+  const userId = user?.id ?? null
   const [isOpen, setIsOpen] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
   const panelRef = useRef(null)
 
   const refresh = useCallback(async () => {
-    const items = await getNotifications(30)
+    const items = await getNotifications(30, userId)
     setNotifications(items)
-    const count = await getUnreadCount()
+    const count = await getUnreadCount(userId)
     setUnreadCount(count)
-  }, [])
+  }, [userId])
 
   useEffect(() => {
     refresh()
@@ -32,6 +38,38 @@ export function NotificationBell() {
       clearInterval(interval)
     }
   }, [refresh])
+
+  // Derive notifications from the synced Activity Log: on load, on every new
+  // log (`zc-log`), and on a 30s poll. Guarded so concurrent runs can't double up.
+  useEffect(() => {
+    if (!user?.id) return undefined
+    let running = false
+    let pending = false
+    const run = async () => {
+      if (running) {
+        pending = true
+        return
+      }
+      running = true
+      try {
+        await generateNotificationsForUser(user, projects)
+      } finally {
+        running = false
+        if (pending) {
+          pending = false
+          void run()
+        }
+      }
+    }
+    void run()
+    const onLog = () => void run()
+    window.addEventListener('zc-log', onLog)
+    const interval = setInterval(() => void run(), 30000)
+    return () => {
+      window.removeEventListener('zc-log', onLog)
+      clearInterval(interval)
+    }
+  }, [user, projects])
 
   // Close panel on outside click
   useEffect(() => {
@@ -65,7 +103,7 @@ export function NotificationBell() {
   const getNotifIcon = (type) => {
     switch (type) {
       case 'task_moved': return '📋'
-      case 'task_assigned': return '👤'
+      case 'task_assigned': return '📋'
       case 'task_created': return '➕'
       case 'task_deleted': return '🗑️'
       case 'sprint_completed': return '🏁'
@@ -108,7 +146,7 @@ export function NotificationBell() {
                 <button
                   type="button"
                   onClick={handleMarkAllRead}
-                  className="rounded px-2 py-0.5 text-[10px] text-indigo-400 hover:bg-indigo-500/10 transition"
+                  className="rounded px-2 py-0.5 text-[10px] font-semibold bg-indigo-600 text-white hover:bg-indigo-700 transition"
                 >
                   Mark all read
                 </button>
@@ -117,7 +155,7 @@ export function NotificationBell() {
                 <button
                   type="button"
                   onClick={handleClearAll}
-                  className="rounded px-2 py-0.5 text-[10px] text-[rgb(var(--zc-subtle))] hover:bg-[rgb(var(--zc-border)/0.4)] transition"
+                  className="rounded px-2 py-0.5 text-[10px] font-semibold bg-rose-600 text-white hover:bg-rose-700 transition"
                 >
                   Clear
                 </button>

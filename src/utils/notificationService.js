@@ -23,7 +23,7 @@ function openDB() {
   })
 }
 
-export async function addNotification({ type, title, message, taskId, taskTitle, fromUser, toStatus, fromStatus }) {
+export async function addNotification({ type, title, message, taskId, taskTitle, fromUser, toStatus, fromStatus, recipientUserId, sourceLogId, projectName }) {
   try {
     const db = await openDB()
     const tx = db.transaction(STORE_NAME, 'readwrite')
@@ -38,6 +38,11 @@ export async function addNotification({ type, title, message, taskId, taskTitle,
       fromUser: fromUser || 'Unknown',
       toStatus: toStatus || '',
       fromStatus: fromStatus || '',
+      // Account scoping: which user this notification is FOR. null = legacy/unscoped.
+      recipientUserId: recipientUserId || null,
+      // Source activity-log id, used to de-duplicate generated notifications.
+      sourceLogId: sourceLogId || null,
+      projectName: projectName || '',
       timestamp: Date.now(),
       read: false,
     }
@@ -55,16 +60,22 @@ export async function addNotification({ type, title, message, taskId, taskTitle,
   }
 }
 
-export async function getNotifications(limit = 50) {
+export async function getNotifications(limit = 50, recipientUserId) {
   try {
     const db = await openDB()
     const tx = db.transaction(STORE_NAME, 'readonly')
     const store = tx.objectStore(STORE_NAME)
-    const all = await new Promise((resolve, reject) => {
+    let all = await new Promise((resolve, reject) => {
       const req = store.getAll()
       req.onsuccess = () => resolve(req.result)
       req.onerror = () => reject(req.error)
     })
+    // Account scoping: when a recipientUserId is provided, only return that
+    // account's notifications. Stored null/undefined recipients never match a
+    // real user, so other accounts on the same machine never see them.
+    if (recipientUserId) {
+      all = all.filter((n) => n.recipientUserId === recipientUserId)
+    }
     // Sort by timestamp descending (newest first)
     all.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0))
     return all.slice(0, limit)
@@ -74,12 +85,30 @@ export async function getNotifications(limit = 50) {
   }
 }
 
-export async function getUnreadCount() {
+export async function getUnreadCount(recipientUserId) {
   try {
-    const all = await getNotifications(200)
+    const all = await getNotifications(200, recipientUserId)
     return all.filter((n) => !n.read).length
   } catch {
     return 0
+  }
+}
+
+/**
+ * Return a Set of sourceLogId values already present in the store (optionally
+ * scoped to a recipient). Used by the generator to avoid creating duplicate
+ * notifications for the same activity log.
+ */
+export async function getExistingSourceLogIds(recipientUserId) {
+  try {
+    const all = await getNotifications(1000, recipientUserId)
+    const ids = new Set()
+    for (const n of all) {
+      if (n.sourceLogId) ids.add(n.sourceLogId)
+    }
+    return ids
+  } catch {
+    return new Set()
   }
 }
 

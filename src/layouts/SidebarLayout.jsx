@@ -7,6 +7,7 @@ import { useAuth } from '../utils/AuthContext.jsx'
 import { ProjectDetailModal } from '../components/workspace/ProjectDetailModal.jsx'
 import { TeamDetailModal } from '../components/workspace/TeamDetailModal.jsx'
 import { InvitationsPanel } from '../components/workspace/InvitationsPanel.jsx'
+import { JoinTeamWithCode } from '../components/workspace/JoinTeamWithCode.jsx'
 import { MiniMeetingDock } from '../components/meetings/MiniMeetingDock.jsx'
 import { TaskChatInboundSync } from '../components/chat/TaskChatInboundSync.jsx'
 import { NotificationBell } from '../components/notifications/NotificationBell.jsx'
@@ -458,6 +459,8 @@ export function SidebarLayout() {
               </div>
             ) : null}
           </div>
+
+          <JoinTeamWithCode />
         </div>
 
         <div className="shrink-0 border-t border-[rgb(var(--zc-border))] px-4 py-3 space-y-2">

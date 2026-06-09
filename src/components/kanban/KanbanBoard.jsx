@@ -747,42 +747,9 @@ export function KanbanBoard({
         if (shared.length) void upsertRemoteTasks(shared, uid)
       }
 
-      // Trigger notification for cross-column moves (with dedup guard)
-      if (crossColumn && !window.__zcLastNotifTaskId || window.__zcLastNotifTaskId !== taskId + columnId) {
-        window.__zcLastNotifTaskId = taskId + columnId
-        setTimeout(() => { window.__zcLastNotifTaskId = null }, 1000)
-        const movedTask = working.find((t) => t.id === taskId)
-        if (movedTask) {
-          const userEmail = user?.email || ''
-          const userName = user?.user_metadata?.display_name || user?.user_metadata?.name || (userEmail.includes('@') ? userEmail.split('@')[0] : '') || 'Someone'
-          const assignee = movedTask.assignee || 'Unassigned'
-          const movedBy = userName
-          addNotification({
-            type: 'task_moved',
-            title: 'Task Moved',
-            message: `${movedBy} moved "${movedTask.title || 'Untitled'}" (assigned to ${assignee}) from ${srcStatus} → ${columnId}`,
-            taskId: movedTask.id,
-            taskTitle: movedTask.title || '',
-            fromUser: movedBy,
-            fromStatus: srcStatus,
-            toStatus: columnId,
-          })
-          // Broadcast notification to all peers via P2P
-          sendToAllPeers({
-            type: 'NOTIFICATION',
-            notification: {
-              type: 'task_moved',
-              title: 'Task Moved',
-              message: `${movedBy} moved "${movedTask.title || 'Untitled'}" (assigned to ${assignee}) from ${srcStatus} → ${columnId}`,
-              taskId: movedTask.id,
-              taskTitle: movedTask.title || '',
-              fromUser: movedBy,
-              fromStatus: srcStatus,
-              toStatus: columnId,
-            },
-          })
-        }
-      }
+      // Task-move notifications are now derived from the synced Activity Log
+      // (see notificationGenerator.js), which correctly excludes the actor's own
+      // actions. The old self-notifying generation/broadcast was removed here.
 
       return working
     })
@@ -799,7 +766,11 @@ export function KanbanBoard({
         entityType: 'task',
         entityId: taskBeforeMove.id,
         entityName: taskBeforeMove.title || '',
-        metadata: { fromStatus: srcStatusBeforeMove, toStatus: columnId },
+        metadata: {
+          fromStatus: srcStatusBeforeMove,
+          toStatus: columnId,
+          assignee: taskBeforeMove.assignee || null,
+        },
       })
     }
   }
@@ -933,6 +904,7 @@ export function KanbanBoard({
       entityType: logCat,
       entityId: taskId,
       entityName: normalizedPayload?.title || '',
+      metadata: { assignee: normalizedPayload?.assignee || null },
     })
   }
 
@@ -940,6 +912,7 @@ export function KanbanBoard({
     // Captured inside the updater, logged after it commits (matches the .moved
     // pattern). Stays null for deletions and pure position-only updates.
     let logAfterTask = null
+    let logAssigneeChanged = false
     setTasks((prev) => {
       const now = Date.now()
       const prevById = new Map(prev.map((t) => [t.id, t]))
@@ -1039,7 +1012,11 @@ export function KanbanBoard({
             normalizeStoryPointsValue(afterTask.storyPoints ?? 0) ||
           JSON.stringify(beforeTask.definitionOfReady ?? null) !==
             JSON.stringify(afterTask.definitionOfReady ?? null)
-        if (meaningfulChanged) logAfterTask = afterTask
+        if (meaningfulChanged) {
+          logAfterTask = afterTask
+          logAssigneeChanged =
+            (beforeTask.assignee || '') !== (afterTask.assignee || '')
+        }
       }
       return next
     })
@@ -1057,6 +1034,10 @@ export function KanbanBoard({
         entityType: logCat,
         entityId: taskId,
         entityName: logAfterTask.title || '',
+        metadata: {
+          assignee: logAfterTask.assignee || null,
+          assigneeChanged: logAssigneeChanged,
+        },
       })
     }
   }
