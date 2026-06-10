@@ -727,7 +727,7 @@ export function ProjectOverviewPage() {
             </div>
             <div className="rounded-lg border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-panel)/0.35)] p-3">
               <p className="text-xs uppercase tracking-wide text-[rgb(var(--zc-subtle))]">{t('po_completion')}</p>
-              <p className="mt-1 text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-indigo-500 to-purple-600">{progress.completionPct}%</p>
+              <p className="mt-1 text-lg font-bold text-indigo-600">{progress.completionPct}%</p>
             </div>
           </div>
           <div className="mt-4">
