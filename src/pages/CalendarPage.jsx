@@ -17,6 +17,7 @@ import {
   upsertRemoteTasks,
 } from '../utils/taskRemoteStorage.js'
 import { deleteMeeting, loadMeetings, saveMeeting } from '../utils/meetingStorage.js'
+import { fetchRemoteMeetingsForProject } from '../utils/meetingRemoteStorage.js'
 import {
   addDaysCalendar,
   parseISODateLocal,
@@ -284,6 +285,33 @@ export function CalendarPage() {
       setMeetings(visible)
     })
   }, [memberProjectIds, ownerUserId])
+
+  useEffect(() => {
+    const projectId = activeProject?.id ?? null
+    if (!projectId || !ownerUserId) return
+    let cancelled = false
+    ;(async () => {
+      const remote = await fetchRemoteMeetingsForProject(projectId)
+      if (cancelled || !Array.isArray(remote) || remote.length === 0) return
+      // persist locally (stamp current user's ownerUserId, same as the P2P receive path)
+      for (const m of remote) {
+        if (m?.id) await saveMeeting({ ...m, ownerUserId }, ownerUserId)
+      }
+      // merge into the visible state (remote is authoritative for shared meetings)
+      setMeetings((prev) => {
+        const byId = new Map((Array.isArray(prev) ? prev : []).map((m) => [m.id, m]))
+        for (const m of remote) {
+          if (m?.id && m.projectId && memberProjectIds.includes(m.projectId)) {
+            byId.set(m.id, { ...(byId.get(m.id) || {}), ...m, ownerUserId })
+          }
+        }
+        return Array.from(byId.values())
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeProject?.id, ownerUserId, memberProjectIds])
 
   useEffect(() => {
     const handleMeetingUpdate = async (e) => {

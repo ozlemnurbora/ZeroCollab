@@ -12,6 +12,11 @@ import {
   loadMeetings,
   saveMeeting,
 } from '../utils/meetingStorage.js'
+import {
+  deleteRemoteMeeting,
+  fetchRemoteMeetingsForProject,
+  upsertRemoteMeeting,
+} from '../utils/meetingRemoteStorage.js'
 import { broadcastMeetingUpdate } from '../utils/hubManager.js'
 import { addLogEntry } from '../utils/logService.js'
 
@@ -45,6 +50,33 @@ export function TasksPage() {
       setMeetings(visible)
     })
   }, [memberProjectIds, ownerUserId])
+
+  useEffect(() => {
+    const projectId = activeProject?.id ?? null
+    if (!projectId || !ownerUserId) return
+    let cancelled = false
+    ;(async () => {
+      const remote = await fetchRemoteMeetingsForProject(projectId)
+      if (cancelled || !Array.isArray(remote) || remote.length === 0) return
+      // persist locally (stamp current user's ownerUserId, same as the P2P receive path)
+      for (const m of remote) {
+        if (m?.id) await saveMeeting({ ...m, ownerUserId }, ownerUserId)
+      }
+      // merge into the visible state (remote is authoritative for shared meetings)
+      setMeetings((prev) => {
+        const byId = new Map((Array.isArray(prev) ? prev : []).map((m) => [m.id, m]))
+        for (const m of remote) {
+          if (m?.id && m.projectId && memberProjectIds.includes(m.projectId)) {
+            byId.set(m.id, { ...(byId.get(m.id) || {}), ...m, ownerUserId })
+          }
+        }
+        return Array.from(byId.values())
+      })
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeProject?.id, ownerUserId, memberProjectIds])
 
   useEffect(() => {
     const handleMeetingUpdate = async (e) => {
@@ -177,6 +209,7 @@ export function TasksPage() {
                           meeting.projectId &&
                           activeProject?.id
                         ) {
+                          void deleteRemoteMeeting(meeting.id, meeting.projectId)
                           void broadcastMeetingUpdate(
                             { id: meeting.id },
                             'delete',
@@ -258,6 +291,7 @@ export function TasksPage() {
             newMeeting.projectId &&
             activeProject?.id
           ) {
+            void upsertRemoteMeeting(newMeeting)
             void broadcastMeetingUpdate(newMeeting, 'upsert', newMeeting.projectId)
           }
         }}
@@ -293,6 +327,7 @@ export function TasksPage() {
             normalized.projectId &&
             activeProject?.id
           ) {
+            void upsertRemoteMeeting(normalized)
             void broadcastMeetingUpdate(normalized, 'upsert', normalized.projectId)
           }
         }}
@@ -319,6 +354,7 @@ export function TasksPage() {
             prevMeeting?.projectId &&
             activeProject?.id
           ) {
+            void deleteRemoteMeeting(id, prevMeeting.projectId)
             void broadcastMeetingUpdate({ id }, 'delete', prevMeeting.projectId)
           }
         }}
