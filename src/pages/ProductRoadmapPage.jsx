@@ -986,18 +986,18 @@ export function ProductRoadmapPage() {
 
         {roadmapLocked ? (
           <div
-            className="mt-3 flex flex-col gap-1 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 sm:flex-row sm:items-center sm:justify-between"
+            className="mt-3 flex flex-col gap-1 rounded-lg border border-amber-600 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:flex-row sm:items-center sm:justify-between"
             role="status"
           >
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center rounded-md bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-amber-200 ring-1 ring-amber-500/30">
+              <span className="inline-flex items-center rounded-md bg-amber-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">
                 Locked
               </span>
               <span className="font-medium">
                 Roadmap editing is locked on your current plan.
               </span>
             </div>
-            <span className="text-[11px] text-amber-200/85">
+            <span className="text-[11px] text-amber-900">
               {ROADMAP_LOCK_MESSAGE}
             </span>
           </div>
