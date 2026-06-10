@@ -77,8 +77,20 @@ export function AuthProvider({ children }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      const nextUser = session?.user ?? null
+      if (nextUser) {
+        // Always accept a real session/user
+        setUser(nextUser)
+        return
+      }
+      // No user in this event. Only clear on an explicit sign-out while online.
+      // Offline token-refresh failures must NOT log the user out / wipe the app.
+      const offline = typeof navigator !== 'undefined' && navigator.onLine === false
+      if (event === 'SIGNED_OUT' && !offline) {
+        setUser(null)
+      }
+      // otherwise keep the existing user (transient/offline null session)
     })
 
     return () => subscription.unsubscribe()

@@ -126,8 +126,12 @@ async function migrateLocalToSupabase(user) {
 
 export function WorkspaceProvider({ children }) {
   const { user } = useAuth()
-  const [projects, setProjects] = useState([])
-  const [teams, setTeams] = useState([])
+  const [projects, setProjects] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('zc-projects-cache') || '[]') } catch { return [] }
+  })
+  const [teams, setTeams] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('zc-teams-cache') || '[]') } catch { return [] }
+  })
   const [activeProject, setActiveProjectState] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem('zc-active-project') || 'null')
@@ -176,6 +180,7 @@ export function WorkspaceProvider({ children }) {
 
   const loadProjects = useCallback(async () => {
     if (!user) return
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return
     try {
       const myProjects = await fetchMyProjects(user.id)
       const projectsWithTeams = await Promise.all(
@@ -188,6 +193,7 @@ export function WorkspaceProvider({ children }) {
         }),
       )
       setProjects(projectsWithTeams)
+      try { localStorage.setItem('zc-projects-cache', JSON.stringify(projectsWithTeams)) } catch {}
 
       setActiveProjectState((prev) => {
         if (!prev) {
@@ -218,6 +224,7 @@ export function WorkspaceProvider({ children }) {
 
   const loadTeams = useCallback(async () => {
     if (!user) return
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) return
     try {
       const myTeams = await fetchMyTeams(user.id)
       const teamsWithMembers = await Promise.all(
@@ -227,10 +234,21 @@ export function WorkspaceProvider({ children }) {
         }),
       )
       setTeams(teamsWithMembers)
+      try { localStorage.setItem('zc-teams-cache', JSON.stringify(teamsWithMembers)) } catch {}
     } catch (err) {
       console.error('[WorkspaceContext] loadTeams error:', err)
     }
   }, [user])
+
+  // Fallback: if we have projects but no active project (e.g. offline refresh where
+  // loadProjects' auto-select is skipped), select the first project.
+  useEffect(() => {
+    if (activeProject) return
+    if (!Array.isArray(projects) || projects.length === 0) return
+    const first = projects[0]
+    setActiveProjectState(first)
+    try { localStorage.setItem('zc-active-project', JSON.stringify(first)) } catch {}
+  }, [activeProject, projects])
 
   const loadProjectSprints = useCallback(async (projectId) => {
     if (!user || !projectId) {
@@ -254,9 +272,16 @@ export function WorkspaceProvider({ children }) {
 
   useEffect(() => {
     if (!user) {
+      // Offline / transient null user: do NOT wipe — keep cached projects & teams visible.
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setIsLoading(false)
+        return
+      }
       const resetTimer = window.setTimeout(() => {
         setProjects([])
         setTeams([])
+        localStorage.removeItem('zc-projects-cache')
+        localStorage.removeItem('zc-teams-cache')
         setIsLoading(false)
       }, 0)
       return () => window.clearTimeout(resetTimer)
