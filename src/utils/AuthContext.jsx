@@ -2,6 +2,8 @@ import { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from './supabase.js'
 import { addLogEntry } from './logService.js'
 import { fetchUserMemberProjectIds } from './logRemoteStorage.js'
+import { setTokenProfileUser } from './tokenEconomics/tokenProfileStorage.js'
+import { setQuotaUsageUser } from './tokenEconomics/quotaUsageStorage.js'
 
 const AuthContext = createContext(null)
 
@@ -81,6 +83,14 @@ export function AuthProvider({ children }) {
 
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(() => {
+    setTokenProfileUser(user?.id ?? null)
+    setQuotaUsageUser(user?.id ?? null)
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('zc-quota-changed'))
+    }
+  }, [user])
 
   const signIn = async (email, password) => {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password })

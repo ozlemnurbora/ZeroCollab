@@ -1,4 +1,5 @@
-const STORAGE_KEY = 'zc-quota-usage-v1'
+const STORAGE_PREFIX = 'zc-quota-usage-v1'
+let activeUserId = null
 
 const DEFAULT_USAGE = {
   projects: 0,
@@ -6,10 +7,18 @@ const DEFAULT_USAGE = {
   teamMembers: 0,
 }
 
+export function setQuotaUsageUser(userId) {
+  activeUserId = userId || null
+}
+
+function storageKey() {
+  return `${STORAGE_PREFIX}::${activeUserId || 'anon'}`
+}
+
 export function getQuotaUsage() {
   if (typeof localStorage === 'undefined') return { ...DEFAULT_USAGE }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(storageKey())
     if (!raw) return { ...DEFAULT_USAGE }
     const parsed = JSON.parse(raw)
     return { ...DEFAULT_USAGE, ...(parsed || {}) }
@@ -22,7 +31,7 @@ export function saveQuotaUsage(usage) {
   if (typeof localStorage === 'undefined') return
   const next = { ...DEFAULT_USAGE, ...(usage || {}) }
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
+    localStorage.setItem(storageKey(), JSON.stringify(next))
   } catch {
     // ignore
   }

@@ -69,7 +69,7 @@ export function canAddTeamMember() {
 }
 
 /**
- * Keeps `zc-quota-usage-v1`.projects aligned with the live workspace list.
+ * Keeps the scoped `zc-quota-usage-v1::{user}` projects counter aligned with the live workspace list.
  * Call when `WorkspaceContext.projects` changes or after auth state changes.
  */
 export function syncProjectsQuotaFromWorkspaceCount(activeCount) {

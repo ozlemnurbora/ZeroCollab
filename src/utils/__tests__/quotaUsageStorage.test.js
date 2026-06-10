@@ -6,10 +6,11 @@ import {
   incrementQuotaUsage,
   resetQuotaUsage,
   saveQuotaUsage,
+  setQuotaUsageUser,
   syncProjectsQuotaUsageToCount,
 } from '../tokenEconomics/quotaUsageStorage.js'
 
-const STORAGE_KEY = 'zc-quota-usage-v1'
+const STORAGE_KEY = 'zc-quota-usage-v1::anon'
 
 function createLocalStorageMock() {
   const store = new Map()
@@ -34,6 +35,7 @@ describe('quotaUsageStorage', () => {
   beforeEach(() => {
     localStorageMock = createLocalStorageMock()
     vi.stubGlobal('localStorage', localStorageMock)
+    setQuotaUsageUser(null)
   })
 
   it('getQuotaUsage returns DEFAULT_USAGE when localStorage is empty', () => {
@@ -122,5 +124,20 @@ describe('quotaUsageStorage', () => {
 
     expect(next).toEqual({ projects: 2, evaluations: 0, teamMembers: 0 })
     expect(getQuotaUsage()).toEqual(next)
+  })
+
+  it('scopes quota usage per active user', () => {
+    setQuotaUsageUser('user-a')
+    saveQuotaUsage({ projects: 1, evaluations: 2, teamMembers: 3 })
+
+    setQuotaUsageUser('user-b')
+    expect(getQuotaUsage()).toEqual(DEFAULT_USAGE)
+    saveQuotaUsage({ projects: 4, evaluations: 5, teamMembers: 6 })
+
+    setQuotaUsageUser('user-a')
+    expect(getQuotaUsage()).toEqual({ projects: 1, evaluations: 2, teamMembers: 3 })
+
+    setQuotaUsageUser('user-b')
+    expect(getQuotaUsage()).toEqual({ projects: 4, evaluations: 5, teamMembers: 6 })
   })
 })

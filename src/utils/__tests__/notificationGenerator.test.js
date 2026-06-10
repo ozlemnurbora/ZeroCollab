@@ -25,6 +25,23 @@ import {
 
 const USER = { id: 'u1', email: 'me@x.com' }
 
+function createLocalStorageMock() {
+  const store = new Map()
+
+  return {
+    getItem: vi.fn((key) => (store.has(key) ? store.get(key) : null)),
+    setItem: vi.fn((key, value) => {
+      store.set(key, String(value))
+    }),
+    removeItem: vi.fn((key) => {
+      store.delete(key)
+    }),
+    clear: vi.fn(() => {
+      store.clear()
+    }),
+  }
+}
+
 // Note: the generator reads `log.timestamp` (the local log shape) for the
 // watermark comparison, so fixtures use `timestamp`.
 const makeLog = (overrides = {}) => ({
@@ -61,6 +78,7 @@ function setup({
 const firstMessage = () => addNotification.mock.calls[0]?.[0]?.message ?? ''
 
 beforeEach(() => {
+  vi.stubGlobal('localStorage', createLocalStorageMock())
   vi.clearAllMocks()
   localStorage.clear()
   addNotification.mockResolvedValue(null)

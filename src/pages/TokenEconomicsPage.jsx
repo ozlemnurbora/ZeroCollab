@@ -920,8 +920,8 @@ export function TokenEconomicsPage() {
             </div>
             <div className="mt-4 flex items-center justify-between gap-3 border-t border-[rgb(var(--zc-border))] pt-4">
               <p className="text-[11px] text-[rgb(var(--zc-subtle))]">
-                {t('te_storage_keys')} <code className="text-[rgb(var(--zc-muted))]">zc-token-profile-v1</code>,{' '}
-                <code className="text-[rgb(var(--zc-muted))]">zc-quota-usage-v1</code>
+                {t('te_storage_keys')} <code className="text-[rgb(var(--zc-muted))]">zc-token-profile-v1::user</code>,{' '}
+                <code className="text-[rgb(var(--zc-muted))]">zc-quota-usage-v1::user</code>
               </p>
               <button
                 type="button"
