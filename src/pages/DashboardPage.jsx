@@ -433,7 +433,7 @@ export function DashboardPage() {
           {stats.total === 0 ? (
             <EmptyState>📊 No tasks yet — create your first task to see analytics here.</EmptyState>
           ) : (
-            <div className="flex h-72 items-center justify-center">
+            <div className="flex h-72 flex-col items-center justify-center gap-4">
               <div className="relative h-40 w-40">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -456,7 +456,6 @@ export function DashboardPage() {
                         fontSize: 12,
                       }}
                     />
-                    <Legend />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
@@ -467,6 +466,16 @@ export function DashboardPage() {
                     {t('dash_complete_label')}
                   </p>
                 </div>
+              </div>
+              <div className="flex items-center gap-4 text-xs">
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: '#22c55e' }} />
+                  <span className="text-[rgb(var(--zc-subtle))]">{t('chart_completed')}</span>
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: '#1e293b' }} />
+                  <span className="text-[rgb(var(--zc-subtle))]">{t('chart_remaining')}</span>
+                </span>
               </div>
             </div>
           )}
