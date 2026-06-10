@@ -6,7 +6,7 @@ export const TRANSLATIONS = {
   en: {
     // Sidebar & shell
     nav_dashboard: 'Dashboard',
-    nav_tasks: 'Tasks',
+    nav_tasks: 'Tasks / Meetings',
     nav_calendar: 'Calendar',
     nav_chat: 'Chat',
     nav_evaluation: 'Evaluation',
@@ -849,7 +849,7 @@ export const TRANSLATIONS = {
 
   tr: {
     nav_dashboard: 'Panel',
-    nav_tasks: 'Görevler',
+    nav_tasks: 'Görevler / Toplantılar',
     nav_calendar: 'Takvim',
     nav_chat: 'Sohbet',
     nav_evaluation: 'Değerlendirme',

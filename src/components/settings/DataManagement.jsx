@@ -1,22 +1,39 @@
 import { loadMessages, saveMessages } from '../chat/chatStorage.js'
+import { loadEvaluationsForProject, saveEvaluation } from '../evaluation/evaluationStorage.js'
+import { loadTasks, saveTasks } from '../kanban/taskStorage.js'
 import { useAuth } from '../../utils/AuthContext.jsx'
 import { useLanguage } from '../../utils/LanguageContext.jsx'
+import { loadMeetings, saveMeeting } from '../../utils/meetingStorage.js'
+import { useWorkspace } from '../../utils/WorkspaceContext.jsx'
 
 export function DataManagement() {
   const { user } = useAuth()
   const { t } = useLanguage()
+  const { memberProjectIds = [] } = useWorkspace()
   const ownerUserId = user?.id || null
 
   const handleExportJSON = async () => {
     try {
       const ownerKey = ownerUserId || 'unknown'
 
-      // Gather all data from IndexedDB
-      const tasks = JSON.parse(localStorage.getItem('zerocollab.tasks.v1') || '[]')
+      // Gather local-device data from the stores that actually own it.
+      const tasks = ownerUserId ? await loadTasks(ownerUserId) : []
+      const meetings = ownerUserId ? await loadMeetings(ownerUserId) : []
+      let evaluations = []
+      for (const pid of memberProjectIds) {
+        const evs = await loadEvaluationsForProject(pid)
+        if (Array.isArray(evs)) evaluations = evaluations.concat(evs)
+      }
+      // de-dup by id
+      const seenEvalIds = new Set()
+      evaluations = evaluations.filter((e) => {
+        if (!e?.id || seenEvalIds.has(e.id)) return false
+        seenEvalIds.add(e.id)
+        return true
+      })
       const settings = JSON.parse(localStorage.getItem('zerocollab.settings.v1') || '{}')
       const chatMessages = await loadMessages(ownerKey)
       const customCalendars = JSON.parse(localStorage.getItem('zc-custom-calendars') || '[]')
-      const releasePackages = JSON.parse(localStorage.getItem('zc-release-packages') || '[]')
 
       const exportData = {
         version: '1.0',
@@ -24,10 +41,11 @@ export function DataManagement() {
         exportedBy: user?.email || 'unknown',
         data: {
           tasks: Array.isArray(tasks) ? tasks : [],
+          meetings: Array.isArray(meetings) ? meetings : [],
+          evaluations: Array.isArray(evaluations) ? evaluations : [],
           settings,
           chatMessages: Array.isArray(chatMessages) ? chatMessages : [],
           customCalendars: Array.isArray(customCalendars) ? customCalendars : [],
-          releasePackages: Array.isArray(releasePackages) ? releasePackages : [],
         },
       }
 
@@ -64,9 +82,10 @@ export function DataManagement() {
 
         const confirmMsg = `Import will add data from "${file.name}".\n\n` +
           `Tasks: ${imported.data.tasks?.length || 0}\n` +
+          `Meetings: ${imported.data.meetings?.length || 0}\n` +
+          `Evaluations: ${imported.data.evaluations?.length || 0}\n` +
           `Chat Messages: ${imported.data.chatMessages?.length || 0}\n` +
           `Custom Calendars: ${imported.data.customCalendars?.length || 0}\n` +
-          `Release Packages: ${imported.data.releasePackages?.length || 0}\n\n` +
           `Exported by: ${imported.exportedBy || 'unknown'}\n` +
           `Exported at: ${imported.exportedAt || 'unknown'}\n\n` +
           `Continue?`
@@ -74,11 +93,35 @@ export function DataManagement() {
         if (!window.confirm(confirmMsg)) return
 
         // Import tasks
-        if (Array.isArray(imported.data.tasks) && imported.data.tasks.length > 0) {
-          const existingTasks = JSON.parse(localStorage.getItem('zerocollab.tasks.v1') || '[]')
-          const existingIds = new Set(existingTasks.map(t => t.id))
-          const newTasks = imported.data.tasks.filter(t => !existingIds.has(t.id))
-          localStorage.setItem('zerocollab.tasks.v1', JSON.stringify([...existingTasks, ...newTasks]))
+        if (Array.isArray(imported.data.tasks) && imported.data.tasks.length > 0 && ownerUserId) {
+          const existing = await loadTasks(ownerUserId)
+          const existingIds = new Set((existing || []).map((t) => t.id))
+          const newTasks = imported.data.tasks.filter((t) => !existingIds.has(t.id))
+          if (newTasks.length > 0) await saveTasks([...(existing || []), ...newTasks], ownerUserId, { reason: 'JSON import' })
+        }
+
+        // Import meetings
+        if (Array.isArray(imported.data.meetings) && imported.data.meetings.length > 0 && ownerUserId) {
+          const existing = await loadMeetings(ownerUserId)
+          const existingIds = new Set((existing || []).map((m) => m.id))
+          for (const m of imported.data.meetings) {
+            if (!existingIds.has(m.id)) await saveMeeting(m, ownerUserId)
+          }
+        }
+
+        // Import evaluations
+        if (Array.isArray(imported.data.evaluations) && imported.data.evaluations.length > 0) {
+          // gather existing ids across member projects to avoid duplicates
+          const existingEvalIds = new Set()
+          for (const pid of memberProjectIds) {
+            const evs = await loadEvaluationsForProject(pid)
+            for (const e of (evs || [])) if (e?.id) existingEvalIds.add(e.id)
+          }
+          for (const ev of imported.data.evaluations) {
+            if (ev?.id && !existingEvalIds.has(ev.id)) {
+              await saveEvaluation(ev)
+            }
+          }
         }
 
         // Import chat messages
@@ -95,14 +138,6 @@ export function DataManagement() {
           const existingIds = new Set(existing.map(c => c.id))
           const newCals = imported.data.customCalendars.filter(c => !existingIds.has(c.id))
           localStorage.setItem('zc-custom-calendars', JSON.stringify([...existing, ...newCals]))
-        }
-
-        // Import release packages
-        if (Array.isArray(imported.data.releasePackages) && imported.data.releasePackages.length > 0) {
-          const existing = JSON.parse(localStorage.getItem('zc-release-packages') || '[]')
-          const existingIds = new Set(existing.map(p => p.id))
-          const newPkgs = imported.data.releasePackages.filter(p => !existingIds.has(p.id))
-          localStorage.setItem('zc-release-packages', JSON.stringify([...existing, ...newPkgs]))
         }
 
         alert(`Import complete!\nNew tasks: ${imported.data.tasks?.length || 0}\nRefresh the page to see changes.`)

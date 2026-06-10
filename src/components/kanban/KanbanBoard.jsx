@@ -1239,9 +1239,9 @@ export function KanbanBoard({
                   {activeSprint.sprint_goal || '—'}
                 </p>
               </div>
-              <div className="shrink-0 inline-flex items-center gap-2 rounded-full bg-[rgb(var(--zc-bg)/0.35)] px-3 py-1 text-xs">
-                <span className="text-[rgb(var(--zc-muted))]">{t('po_status_field')}</span>
-                <span className="font-medium text-[rgb(var(--zc-text))]">
+              <div className="shrink-0 inline-flex items-center gap-2 rounded-full bg-emerald-600 px-3 py-1 text-xs">
+                <span className="text-white/80">{t('po_status_field')}</span>
+                <span className="font-semibold capitalize text-white">
                   {activeSprint.status || 'active'}
                 </span>
               </div>
@@ -1273,10 +1273,6 @@ export function KanbanBoard({
           </section>
 
           <section className="rounded-xl border border-[rgb(var(--zc-border))] bg-[rgb(var(--zc-bg)/0.3)] p-5">
-            <h3 className="text-sm font-semibold text-[rgb(var(--zc-text))]">{t('sb_burndown')}</h3>
-            <p className="mt-1 text-xs text-[rgb(var(--zc-subtle))]">
-              {t('sb_burndown_sub')}
-            </p>
             {(() => {
               const totalItems = sprintTasks.length
               const doneItems = sprintTasks.filter((t) => getNormalizedTaskStatus(t) === 'done').length
@@ -1355,7 +1351,7 @@ export function KanbanBoard({
           </h2>
           <p className="mt-1 text-xs text-[rgb(var(--zc-muted2))]">{t('kanban_ready_backlog_hint')}</p>
           <div className="mt-3 flex flex-wrap gap-3 text-xs">
-            <span className="rounded-md bg-[rgb(var(--zc-panel)/0.5)] px-2.5 py-1 text-[rgb(var(--zc-text))] ring-1 ring-[rgb(var(--zc-border))]">
+            <span className="rounded-md bg-emerald-600 px-2.5 py-1 font-semibold text-white">
               {t('kanban_ready_backlog_count', { n: readyBacklogTasks.length })}
             </span>
           </div>
