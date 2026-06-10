@@ -7,10 +7,15 @@ import {
   loadTasks,
   saveTasks,
   normalizeTaskForStorage,
+  mergeTaskListsByIdPreferNewer,
   markTaskSoftDeleted,
   isTaskDeleted,
 } from '../components/kanban/taskStorage.js'
-import { isSharedProjectTask, upsertRemoteTasks } from '../utils/taskRemoteStorage.js'
+import {
+  fetchRemoteProjectTasks,
+  isSharedProjectTask,
+  upsertRemoteTasks,
+} from '../utils/taskRemoteStorage.js'
 import { deleteMeeting, loadMeetings, saveMeeting } from '../utils/meetingStorage.js'
 import {
   addDaysCalendar,
@@ -240,6 +245,29 @@ export function CalendarPage() {
       cancelled = true
     }
   }, [ownerUserId])
+
+  // Durable recovery: merge Supabase project tasks into local cache (never wipes local).
+  useEffect(() => {
+    const projectId = activeProject?.id ?? null
+    if (!projectId || !ownerUserId || !hasLoadedTasks) return
+    let cancelled = false
+    ;(async () => {
+      const remoteTasks = await fetchRemoteProjectTasks(projectId)
+      if (cancelled) return
+      const localAll = Array.isArray(tasksRef.current) ? tasksRef.current : []
+      const mergedAll = mergeTaskListsByIdPreferNewer(localAll, remoteTasks)
+        .map((t) => normalizeTaskForStorage(t, ownerUserId))
+        .filter(Boolean)
+      // Never let an empty remote wipe local; only write when we actually have tasks.
+      if (mergedAll.length > 0) {
+        setTasks(mergedAll)
+        await saveTasks(mergedAll, ownerUserId, { reason: 'calendar remote merge' })
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [activeProject?.id, ownerUserId, hasLoadedTasks])
 
   useEffect(() => {
     if (!ownerUserId) {
